@@ -69,6 +69,13 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--purple2),#4A2E99);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
 .sb-user{overflow:hidden;white-space:nowrap;transition:opacity .2s}
 .sb.collapsed .sb-user{opacity:0;width:0}
+.sb.collapsed.hover-expanded{width:232px}
+.sb.collapsed.hover-expanded .sb-brand-texts,.sb.collapsed.hover-expanded .sb-product-wrap,.sb.collapsed.hover-expanded .sb-sec,.sb.collapsed.hover-expanded .sb-user{opacity:1;width:auto}
+.sb.collapsed.hover-expanded .sb-notif{justify-content:space-between;padding:6px 16px}
+.sb.collapsed.hover-expanded .sb-notif span:first-child{display:block}
+.sb.collapsed.hover-expanded .nav-label{opacity:1;width:auto}
+.sb.collapsed.hover-expanded .nav{padding:8px 16px;justify-content:flex-start;border-radius:5px}
+.sb.collapsed.hover-expanded .nav::after{display:none}
 
 /* TOPBAR */
 .tb{display:flex;align-items:center;gap:14px;padding:0 26px;height:56px;border-bottom:1px solid #E2E8F0;background:rgba(255,255,255,.95);backdrop-filter:blur(14px);position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,.06)}
@@ -2071,12 +2078,35 @@ function toggleSidebar() {
   const main = document.querySelector('.main');
   const nlpResult = document.getElementById('nlp-result');
   const btn = document.getElementById('sb-toggle');
-  const collapsed = sb.classList.toggle('collapsed');
-  main.classList.toggle('sb-collapsed', collapsed);
-  if (nlpResult) nlpResult.classList.toggle('sb-collapsed', collapsed);
-  btn.textContent = collapsed ? '›' : '‹';
-  document.documentElement.style.setProperty('--sb-width', collapsed ? '56px' : '232px');
+  if (sb.classList.contains('collapsed')) {
+    // Collapsed → pin open
+    sb.classList.remove('collapsed');
+    sb.classList.remove('hover-expanded');
+    sb.dataset.pinned = '1';
+    main.classList.remove('sb-collapsed');
+    if (nlpResult) nlpResult.classList.remove('sb-collapsed');
+    btn.textContent = '‹';
+    document.documentElement.style.setProperty('--sb-width', '232px');
+  } else {
+    // Pinned open → collapse
+    sb.classList.add('collapsed');
+    delete sb.dataset.pinned;
+    main.classList.add('sb-collapsed');
+    if (nlpResult) nlpResult.classList.add('sb-collapsed');
+    btn.textContent = '›';
+    document.documentElement.style.setProperty('--sb-width', '56px');
+  }
 }
+(function() {
+  const sb = document.getElementById('sidebar');
+  sb.addEventListener('mouseenter', () => {
+    if (sb.classList.contains('collapsed') && !sb.dataset.pinned)
+      sb.classList.add('hover-expanded');
+  });
+  sb.addEventListener('mouseleave', () => {
+    sb.classList.remove('hover-expanded');
+  });
+})();
 
 // ============================================================
 // TAB SWITCHING — generic
