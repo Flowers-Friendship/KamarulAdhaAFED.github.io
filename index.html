@@ -741,6 +741,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
               <th>Plays</th>
               <th onclick="sortBasins('score')">Prospectivity<span class="sort-ico">↕</span></th>
               <th>Status</th>
+              <th style="width:36px"></th>
             </tr></thead>
             <tbody id="basin-tbody"></tbody>
           </table>
@@ -2478,7 +2479,7 @@ function renderBasinTable(data) {
     const tl = b.score >= 70 ? 'tl-g' : b.score >= 40 ? 'tl-a' : 'tl-r';
     const tlText = b.score >= 70 ? 'HIGH' : b.score >= 40 ? 'MEDIUM' : 'LOW';
     const hcBadge = b.hc === 'Oil' ? 'bg' : b.hc === 'Gas' ? 'be' : 'bc';
-    return `<tr style="cursor:pointer" onclick="showBasinDetail('${b.name}')">
+    return `<tr style="cursor:pointer" onclick="focusBasinOnMap('${b.name}')">
       <td style="color:var(--t1);font-weight:600">${b.name}</td>
       <td>${b.country}</td>
       <td>${b.tectonic}</td>
@@ -2488,6 +2489,7 @@ function renderBasinTable(data) {
       <td>${b.plays}</td>
       <td><div class="sbar"><div class="sbar-track"><div class="sbar-fill" style="width:${b.score}%;background:${c}"></div></div><span class="sval" style="color:${c}">${b.score}</span></div></td>
       <td><span class="tl ${tl}">${tlText}</span></td>
+      <td onclick="event.stopPropagation()" style="text-align:center"><button onclick="showBasinDetail('${b.name}')" style="background:none;border:1px solid var(--border);border-radius:4px;padding:2px 7px;cursor:pointer;color:var(--t3);font-size:11px;line-height:1.4">ⓘ</button></td>
     </tr>`;
   }).join('');
 }
@@ -2524,6 +2526,23 @@ function sortBasins(col) {
     return (av - bv) * sortState.dir;
   });
   renderBasinTable(sorted);
+}
+
+let _focusedBasin = null;
+function focusBasinOnMap(name) {
+  if (_focusedBasin === name) return;
+  _focusedBasin = name;
+  const b = BASINS.find(x => x.name === name);
+  if (!b || !_leafletMap) return;
+  const coords = getBasinCoords(b);
+  if (!coords) return;
+  document.getElementById('world-map')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  _leafletMap.once('moveend', () => {
+    const target = L.latLng(coords[0], coords[1]);
+    const marker = _leafletMarkers.find(m => m.getLatLng().distanceTo(target) < 5000);
+    if (marker) marker.openPopup();
+  });
+  _leafletMap.flyTo(coords, 6, { duration: 1.2 });
 }
 
 function showBasinDetail(name) {
