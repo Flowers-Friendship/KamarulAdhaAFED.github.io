@@ -2577,6 +2577,7 @@ let _leafletMarkers = [];
 let _portfolioMap = null;
 let _portfolioMarkers = [];
 let _focusedBasin = null;
+let _simCrossplotChart = null;
 
 function setupPortfolioMap() {
   const el = document.getElementById('portfolio-leaflet-map');
@@ -4537,82 +4538,119 @@ function exportSimilarityPDF() { toast('Similarity Analysis PDF export coming so
 function renderSimCrossplot() {
   const canvas = document.getElementById('sim-cp-canvas');
   if (!canvas) return;
-  const ctx = canvas.getContext('2d');
+
   const xKey = document.getElementById('sim-cp-x')?.value || 'por';
   const yKey = document.getElementById('sim-cp-y')?.value || 'perm';
   const a = currentAnalogue;
   const T = buildTargetFromSearch();
 
-  // Axis labels
   const LABELS = {por:'Porosity (%)',perm:'Permeability (mD)',rf:'Recovery Factor (%)',depth:'Depth (m)',api:'API (°)',ntg:'NTG (%)',gor:'GOR',sw:'Sw'};
   const xLabel = LABELS[xKey]||xKey, yLabel = LABELS[yKey]||yKey;
   if (document.getElementById('sim-cp-hx')) document.getElementById('sim-cp-hx').textContent = xLabel;
   if (document.getElementById('sim-cp-hy')) document.getElementById('sim-cp-hy').textContent = yLabel;
 
   const pts = searchResults.map(r => ({x:+r[xKey],y:+r[yKey],sim:r.sim,name:r.name,lith:r.lith,rank:r.rank})).filter(p=>p.x>0&&p.y>0);
-  const W = canvas.width, H = canvas.height;
-  const pad = {l:52,r:20,t:20,b:42};
 
-  const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
-  const xMin=Math.min(...xs)*0.95, xMax=Math.max(...xs)*1.05;
-  const yMin=Math.min(...ys)*0.95, yMax=Math.max(...ys)*1.05;
-  const px = v => pad.l + (v-xMin)/(xMax-xMin)*(W-pad.l-pad.r);
-  const py = v => H-pad.b - (v-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+  const LITH_COLORS = {
+    Sandstone:'rgba(240,165,0,.75)', Carbonate:'rgba(0,200,255,.75)',
+    Chalk:'rgba(0,229,160,.75)', Conglomerate:'rgba(180,83,9,.7)', Mixed:'rgba(107,70,193,.65)'
+  };
+  const others   = pts.filter(p => !(a && p.rank === a.rank));
+  const selected = pts.filter(p =>   a && p.rank === a.rank);
+  const tx = +T[xKey], ty = +T[yKey];
 
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+  canvas._targetX = (tx > 0 && ty > 0) ? tx : null;
+  canvas._targetY = (tx > 0 && ty > 0) ? ty : null;
 
-  // Grid
-  ctx.strokeStyle='rgba(107,70,193,.07)'; ctx.lineWidth=1;
-  for(let i=0;i<=5;i++){
-    const xv=xMin+i*(xMax-xMin)/5, yv=yMin+i*(yMax-yMin)/5;
-    ctx.beginPath();ctx.moveTo(px(xv),pad.t);ctx.lineTo(px(xv),H-pad.b);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(pad.l,py(yv));ctx.lineTo(W-pad.r,py(yv));ctx.stroke();
-    ctx.fillStyle='#9AA8C0';ctx.font='8px Segoe UI';ctx.textAlign='center';
-    ctx.fillText(xv>=1000?(xv/1000).toFixed(1)+'k':xv.toFixed(1),px(xv),H-pad.b+12);
-    ctx.textAlign='right';
-    ctx.fillText(yv>=1000?(yv/1000).toFixed(1)+'k':yv.toFixed(1),pad.l-4,py(yv)+3);
-  }
+  if (_simCrossplotChart) { _simCrossplotChart.destroy(); _simCrossplotChart = null; }
 
-  // Axes
-  ctx.strokeStyle='rgba(107,70,193,.2)';ctx.lineWidth=1.5;
-  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  const targetCrosshairPlugin = {
+    id: 'targetCrosshair',
+    afterDraw(chart) {
+      const cvs = chart.canvas;
+      if (cvs._targetX == null) return;
+      const {ctx, chartArea, scales} = chart;
+      const cpx = scales.x.getPixelForValue(cvs._targetX);
+      const cpy = scales.y.getPixelForValue(cvs._targetY);
+      ctx.save();
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = 'rgba(255,77,106,.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cpx, chartArea.top);    ctx.lineTo(cpx, chartArea.bottom); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(chartArea.left, cpy);   ctx.lineTo(chartArea.right, cpy);  ctx.stroke();
+      ctx.restore();
+    }
+  };
 
-  // Axis labels
-  ctx.fillStyle='#4A5568';ctx.font='bold 9px Segoe UI';ctx.textAlign='center';
-  ctx.fillText(xLabel,pad.l+(W-pad.l-pad.r)/2,H-2);
-  ctx.save();ctx.translate(12,pad.t+(H-pad.t-pad.b)/2);ctx.rotate(-Math.PI/2);ctx.fillText(yLabel,0,0);ctx.restore();
-
-  // Points
-  const LITH_COLORS = {Sandstone:'rgba(240,165,0,.7)',Carbonate:'rgba(0,200,255,.7)',Chalk:'rgba(0,229,160,.7)',Conglomerate:'rgba(180,83,9,.6)',Mixed:'rgba(107,70,193,.6)'};
-  pts.forEach(p => {
-    const isSelected = a && p.rank === a.rank;
-    const col = LITH_COLORS[p.lith]||'rgba(107,70,193,.5)';
-    ctx.beginPath();ctx.arc(px(p.x),py(p.y),isSelected?7:4,0,Math.PI*2);
-    ctx.fillStyle=isSelected?'rgba(107,70,193,.25)':col.replace('.7','.15').replace('.6','.12').replace('.5','.1');ctx.fill();
-    ctx.strokeStyle=isSelected?'var(--purple)':col;ctx.lineWidth=isSelected?2.5:1.5;ctx.stroke();
-    if(isSelected){
-      ctx.fillStyle='var(--purple)';ctx.font='bold 9px Segoe UI';ctx.textAlign='left';
-      ctx.fillText(p.name.split('—')[0].trim().substring(0,18),px(p.x)+10,py(p.y)+3);
+  _simCrossplotChart = new Chart(canvas, {
+    type: 'scatter',
+    plugins: [targetCrosshairPlugin],
+    data: {
+      datasets: [
+        {
+          label: 'Analogues',
+          data: others.map(p => ({x: p.x, y: p.y, meta: p})),
+          pointBackgroundColor: others.map(p => (LITH_COLORS[p.lith]||'rgba(107,70,193,.5)').replace('.75','.2').replace('.7','.18').replace('.65','.15')),
+          pointBorderColor:     others.map(p =>  LITH_COLORS[p.lith]||'rgba(107,70,193,.5)'),
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          pointBorderWidth: 1.5,
+        },
+        {
+          label: 'Selected',
+          data: selected.map(p => ({x: p.x, y: p.y, meta: p})),
+          pointBackgroundColor: 'rgba(107,70,193,.25)',
+          pointBorderColor: 'rgba(107,70,193,1)',
+          pointRadius: 8,
+          pointHoverRadius: 10,
+          pointBorderWidth: 2.5,
+        },
+        {
+          label: 'Target',
+          data: (tx > 0 && ty > 0) ? [{x: tx, y: ty}] : [],
+          pointBackgroundColor: '#FF4D6A',
+          pointBorderColor: '#FF4D6A',
+          pointStyle: 'circle',
+          pointRadius: 7,
+          pointHoverRadius: 9,
+          pointBorderWidth: 2,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      animation: { duration: 250 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              const d = ctx.raw;
+              if (ctx.datasetIndex === 2) return `TARGET  ${xLabel}: ${d.x}  ${yLabel}: ${d.y}`;
+              const m = d.meta;
+              const fmt = v => v >= 1000 ? (v/1000).toFixed(1)+'k' : (+v).toFixed(1);
+              return [`${m.name.split('—')[0].trim()}`, `${xLabel}: ${fmt(d.x)}  ${yLabel}: ${fmt(d.y)}  Sim: ${m.sim}%`];
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: xLabel, font: { size: 9 }, color: '#4A5568' },
+          grid: { color: 'rgba(107,70,193,.07)' },
+          ticks: { font: { size: 8 }, color: '#9AA8C0',
+            callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v }
+        },
+        y: {
+          title: { display: true, text: yLabel, font: { size: 9 }, color: '#4A5568' },
+          grid: { color: 'rgba(107,70,193,.07)' },
+          ticks: { font: { size: 8 }, color: '#9AA8C0',
+            callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v }
+        }
+      }
     }
   });
-
-  // Target point
-  const tx=+T[xKey], ty=+T[yKey];
-  if(tx>0&&ty>0){
-    const tpx=px(tx), tpy=py(ty);
-    ctx.strokeStyle='rgba(255,77,106,.3)';ctx.lineWidth=1;ctx.setLineDash([4,3]);
-    ctx.beginPath();ctx.moveTo(tpx,pad.t);ctx.lineTo(tpx,H-pad.b);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(pad.l,tpy);ctx.lineTo(W-pad.r,tpy);ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.beginPath();ctx.arc(tpx,tpy,9,0,Math.PI*2);
-    ctx.strokeStyle='#FF4D6A';ctx.lineWidth=2;ctx.stroke();
-    ctx.beginPath();ctx.arc(tpx,tpy,4,0,Math.PI*2);
-    ctx.fillStyle='#FF4D6A';ctx.fill();
-    ctx.fillStyle='#FF4D6A';ctx.font='bold 9px Segoe UI';ctx.textAlign='left';
-    ctx.fillText('TARGET',tpx+12,tpy-4);
-  }
 
   // Data table
   const tbody = document.getElementById('sim-cp-tbody');
