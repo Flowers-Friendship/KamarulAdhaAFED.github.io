@@ -110,7 +110,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .tab:hover{color:var(--t1);background:rgba(107,70,193,.04)}
 .tab.on{color:var(--purple);border-bottom-color:var(--purple);background:rgba(107,70,193,.05)}
 .tab.inactive{color:#B0BEC5;cursor:not-allowed;pointer-events:none;opacity:.55;position:relative}
-.tab.inactive::after{content:'🔒';font-size:8px;margin-left:5px;opacity:.7}
+.tab.inactive::after{content:'';font-size:8px;margin-left:5px;opacity:.7}
 
 /* SECTIONS */
 .sec{display:none;opacity:0;transform:translateY(12px)}.sec.on{display:block;animation:pageIn .32s cubic-bezier(.4,0,.2,1) both}.sec-exit{animation:pageOut .18s ease forwards}@keyframes pageOut{to{opacity:0;transform:translateY(-8px)}}
@@ -471,7 +471,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
   <!-- NLP RESULT PANEL — fixed banner below topbar -->
   <div class="nlp-result" id="nlp-result">
     <div class="nlp-result-inner">
-      <div class="nlp-result-icon">⬡</div>
+      <div class="nlp-result-icon"></div>
       <div class="nlp-result-body">
         <div class="nlp-result-q" id="nlp-q">AI Query</div>
         <div class="nlp-result-a" id="nlp-a"></div>
@@ -491,7 +491,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
     </div>
     <div class="tb-div"></div>
     <div class="nlp" id="nlp-wrap">
-      <span class="nlp-ico">⬡</span>
+      <span class="nlp-ico"></span>
       <input id="nlp-input" type="text" placeholder='Ask: "Show Eocene sandstones >3000m SE Asia API >30°"' autocomplete="off"
         oninput="nlpSuggest(this.value)" onkeydown="nlpKey(event)" onfocus="showSuggestions()" onblur="setTimeout(hideSuggestions,200)">
       <div class="nlp-suggestions" id="nlp-sug"></div>
@@ -989,7 +989,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
             </div>
 
             <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
-              <button class="btn" onclick="runSearch()" id="search-btn">⬡ Run Search</button>
+              <button class="btn" onclick="runSearch()" id="search-btn">Run Search</button>
               <button class="btn2" onclick="saveSearch()">Save Profile</button>
               <button class="btn2" onclick="clearSearchFilters()">Clear All</button>
             </div>
@@ -1577,7 +1577,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
           <!-- Col 3: Sensitivity on Volumetric Inputs -->
           <div class="card card-auto">
             <div class="ch"><span class="ct">Sensitivity on Volumetric Inputs</span><button class="btn2" onclick="switchRiskTab('sens',document.querySelectorAll('#risk-tabs .tab')[3])">Full Sensitivity →</button></div>
-            <div class="cb"><canvas id="vol-sens-canvas" width="400" height="260" style="width:100%"></canvas></div>
+            <div class="cb"><div style="position:relative;height:260px;width:100%"><canvas id="vol-sens-canvas"></canvas></div></div>
           </div>
 
         </div>
@@ -1625,7 +1625,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
           <!-- Col 3: Full Probability Distribution -->
           <div class="card card-auto">
             <div class="ch"><span class="ct">Full Probability Distribution — STOIIP (MMbbl)</span></div>
-            <div class="cb"><canvas id="mc-hist-canvas" width="400" height="300" style="width:100%"></canvas></div>
+            <div class="cb"><div style="position:relative;height:300px;width:100%"><canvas id="mc-hist-canvas"></canvas></div></div>
           </div>
 
         </div>
@@ -1679,7 +1679,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
           <div class="card card-auto">
             <div class="ch"><span class="ct">Tornado Chart</span><span style="font-size:9px;color:var(--t3)">STOIIP Impact — ranked by swing</span></div>
             <div class="cb" style="padding:8px">
-              <canvas id="tornado-canvas" width="420" height="340" style="width:100%;display:block"></canvas>
+              <div style="position:relative;height:340px;width:100%"><canvas id="tornado-canvas"></canvas></div>
             </div>
           </div>
 
@@ -1689,7 +1689,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
               <span class="ct">Spider Chart — STOIIP as % of P50 Base</span>
               <span style="font-size:9px;color:var(--t3)">Relative sensitivity</span>
             </div>
-            <div class="cb"><canvas id="spider-canvas" width="600" height="320" style="width:100%"></canvas></div>
+            <div class="cb"><div style="position:relative;height:320px;width:100%"><canvas id="spider-canvas"></canvas></div></div>
           </div>
 
         </div>
@@ -2581,6 +2581,10 @@ let _simCrossplotChart = null;
 let _simHistChart = null;
 let _simRadarChart = null;
 let _gcosRadarChart = null;
+let _mcHistChart = null;
+let _volSensChart = null;
+let _tornadoChart = null;
+let _spiderChart = null;
 let _pcHoveredRank = null;
 let _pcLastA = null;
 let _pcLastT = null;
@@ -5741,66 +5745,104 @@ function renderMCBars({p10,p50,p90}) {
 function renderMCHistogram(p10,p50,p90) {
   const canvas = document.getElementById('mc-hist-canvas');
   if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0,0,W,H);
-  // White background
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0,0,W,H);
-  // Draw lognormal-ish histogram
-  const bins = 40, minV = p10*0.3, maxV = p90*1.2;
-  const padL=44, padR=20, padT=20, padB=56;
-  const plotW = W-padL-padR, plotH = H-padT-padB;
-  const bottom = padT+plotH;
-  const heights = Array.from({length:bins},(_,i)=>{
-    const x = minV + (maxV-minV)*i/bins;
-    const mu = Math.log(p50), sig = 0.55;
-    return Math.exp(-((Math.log(x)-mu)**2)/(2*sig*sig))/(x*sig);
-  });
-  const mxH = Math.max(...heights);
-  const bw = plotW/bins;
-  heights.forEach((h,i)=>{
-    const x = padL+i*bw;
-    const bh = (h/mxH)*plotH;
-    const v = minV+(maxV-minV)*i/bins;
-    const col = v<p10?'rgba(217,48,37,.55)':v<p50?'rgba(107,70,193,.65)':'rgba(192,120,0,.55)';
-    ctx.fillStyle=col;
-    ctx.fillRect(x, bottom-bh, bw-1, bh);
-  });
-  // Axes
-  ctx.strokeStyle='#CBD5E0'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,bottom); ctx.lineTo(W-padR,bottom); ctx.stroke();
-  // Y-axis label
-  ctx.save();
-  ctx.translate(12, padT+plotH/2);
-  ctx.rotate(-Math.PI/2);
-  ctx.fillStyle='#8896A5'; ctx.font='10px Arial'; ctx.textAlign='center';
-  ctx.fillText('Frequency',0,0);
-  ctx.restore();
-  // X-axis label
-  ctx.fillStyle='#8896A5'; ctx.font='10px Arial'; ctx.textAlign='center';
-  ctx.fillText('STOIIP (MMbbl)', padL+plotW/2, H-4);
-  // P10/P50/P90 lines + labels
-  [[p10,'#D93025','P10'],[p50,'#6B46C1','P50'],[p90,'#C07800','P90']].forEach(([v,c,lbl])=>{
-    const x = padL+(v-minV)/(maxV-minV)*plotW;
-    ctx.strokeStyle=c; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
-    ctx.beginPath(); ctx.moveTo(x,padT); ctx.lineTo(x,bottom); ctx.stroke();
-    ctx.setLineDash([]);
-    // Label box
-    ctx.fillStyle=c;
-    ctx.font='bold 9px Arial'; ctx.textAlign='center';
-    ctx.fillText(lbl, x, bottom+14);
-    ctx.font='9px Arial';
-    ctx.fillText(v+' MMbbl', x, bottom+26);
-  });
-  // Legend
-  const legend = [['rgba(217,48,37,.55)','< P10'],['rgba(107,70,193,.65)','P10–P50'],['rgba(192,120,0,.55)','> P50']];
-  let lx = padL;
-  legend.forEach(([col,lbl])=>{
-    ctx.fillStyle=col; ctx.fillRect(lx,bottom+36,10,8);
-    ctx.fillStyle='#4A5568'; ctx.font='8px Arial'; ctx.textAlign='left';
-    ctx.fillText(lbl, lx+13, bottom+44);
-    lx += 70;
+
+  const bins = 40;
+  const minV = p10 * 0.3, maxV = p90 * 1.2;
+  const binWidth = (maxV - minV) / bins;
+  const mu = Math.log(p50), sig = 0.55;
+
+  const binMids  = Array.from({length: bins}, (_, i) => minV + (i + 0.5) * binWidth);
+  const heights  = binMids.map(x => Math.exp(-((Math.log(x) - mu) ** 2) / (2 * sig * sig)) / (x * sig));
+  const mxH      = Math.max(...heights);
+  const normalised = heights.map(h => +(h / mxH * 100).toFixed(4));
+  const colors   = binMids.map(v => v < p10 ? 'rgba(217,48,37,.55)' : v < p50 ? 'rgba(107,70,193,.65)' : 'rgba(192,120,0,.55)');
+  const labels   = binMids.map(v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v.toFixed(0));
+
+  if (_mcHistChart) { _mcHistChart.destroy(); _mcHistChart = null; }
+
+  // Inline plugin: dashed P10/P50/P90 vlines + colour legend
+  const overlayPlugin = {
+    id: 'mcOverlay',
+    afterDraw(chart) {
+      const {ctx, chartArea} = chart;
+      const xRange = maxV - minV;
+      // Vertical dashed lines
+      [[p10,'#D93025','P10'],[p50,'#6B46C1','P50'],[p90,'#C07800','P90']].forEach(([v,c,lbl]) => {
+        const frac = Math.min(1, Math.max(0, (v - minV) / xRange));
+        const px = chartArea.left + frac * (chartArea.right - chartArea.left);
+        ctx.save();
+        ctx.strokeStyle = c; ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(px, chartArea.top); ctx.lineTo(px, chartArea.bottom); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = c; ctx.font = 'bold 8px Arial'; ctx.textAlign = 'center';
+        ctx.fillText(`${lbl}: ${v}`, px, chartArea.top - 5);
+        ctx.restore();
+      });
+      // Colour legend at canvas bottom
+      const legend = [['rgba(217,48,37,.55)','< P10'],['rgba(107,70,193,.65)','P10–P50'],['rgba(192,120,0,.55)','> P50']];
+      let lx = chartArea.left;
+      const ly = chart.height - 13;
+      ctx.font = '8px Arial';
+      legend.forEach(([col, lbl]) => {
+        ctx.fillStyle = col; ctx.fillRect(lx, ly, 10, 8);
+        ctx.fillStyle = '#4A5568'; ctx.textAlign = 'left';
+        ctx.fillText(lbl, lx + 13, ly + 8);
+        lx += 68;
+      });
+    }
+  };
+
+  _mcHistChart = new Chart(canvas, {
+    type: 'bar',
+    plugins: [overlayPlugin],
+    data: {
+      labels,
+      datasets: [{
+        label: 'STOIIP',
+        data: normalised,
+        backgroundColor: colors,
+        borderWidth: 0,
+        barPercentage: 1.0,
+        categoryPercentage: 1.0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      layout: { padding: { top: 18, bottom: 18 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title(items) {
+              const i = items[0].dataIndex;
+              const lo = (minV + i * binWidth).toFixed(1);
+              const hi = (minV + (i + 1) * binWidth).toFixed(1);
+              return `${lo} – ${hi} MMbbl`;
+            },
+            label(ctx) {
+              const pct = (ctx.raw).toFixed(1);
+              return `Relative frequency: ${pct}%`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'STOIIP (MMbbl)', font: { size: 9 }, color: '#8896A5' },
+          grid: { display: false },
+          ticks: { font: { size: 7 }, color: '#9AA8C0', maxTicksLimit: 8, maxRotation: 0 }
+        },
+        y: {
+          title: { display: true, text: 'Frequency', font: { size: 9 }, color: '#8896A5' },
+          grid: { color: 'rgba(107,70,193,.06)' },
+          ticks: { display: false },
+          min: 0
+        }
+      }
+    }
   });
 }
 
@@ -6499,21 +6541,71 @@ function calcVolume() {
 function renderVolSens() {
   const canvas = document.getElementById('vol-sens-canvas');
   if (!canvas) return;
-  const ctx = canvas.getContext('2d'), W=canvas.width, H=canvas.height;
-  ctx.clearRect(0,0,W,H); ctx.fillStyle='#FAFBFF'; ctx.fillRect(0,0,W,H);
-  const params=['GRV ±30%','NTG ±25%','φ ±20%','Sw ±15%','RF ±20%'];
-  const impacts=[92,68,54,38,55];
-  const bw=(W-80)/params.length;
-  params.forEach((p,i)=>{
-    const bh=(impacts[i]/100)*(H-50), x=40+i*bw, y=H-35-bh;
-    ctx.fillStyle=`rgba(107,70,193,${0.3+impacts[i]/150})`;
-    ctx.fillRect(x+4,y,bw-8,bh);
-    ctx.fillStyle='#4A5568'; ctx.font='9px Arial'; ctx.textAlign='center';
-    ctx.fillText(p,x+bw/2,H-12);
-    ctx.fillStyle='#6B46C1'; ctx.font='bold 9px Arial';
-    ctx.fillText('±'+impacts[i]+'%',x+bw/2,y-4);
+
+  const params  = ['GRV ±30%','NTG ±25%','φ ±20%','Sw ±15%','RF ±20%'];
+  const impacts = [92, 68, 54, 38, 55];
+  const colors  = impacts.map(v => `rgba(107,70,193,${(0.3 + v / 150).toFixed(2)})`);
+
+  if (_volSensChart) { _volSensChart.destroy(); _volSensChart = null; }
+
+  // Inline plugin: draw "±XX%" labels above each bar
+  const labelPlugin = {
+    id: 'volSensLabels',
+    afterDatasetsDraw(chart) {
+      const {ctx} = chart;
+      const meta = chart.getDatasetMeta(0);
+      meta.data.forEach((bar, i) => {
+        ctx.save();
+        ctx.fillStyle = '#6B46C1';
+        ctx.font = 'bold 9px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('±' + impacts[i] + '%', bar.x, bar.y - 5);
+        ctx.restore();
+      });
+    }
+  };
+
+  _volSensChart = new Chart(canvas, {
+    type: 'bar',
+    plugins: [labelPlugin],
+    data: {
+      labels: params,
+      datasets: [{
+        label: 'STOIIP Impact',
+        data: impacts,
+        backgroundColor: colors,
+        borderRadius: 3,
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 350 },
+      layout: { padding: { top: 18 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(ctx) { return `Impact: ±${ctx.raw}% on STOIIP`; }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 9 }, color: '#4A5568' }
+        },
+        y: {
+          title: { display: true, text: 'STOIIP impact (%)', font: { size: 9 }, color: '#8896A5' },
+          grid: { color: 'rgba(107,70,193,.07)' },
+          ticks: { font: { size: 8 }, color: '#9AA8C0', callback: v => v + '%' },
+          min: 0,
+          max: 100
+        }
+      }
+    }
   });
-  ctx.fillStyle='#8896A5'; ctx.font='8px Arial'; ctx.textAlign='left'; ctx.fillText('STOIIP impact (%)',4,12);
 }
 
 // ============================================================
@@ -7672,61 +7764,61 @@ function commitTypedIngestion() {
 // ============================================================
 const UNIFIED_SCHEMA = {
   basin: {
-    label:'Basin', icon:'🌐', color:'#1D4ED8', bg:'#EFF6FF',
+    label:'Basin', icon:'', color:'#1D4ED8', bg:'#EFF6FF',
     cols: ['basin_name','basin_country','basin_region','basin_tectonic','basin_age','basin_hc_phase','basin_area_km2','basin_plays','basin_prospectivity_score','basin_status'],
     required: ['basin_name'],
     desc: 'Creates or updates a basin record in the Basin Catalogue'
   },
   analogue: {
-    label:'Analogue', icon:'◎', color:'#166534', bg:'#F0FDF4',
+    label:'Analogue', icon:'', color:'#166534', bg:'#F0FDF4',
     cols: ['analogue_name','analogue_basin','analogue_age','analogue_lithology','analogue_dep_env','analogue_depth_mtvdss','analogue_hc_phase','analogue_drive_mechanism','analogue_similarity_pct'],
     required: ['analogue_name'],
     desc: 'Creates or updates an analogue interval record'
   },
   reservoir: {
-    label:'Reservoir', icon:'⬡', color:'#0E7490', bg:'#ECFEFF',
+    label:'Reservoir', icon:'', color:'#0E7490', bg:'#ECFEFF',
     cols: ['res_porosity_pct','res_permeability_md','res_recovery_factor_pct','res_ntg_pct','res_gor_scf_bbl','res_api_gravity','res_gross_pay_m','res_net_pay_m','res_temperature_c','res_pressure_bar','res_water_saturation','res_bo_rb_stb','res_viscosity_cp','res_kv_kh_ratio','res_kr_oil_endpoint','res_kr_gas_endpoint','res_swc_pct','res_sor_pct','res_sgc_pct','res_pore_volume_bbl','res_aquifer_strength','res_drive_mechanism'],
     required: ['res_porosity_pct'],
     desc: 'Core petrophysical and reservoir engineering parameters'
   },
   seismic: {
-    label:'Seismic', icon:'◈', color:'#8B5CF6', bg:'#F5F3FF',
+    label:'Seismic', icon:'', color:'#8B5CF6', bg:'#F5F3FF',
     cols: ['seis_survey_name','seis_survey_type','seis_vintage_year','seis_dominant_frequency_hz','seis_twt_closure_ms','seis_structural_relief_m','seis_closure_area_km2','seis_trap_type','seis_fault_seal_risk','seis_amplitude_anomaly'],
     required: ['seis_trap_type'],
     desc: 'Seismic attributes, structural interpretation, closure geometry'
   },
   production: {
-    label:'Production', icon:'◇', color:'#059669', bg:'#ECFDF5',
+    label:'Production', icon:'', color:'#059669', bg:'#ECFDF5',
     cols: ['prod_peak_rate_bopd','prod_cum_production_mmboe','prod_reserves_mmboe','prod_well_count','prod_avg_ip30_bopd','prod_di_decline_rate','prod_b_factor','prod_water_cut_pct','prod_gor_producing','prod_opex_usd_boe','prod_capex_usd_boe','prod_breakeven_usd_boe'],
     required: ['prod_cum_production_mmboe'],
     desc: 'Production history, decline curve parameters and economics'
   },
   geopressure: {
-    label:'Geopressure', icon:'⛏', color:'#92400E', bg:'#FFFBEB',
+    label:'Geopressure', icon:'', color:'#92400E', bg:'#FFFBEB',
     cols: ['geo_pore_pressure_gradient_psi_ft','geo_overburden_gradient_psi_ft','geo_fracture_gradient_psi_ft','geo_ppg_equivalent','geo_ecd_ppg','geo_pressure_coefficient','geo_pressure_regime','geo_overpressure_mechanism','geo_mudweight_min_ppg','geo_mudweight_max_ppg'],
     required: ['geo_pore_pressure_gradient_psi_ft'],
     desc: 'Pore pressure, gradients, mud weight window'
   },
   geochem: {
-    label:'Geochemistry', icon:'⚗', color:'#065F46', bg:'#F0FDF4',
+    label:'Geochemistry', icon:'', color:'#065F46', bg:'#F0FDF4',
     cols: ['gchem_source_formation','gchem_kerogen_type','gchem_toc_pct','gchem_vitrinite_reflectance_ro','gchem_hydrogen_index','gchem_oxygen_index','gchem_tmax_c','gchem_expulsion_efficiency_pct','gchem_charge_volume','gchem_migration_distance_km','gchem_oil_family','gchem_sulfur_pct','gchem_c15_plus_pct','gchem_predicted_api'],
     required: ['gchem_toc_pct'],
     desc: 'Source rock quality, maturity indicators, kerogen'
   },
   mineral: {
-    label:'Mineralogy', icon:'◈', color:'#78350F', bg:'#FFFBEB',
+    label:'Mineralogy', icon:'', color:'#78350F', bg:'#FFFBEB',
     cols: ['min_quartz_pct','min_feldspar_pct','min_rock_fragments_pct','min_kaolinite_pct','min_illite_pct','min_smectite_pct','min_chlorite_pct','min_calcite_cement_pct','min_dolomite_pct','min_pyrite_pct','min_siderite_pct','min_mica_pct','min_clay_total_pct','min_cement_type'],
     required: ['min_quartz_pct'],
     desc: 'XRD modal analysis, clay minerals, cements'
   },
   fluid: {
-    label:'Fluid PVT', icon:'◉', color:'#9F1239', bg:'#FFF1F2',
+    label:'Fluid PVT', icon:'', color:'#9F1239', bg:'#FFF1F2',
     cols: ['pvt_oil_density_g_cc','pvt_gas_specific_gravity','pvt_fvf_oil_rb_stb','pvt_bubble_point_bar','pvt_solution_gor_scf_stb','pvt_z_factor','pvt_brine_salinity_ppm','pvt_wor','pvt_h2s_ppm','pvt_co2_pct','pvt_n2_pct','pvt_c1_methane_pct','pvt_c2_ethane_pct','pvt_c3_propane_pct'],
     required: ['pvt_oil_density_g_cc'],
     desc: 'PVT properties, gas composition, contamination levels'
   },
   diagenesis: {
-    label:'Diagenesis', icon:'⬢', color:'#6B21A8', bg:'#FAF5FF',
+    label:'Diagenesis', icon:'', color:'#6B21A8', bg:'#FAF5FF',
     cols: ['dia_burial_grade','dia_compaction','dia_cementation','dia_dissolution','dia_quartz_overgrowths','dia_chlorite_coating','dia_kaolinite_pore_fill','dia_authigenic_clay','dia_grain_coating','dia_fluid_inclusion_th_c'],
     required: ['dia_compaction'],
     desc: 'Diagenetic history, burial grade, clay authigenesis'
@@ -9171,7 +9263,7 @@ function renderStratColumn(basinName) {
 
     if (f.seal_qual) {
       html += `<div style="background:rgba(0,135,90,.04);border-left:3px solid #00875A;padding:3px 8px 3px 28px;font-size:8px;color:#065F46">
-        🔒 Seal: ${f.seal} — Quality: ${f.seal_qual}</div>`;
+        Seal: ${f.seal} — Quality: ${f.seal_qual}</div>`;
     }
     cumDepth += thick;
   });
@@ -9540,10 +9632,6 @@ function renderSensKpis() {
 function renderTornado() {
   const canvas = document.getElementById('tornado-canvas');
   if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle = '#FAFBFF'; ctx.fillRect(0,0,W,H);
 
   const base = calcSTOIIP_sens({}).stoiip;
   if (!base) return;
@@ -9555,179 +9643,239 @@ function renderTornado() {
     swing: Math.abs(calcSTOIIP_sens({[p.key]: p.p90}).stoiip - calcSTOIIP_sens({[p.key]: p.p10}).stoiip)
   })).sort((a,b) => b.swing - a.swing);
 
-  const topPad = 38, botPad = 46, leftPad = 14, rightPad = 14;
-  const n = sensData.length;
-  const barH = Math.floor((H - topPad - botPad - (n-1)*8) / n);
-  const chartW = W - leftPad - rightPad;
-
-  const allVals = sensData.flatMap(v=>[v.low,v.high,base]);
+  const allVals = sensData.flatMap(v => [v.low, v.high, base]);
   const minV = Math.min(...allVals) * 0.88;
   const maxV = Math.max(...allVals) * 1.08;
-  const toX = v => leftPad + (v - minV) / (maxV - minV) * chartW;
-  const baseX = toX(base);
 
-  // Grid lines + X-axis ticks
-  const tickCount = 5;
-  for (let t = 0; t <= tickCount; t++) {
-    const frac = t / tickCount;
-    const gx = leftPad + frac * chartW;
-    const v = Math.round(minV + frac * (maxV - minV));
-    ctx.strokeStyle = '#E8ECF5'; ctx.lineWidth = 0.8; ctx.setLineDash([3,3]);
-    ctx.beginPath(); ctx.moveTo(gx, topPad - 8); ctx.lineTo(gx, topPad + n*(barH+8) - 8); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#8896A5'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
-    ctx.fillText(v.toLocaleString(), gx, H - 4);
-  }
+  if (_tornadoChart) { _tornadoChart.destroy(); _tornadoChart = null; }
 
-  // X-axis label
-  ctx.fillStyle = '#8896A5'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
-  ctx.fillText('STOIIP (MMbbl)', leftPad + chartW/2, H - 18);
+  // Inline plugin: P50 line, legend, param labels above bars, value labels beside bars
+  const overlayPlugin = {
+    id: 'tornadoOverlay',
+    afterDraw(chart) {
+      const {ctx, chartArea, scales} = chart;
 
-  // Base (P50) line
-  ctx.strokeStyle = 'rgba(107,70,193,.6)'; ctx.lineWidth = 1.5; ctx.setLineDash([5,3]);
-  ctx.beginPath(); ctx.moveTo(baseX, topPad - 14); ctx.lineTo(baseX, topPad + n*(barH+8) - 4); ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = '#6B46C1'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
-  ctx.fillText('P50', baseX, topPad - 16);
+      // P50 base dashed vertical line
+      const bx = scales.x.getPixelForValue(base);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(107,70,193,.6)'; ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 3]);
+      ctx.beginPath(); ctx.moveTo(bx, chartArea.top - 8); ctx.lineTo(bx, chartArea.bottom); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#6B46C1'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+      ctx.fillText('P50', bx, chartArea.top - 10);
+      ctx.restore();
 
-  sensData.forEach((v, i) => {
-    const y = topPad + i * (barH + 8);
-    const xLow = toX(v.low), xHigh = toX(v.high);
+      // Legend (top-right)
+      [['rgba(217,48,37,.7)', 'P10 Low'], ['rgba(0,135,90,.7)', 'P90 High']].forEach(([col, lbl], i) => {
+        const lx = chartArea.right - 96 + i * 52, ly = chartArea.top - 22;
+        ctx.save();
+        ctx.fillStyle = col; ctx.fillRect(lx, ly, 10, 10);
+        ctx.fillStyle = '#4A5568'; ctx.font = '8px Arial'; ctx.textAlign = 'left';
+        ctx.fillText(lbl, lx + 13, ly + 9);
+        ctx.restore();
+      });
 
-    // Row background
-    ctx.fillStyle = i%2===0 ? 'rgba(107,70,193,.03)' : 'transparent';
-    ctx.fillRect(leftPad, y, chartW, barH);
+      // Per-bar: param label above + value labels at bar tips
+      const meta0 = chart.getDatasetMeta(0);
+      sensData.forEach((v, i) => {
+        const bar = meta0.data[i];
+        const barCenterY = bar.y;
+        const barTopY = barCenterY - Math.abs(bar.height) / 2;
 
-    // P10 bar (red — left of base)
-    const redX = Math.min(xLow, baseX), redW = Math.abs(xLow - baseX);
-    if (redW > 1) {
-      ctx.fillStyle = 'rgba(217,48,37,.7)';
-      ctx.beginPath(); ctx.roundRect(redX, y+3, redW, barH-6, 3); ctx.fill();
+        // Param label just above bar
+        ctx.save();
+        ctx.fillStyle = '#1A202C'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+        ctx.fillText(v.label, (chartArea.left + chartArea.right) / 2, barTopY - 2);
+        ctx.restore();
+
+        // Low value label (red)
+        const lowPx = scales.x.getPixelForValue(v.low);
+        ctx.save();
+        ctx.fillStyle = '#C62828'; ctx.font = 'bold 8px Arial';
+        ctx.textAlign = v.low < base ? 'right' : 'left';
+        ctx.fillText(v.low.toLocaleString(), lowPx + (v.low < base ? -3 : 3), barCenterY + 4);
+        ctx.restore();
+
+        // High value label (green)
+        const highPx = scales.x.getPixelForValue(v.high);
+        ctx.save();
+        ctx.fillStyle = '#1B5E20'; ctx.font = 'bold 8px Arial';
+        ctx.textAlign = v.high > base ? 'left' : 'right';
+        ctx.fillText(v.high.toLocaleString(), highPx + (v.high > base ? 3 : -3), barCenterY + 4);
+        ctx.restore();
+      });
     }
+  };
 
-    // P90 bar (green — right of base)
-    const grX = xHigh > baseX ? baseX : xHigh;
-    const grW = Math.abs(xHigh - baseX);
-    if (grW > 1) {
-      ctx.fillStyle = 'rgba(0,135,90,.7)';
-      ctx.beginPath(); ctx.roundRect(grX, y+3, grW, barH-6, 3); ctx.fill();
+  _tornadoChart = new Chart(canvas, {
+    type: 'bar',
+    plugins: [overlayPlugin],
+    data: {
+      labels: sensData.map(v => v.label),
+      datasets: [
+        {
+          label: 'P10 Low',
+          data: sensData.map(v => [v.low, base]),
+          backgroundColor: 'rgba(217,48,37,.7)',
+          borderRadius: 3,
+          borderWidth: 0,
+          barPercentage: 0.72,
+        },
+        {
+          label: 'P90 High',
+          data: sensData.map(v => [base, v.high]),
+          backgroundColor: 'rgba(0,135,90,.7)',
+          borderRadius: 3,
+          borderWidth: 0,
+          barPercentage: 0.72,
+        }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      grouped: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 350 },
+      layout: { padding: { top: 28, bottom: 4 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title(items) { return items[0].label; },
+            label(ctx) {
+              const i = ctx.dataIndex;
+              const v = sensData[i];
+              if (ctx.datasetIndex === 0) return `P10 Low: ${v.low.toLocaleString()} MMbbl`;
+              return [`P90 High: ${v.high.toLocaleString()} MMbbl`, `Swing: ${v.swing.toLocaleString()} MMbbl`];
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          min: minV,
+          max: maxV,
+          title: { display: true, text: 'STOIIP (MMbbl)', font: { size: 9 }, color: '#8896A5' },
+          grid: { color: 'rgba(200,210,225,.5)', lineWidth: 0.8 },
+          ticks: { font: { size: 8 }, color: '#8896A5', maxTicksLimit: 6, callback: v => Math.round(v).toLocaleString() }
+        },
+        y: {
+          grid: { display: false },
+          ticks: { display: false }
+        }
+      }
     }
-
-    // Parameter label — bold, inside/above bar row
-    ctx.fillStyle = '#1A202C'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
-    ctx.fillText(v.label, leftPad + chartW/2, y - 1);
-
-    // Low value label (red, outside left)
-    ctx.fillStyle = '#C62828'; ctx.font = 'bold 9px Arial';
-    ctx.textAlign = xLow < baseX ? 'right' : 'left';
-    const lvx = xLow + (xLow < baseX ? -5 : 5);
-    ctx.fillText(v.low.toLocaleString(), lvx, y + barH/2 + 4);
-
-    // High value label (green, outside right)
-    ctx.fillStyle = '#1B5E20'; ctx.font = 'bold 9px Arial';
-    ctx.textAlign = xHigh > baseX ? 'left' : 'right';
-    const hvx = xHigh + (xHigh > baseX ? 5 : -5);
-    ctx.fillText(v.high.toLocaleString(), hvx, y + barH/2 + 4);
-  });
-
-  // Legend top-right
-  const leg = [['rgba(217,48,37,.7)','P10 Low'],['rgba(0,135,90,.7)','P90 High']];
-  leg.forEach(([col,lbl],i) => {
-    const lx = W - 100 + i*50, ly = 8;
-    ctx.fillStyle = col; ctx.fillRect(lx, ly, 10, 10);
-    ctx.fillStyle = '#4A5568'; ctx.font = '8px Arial'; ctx.textAlign = 'left';
-    ctx.fillText(lbl, lx+13, ly+9);
   });
 }
 
 function renderSpider() {
   const canvas = document.getElementById('spider-canvas');
   if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle = '#FAFBFF'; ctx.fillRect(0,0,W,H);
 
   const base = calcSTOIIP_sens({}).stoiip;
   if (!base) return;
 
   const params = SENS_PARAMS;
-  const n = params.length;
-  const pad = 55, rightPad = 110, topPad = 30, botPad = 28;
-  const chartW = W - pad - rightPad;
+  const labels = params.map(p => p.label);
 
-  // Compute % of base for each param at P10/P50/P90
   const rows = [
-    { label:'P10', color:'#D93025', dash:[], lw:1.5,
-      vals: params.map(p => calcSTOIIP_sens({[p.key]:p.p10}).stoiip / base * 100) },
-    { label:'P50 Base', color:'#6B46C1', dash:[], lw:2.5,
+    { label: 'P10',      color: '#D93025', lw: 1.5, r: 3,
+      vals: params.map(p => +( calcSTOIIP_sens({[p.key]: p.p10}).stoiip / base * 100).toFixed(1)) },
+    { label: 'P50 Base', color: '#6B46C1', lw: 2.5, r: 5,
       vals: params.map(() => 100) },
-    { label:'P90', color:'#00875A', dash:[], lw:1.5,
-      vals: params.map(p => calcSTOIIP_sens({[p.key]:p.p90}).stoiip / base * 100) },
+    { label: 'P90',      color: '#00875A', lw: 1.5, r: 3,
+      vals: params.map(p => +( calcSTOIIP_sens({[p.key]: p.p90}).stoiip / base * 100).toFixed(1)) },
   ];
 
-  const allVals = rows.flatMap(r=>r.vals);
-  const minV = Math.min(...allVals) * 0.92, maxV = Math.max(...allVals) * 1.06;
-  const toY = v => topPad + (1 - (v - minV) / (maxV - minV)) * (H - topPad - botPad);
-  const toXi = i => pad + i * chartW / (n - 1);
+  const allVals = rows.flatMap(r => r.vals);
+  const minV = Math.min(...allVals) * 0.92;
+  const maxV = Math.max(...allVals) * 1.06;
 
-  // Grid lines at 25% steps
-  [0,0.25,0.5,0.75,1].forEach(t => {
-    const v = minV + t*(maxV-minV);
-    const gy = toY(v);
-    ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
-    ctx.beginPath(); ctx.moveTo(pad, gy); ctx.lineTo(W - rightPad, gy); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#8896A5'; ctx.font = '8px Arial'; ctx.textAlign = 'right';
-    ctx.fillText(Math.round(v)+'%', pad - 4, gy + 3);
+  if (_spiderChart) { _spiderChart.destroy(); _spiderChart = null; }
+
+  // Inline plugin: title + dashed 100% baseline
+  const overlayPlugin = {
+    id: 'spiderOverlay',
+    afterDraw(chart) {
+      const {ctx, chartArea, scales} = chart;
+      // Dashed reference at 100%
+      const py = scales.y.getPixelForValue(100);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(107,70,193,.3)'; ctx.lineWidth = 1;
+      ctx.setLineDash([5, 3]);
+      ctx.beginPath(); ctx.moveTo(chartArea.left, py); ctx.lineTo(chartArea.right, py); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      // Chart title
+      ctx.save();
+      ctx.fillStyle = '#8896A5'; ctx.font = '9px Arial'; ctx.textAlign = 'left';
+      ctx.fillText('STOIIP sensitivity (% of P50 base)', chartArea.left, chartArea.top - 8);
+      ctx.restore();
+    }
+  };
+
+  _spiderChart = new Chart(canvas, {
+    type: 'line',
+    plugins: [overlayPlugin],
+    data: {
+      labels,
+      datasets: rows.map(row => ({
+        label: row.label,
+        data: row.vals,
+        borderColor: row.color,
+        backgroundColor: 'transparent',
+        borderWidth: row.lw,
+        pointBackgroundColor: row.color,
+        pointRadius: row.r,
+        pointHoverRadius: row.r + 3,
+        pointBorderWidth: 0,
+        tension: 0,
+      }))
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 350 },
+      layout: { padding: { top: 20 } },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'right',
+          labels: {
+            font: { size: 9 },
+            color: '#2D3748',
+            boxWidth: 24,
+            padding: 10,
+            usePointStyle: true,
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              return `${ctx.dataset.label}: ${ctx.raw}%`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(200,210,225,.4)' },
+          ticks: { font: { size: 10, weight: 'bold' }, color: '#2D3748' }
+        },
+        y: {
+          min: minV,
+          max: maxV,
+          grid: { color: 'rgba(226,232,240,.8)' },
+          ticks: {
+            font: { size: 8 }, color: '#8896A5',
+            callback: v => Math.round(v) + '%'
+          }
+        }
+      }
+    }
   });
-
-  // Base line 100%
-  const baseY = toY(100);
-  ctx.strokeStyle = 'rgba(107,70,193,.3)'; ctx.lineWidth = 1; ctx.setLineDash([5,3]);
-  ctx.beginPath(); ctx.moveTo(pad, baseY); ctx.lineTo(W-rightPad, baseY); ctx.stroke();
-  ctx.setLineDash([]);
-
-  rows.forEach(row => {
-    ctx.beginPath();
-    ctx.strokeStyle = row.color; ctx.lineWidth = row.lw; ctx.setLineDash(row.dash);
-    row.vals.forEach((v, i) => {
-      const x = toXi(i), y = toY(v);
-      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
-    });
-    ctx.stroke(); ctx.setLineDash([]);
-
-    // Dots
-    row.vals.forEach((v, i) => {
-      ctx.beginPath();
-      ctx.arc(toXi(i), toY(v), row.lw === 2.5 ? 5 : 3, 0, Math.PI*2);
-      ctx.fillStyle = row.color; ctx.fill();
-    });
-  });
-
-  // X labels — bold, larger
-  params.forEach((p, i) => {
-    ctx.fillStyle = '#2D3748'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
-    ctx.fillText(p.label, toXi(i), H - 8);
-    // value labels for P50
-    const baseVal = Math.round(rows[1].vals[i]);
-    ctx.fillStyle = '#6B46C1'; ctx.font = 'bold 9px Arial';
-    ctx.fillText(baseVal+'%', toXi(i), toY(rows[1].vals[i]) - 9);
-  });
-
-  // Legend — right side, larger text
-  rows.forEach((row, i) => {
-    const ly = 12 + i*20;
-    ctx.strokeStyle = row.color; ctx.lineWidth = row.lw;
-    ctx.beginPath(); ctx.moveTo(W-rightPad+10, ly+5); ctx.lineTo(W-rightPad+34, ly+5); ctx.stroke();
-    ctx.beginPath(); ctx.arc(W-rightPad+22, ly+5, row.lw===2.5?4:3, 0, Math.PI*2);
-    ctx.fillStyle = row.color; ctx.fill();
-    ctx.fillStyle = '#2D3748'; ctx.font = '10px Arial'; ctx.textAlign = 'left';
-    ctx.fillText(row.label, W-rightPad+38, ly+9);
-  });
-
-  ctx.fillStyle = '#8896A5'; ctx.font = '9px Arial'; ctx.textAlign = 'left';
-  ctx.fillText('STOIIP sensitivity (% of P50 base)', pad, 14);
 }
 
 function renderSensSliders() { /* kept for back-compat; now using table */ }
