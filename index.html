@@ -603,19 +603,52 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
                   <stop offset="0%" stop-color="#00C8FF" stop-opacity=".28"/>
                   <stop offset="100%" stop-color="#00C8FF" stop-opacity=".02"/>
                 </linearGradient>
+                <style>
+                  .rd-hit { cursor:pointer; }
+                  .rd-line { transition:stroke-width .15s; }
+                  .rd-hit:hover .rd-line { stroke-width:2.5; }
+                  .rd-tip { opacity:0; transition:opacity .15s; pointer-events:none; }
+                  .rd-hit:hover .rd-tip { opacity:1; }
+                </style>
               </defs>
+              <!-- Axes -->
               <line x1="30" y1="10" x2="30" y2="122" stroke="rgba(0,200,255,.2)" stroke-width="1"/>
               <line x1="30" y1="122" x2="250" y2="122" stroke="rgba(0,200,255,.2)" stroke-width="1"/>
+              <!-- Distribution curve -->
               <path d="M35,120 C50,120 60,112 75,87 C90,60 100,27 130,14 C160,27 170,60 185,87 C200,112 210,120 245,120" fill="url(#rg)" stroke="#00C8FF" stroke-width="1.5"/>
-              <line x1="80" y1="10" x2="80" y2="120" stroke="#FF4D6A" stroke-width="1" stroke-dasharray="3,2"/>
-              <line x1="130" y1="10" x2="130" y2="120" stroke="#00E5A0" stroke-width="1.5" stroke-dasharray="3,2"/>
-              <line x1="183" y1="10" x2="183" y2="120" stroke="#F0A500" stroke-width="1" stroke-dasharray="3,2"/>
-              <text x="74" y="136" fill="#FF4D6A" font-size="7" text-anchor="middle" font-family="Arial">P10</text>
-              <text x="130" y="136" fill="#00E5A0" font-size="7" text-anchor="middle" font-family="Arial">P50</text>
-              <text x="183" y="136" fill="#F0A500" font-size="7" text-anchor="middle" font-family="Arial">P90</text>
-              <text id="rv-p10" x="74" y="8" fill="#FF4D6A" font-size="7" text-anchor="middle" font-family="Arial">142 MMboe</text>
-              <text id="rv-p50" x="130" y="8" fill="#00E5A0" font-size="7" text-anchor="middle" font-family="Arial">387 MMboe</text>
-              <text id="rv-p90" x="183" y="8" fill="#F0A500" font-size="7" text-anchor="middle" font-family="Arial">920 MMboe</text>
+              <!-- P10 hover group -->
+              <g class="rd-hit">
+                <rect x="66" y="5" width="28" height="135" fill="transparent"/>
+                <line class="rd-line" x1="80" y1="10" x2="80" y2="120" stroke="#FF4D6A" stroke-width="1" stroke-dasharray="3,2"/>
+                <text id="rv-p10" x="74" y="8" fill="#FF4D6A" font-size="7" text-anchor="middle" font-family="Arial">142 MMboe</text>
+                <text x="74" y="136" fill="#FF4D6A" font-size="7" text-anchor="middle" font-family="Arial">P10</text>
+                <g class="rd-tip">
+                  <rect x="34" y="58" width="92" height="22" rx="3" fill="rgba(26,32,44,.9)"/>
+                  <text x="80" y="72" fill="#FF4D6A" font-size="7" text-anchor="middle" font-family="Arial" font-weight="bold">P10 — Conservative</text>
+                </g>
+              </g>
+              <!-- P50 hover group -->
+              <g class="rd-hit">
+                <rect x="116" y="5" width="28" height="135" fill="transparent"/>
+                <line class="rd-line" x1="130" y1="10" x2="130" y2="120" stroke="#00E5A0" stroke-width="1.5" stroke-dasharray="3,2"/>
+                <text id="rv-p50" x="130" y="8" fill="#00E5A0" font-size="7" text-anchor="middle" font-family="Arial">387 MMboe</text>
+                <text x="130" y="136" fill="#00E5A0" font-size="7" text-anchor="middle" font-family="Arial">P50</text>
+                <g class="rd-tip">
+                  <rect x="84" y="58" width="92" height="22" rx="3" fill="rgba(26,32,44,.9)"/>
+                  <text x="130" y="72" fill="#00E5A0" font-size="7" text-anchor="middle" font-family="Arial" font-weight="bold">P50 — Base Case</text>
+                </g>
+              </g>
+              <!-- P90 hover group -->
+              <g class="rd-hit">
+                <rect x="169" y="5" width="28" height="135" fill="transparent"/>
+                <line class="rd-line" x1="183" y1="10" x2="183" y2="120" stroke="#F0A500" stroke-width="1" stroke-dasharray="3,2"/>
+                <text id="rv-p90" x="183" y="8" fill="#F0A500" font-size="7" text-anchor="middle" font-family="Arial">920 MMboe</text>
+                <text x="183" y="136" fill="#F0A500" font-size="7" text-anchor="middle" font-family="Arial">P90</text>
+                <g class="rd-tip">
+                  <rect x="137" y="58" width="92" height="22" rx="3" fill="rgba(26,32,44,.9)"/>
+                  <text x="183" y="72" fill="#F0A500" font-size="7" text-anchor="middle" font-family="Arial" font-weight="bold">P90 — Optimistic</text>
+                </g>
+              </g>
             </svg>
           </div>
         </div>
@@ -706,7 +739,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
           <div class="card">
             <div class="ch"><span class="ct">Portfolio Risk Radar</span><span style="font-size:9px;color:var(--t3)">Average across all basins</span></div>
             <div class="cb">
-              <div style="position:relative;height:280px;width:100%">
+              <div style="position:relative;height:360px;width:100%">
                 <canvas id="rp-radar-canvas"></canvas>
               </div>
               <div style="margin-top:8px;font-size:9px;color:var(--t3);text-align:center">Purple = portfolio average · Dashed = industry benchmark (65%)</div>
@@ -2585,6 +2618,7 @@ let _mcHistChart = null;
 let _volSensChart = null;
 let _tornadoChart = null;
 let _spiderChart = null;
+let _bpRadarChart = null;
 let _pcHoveredRank = null;
 let _pcLastA = null;
 let _pcLastT = null;
@@ -6732,7 +6766,7 @@ function renderBasinProfile(name) {
             <div style="font-size:24px;font-weight:700;color:${gcos>=25?'var(--green)':gcos>=15?'var(--amber)':'var(--red)'}">~${gcos}%</div>
             <div style="font-size:9px;color:var(--t3)">P<sub>source</sub> × P<sub>reservoir</sub> × P<sub>seal</sub> × P<sub>charge</sub> × P<sub>commercial</sub></div>
           </div>
-          <canvas id="bp-radar-canvas" width="240" height="180" style="width:100%;max-width:240px;display:block;margin:12px auto 0"></canvas>
+          <div style="position:relative;height:180px;width:100%;max-width:240px;margin:12px auto 0"><canvas id="bp-radar-canvas"></canvas></div>
         </div>
       </div>
     </div>
@@ -6786,27 +6820,67 @@ function renderBasinProfile(name) {
 }
 
 function drawBPRadar(b, screenB) {
-  const canvas=document.getElementById('bp-radar-canvas');
-  if(!canvas) return;
-  const ctx=canvas.getContext('2d'), W=canvas.width, H=canvas.height;
-  ctx.clearRect(0,0,W,H);
-  const cx=W/2, cy=H/2+5, r=Math.min(W,H)*0.37;
-  const labels=['Source Rock','Reservoir','Seal','Trap','Migration','Commercial'];
-  const n=labels.length;
-  const angle=i=>-Math.PI/2+(2*Math.PI*i/n);
-  const scores=screenB?[screenB.scores.source,screenB.scores.reservoir,screenB.scores.seal,screenB.scores.charge,screenB.scores.commercial,screenB.scores.country]:[65,70,60,55,72,68];
-  // Web
-  [0.25,0.5,0.75,1].forEach(p=>{
-    ctx.beginPath(); ctx.strokeStyle='#E2E8F0'; ctx.lineWidth=1;
-    labels.forEach((_,i)=>{const a=angle(i),x=cx+Math.cos(a)*r*p,y=cy+Math.sin(a)*r*p; i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}); ctx.closePath(); ctx.stroke();
+  const canvas = document.getElementById('bp-radar-canvas');
+  if (!canvas) return;
+
+  const labels = ['Source Rock', 'Reservoir', 'Seal', 'Trap', 'Migration', 'Commercial'];
+  const scores = screenB
+    ? [screenB.scores.source, screenB.scores.reservoir, screenB.scores.seal,
+       screenB.scores.charge, screenB.scores.commercial, screenB.scores.country]
+    : [65, 70, 60, 55, 72, 68];
+
+  // Destroy any previous instance (canvas may have been recreated in new innerHTML)
+  if (_bpRadarChart) { _bpRadarChart.destroy(); _bpRadarChart = null; }
+
+  _bpRadarChart = new Chart(canvas, {
+    type: 'radar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Risk Score',
+        data: scores,
+        borderColor: 'rgba(107,70,193,.9)',
+        backgroundColor: 'rgba(107,70,193,.15)',
+        borderWidth: 2,
+        pointBackgroundColor: 'rgba(107,70,193,.9)',
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointBorderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 200 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(ctx) { return `${ctx.label}: ${ctx.raw}`; }
+          }
+        }
+      },
+      scales: {
+        r: {
+          min: 0,
+          max: 100,
+          ticks: {
+            stepSize: 25,
+            font: { size: 7 },
+            color: '#9AA8C0',
+            backdropColor: 'transparent',
+            callback: v => v
+          },
+          grid: { color: 'rgba(226,232,240,.9)' },
+          angleLines: { color: 'rgba(203,213,224,.8)' },
+          pointLabels: {
+            font: { size: 8 },
+            color: '#4A5568'
+          }
+        }
+      }
+    }
   });
-  labels.forEach((_,i)=>{const a=angle(i); ctx.beginPath(); ctx.strokeStyle='#CBD5E0'; ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r); ctx.stroke();});
-  // Data
-  ctx.beginPath(); ctx.strokeStyle='rgba(107,70,193,.9)'; ctx.fillStyle='rgba(107,70,193,.15)'; ctx.lineWidth=2;
-  scores.forEach((v,i)=>{const a=angle(i),pct=v/100,x=cx+Math.cos(a)*r*pct,y=cy+Math.sin(a)*r*pct; i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}); ctx.closePath(); ctx.fill(); ctx.stroke();
-  // Labels
-  ctx.fillStyle='#4A5568'; ctx.font='8px Arial'; ctx.textAlign='center';
-  labels.forEach((l,i)=>{const a=angle(i); ctx.fillText(l,cx+Math.cos(a)*(r+14),cy+Math.sin(a)*(r+14));});
 }
 
 // exportBasinProfile is defined in PDF engine above
@@ -9017,6 +9091,7 @@ function drawRiskRadar() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: 8 },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -9038,8 +9113,9 @@ function drawRiskRadar() {
           grid: { color: 'rgba(107,70,193,.1)' },
           angleLines: { color: 'rgba(107,70,193,.12)' },
           pointLabels: {
-            font: { size: 10 },
+            font: { size: 12 },
             color: '#4A5568',
+            padding: 6,
           }
         }
       }
