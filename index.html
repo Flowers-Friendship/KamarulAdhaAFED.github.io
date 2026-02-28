@@ -1,13 +1,10 @@
-            <div class="map-area" id="world-map" style="position:relative">
-              <div id="leaflet-map" style="width:100%;height:100%;border-radius:8px;z-index:1"></div>
-              <div id="map-tt" class="map-tooltip" style="display:none;position:absolute;z-index:9999;pointer-events:none"></div>
-            </div><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EDAFY Basin Insights</title>
-<link rel="icon" type="image/x-icon" href="https://flowers-friendship.github.io/KamarulAdhaAFED.github.io/edafy-logo.ico">
+<link rel="icon" type="image/svg+xml" href="edafy-logo.svg">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -395,7 +392,10 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
-
+<div class="map-area" id="world-map" style="position:relative">
+  <div id="leaflet-map" style="width:100%;height:100%;border-radius:8px;z-index:1"></div>
+  <div id="map-tt" class="map-tooltip" style="display:none;position:absolute;z-index:9999;pointer-events:none"></div>
+</div>
 <!-- SIDEBAR -->
 <nav class="sb" id="sidebar">
   <div class="sb-collapse" id="sb-toggle" onclick="toggleSidebar()">‹</div>
@@ -1448,7 +1448,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
           <div class="card card-auto">
             <div class="ch"><span class="ct">Risk Component Radar</span><span style="font-size:9px;color:var(--t3)">vs. analogue benchmarks</span></div>
             <div class="cb" style="display:flex;flex-direction:column;align-items:center">
-              <canvas id="gcos-radar-canvas" width="280" height="220" style="width:100%;max-width:280px"></canvas>
+              <div style="position:relative;height:220px;width:100%;max-width:280px"><canvas id="gcos-radar-canvas"></canvas></div>
               <div style="margin-top:6px;font-size:8px;color:var(--t3);text-align:center">● Purple = estimate · ○ Grey = analogue benchmark</div>
               <div style="width:100%;margin-top:10px;font-size:9px" id="gcos-risk-table"></div>
             </div>
@@ -2580,6 +2580,7 @@ let _focusedBasin = null;
 let _simCrossplotChart = null;
 let _simHistChart = null;
 let _simRadarChart = null;
+let _gcosRadarChart = null;
 let _pcHoveredRank = null;
 let _pcLastA = null;
 let _pcLastT = null;
@@ -5987,45 +5988,85 @@ function calcGCoS() {
 function renderGCoSRadar() {
   const canvas = document.getElementById('gcos-radar-canvas');
   if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0,0,W,H);
-  const cx=W/2, cy=H/2+10, r=Math.min(W,H)*0.38;
+
   const keys = Object.keys(riskVals);
-  const n = keys.length;
-  const angle = (i) => -Math.PI/2 + (2*Math.PI*i/n);
-  // Draw web rings
-  [0.25,0.5,0.75,1].forEach(pct=>{
-    ctx.beginPath(); ctx.strokeStyle='#E2E8F0'; ctx.lineWidth=1;
-    keys.forEach((k,i)=>{
-      const a=angle(i), x=cx+Math.cos(a)*r*pct, y=cy+Math.sin(a)*r*pct;
-      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
-    }); ctx.closePath(); ctx.stroke();
-    ctx.fillStyle='#8896A5'; ctx.font='8px Arial'; ctx.textAlign='center';
-    ctx.fillText(Math.round(pct*100)+'%', cx+3, cy-r*pct+3);
+  const labels = keys.map(k => {
+    const el = RISK_ELEMENTS.find(e => e.key === k);
+    return el ? el.label.split(' ')[0] : k;
   });
-  // Axes
-  keys.forEach((_,i)=>{
-    const a=angle(i);
-    ctx.beginPath(); ctx.strokeStyle='#CBD5E0'; ctx.lineWidth=1;
-    ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r); ctx.stroke();
-  });
-  // Benchmark polygon (analogue avg ~65%)
-  ctx.beginPath(); ctx.strokeStyle='rgba(107,70,193,.2)'; ctx.fillStyle='rgba(107,70,193,.06)'; ctx.lineWidth=1;
-  keys.forEach((k,i)=>{ const a=angle(i),bv=0.65,x=cx+Math.cos(a)*r*bv,y=cy+Math.sin(a)*r*bv; i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
-  ctx.closePath(); ctx.fill(); ctx.stroke();
-  // Data polygon
-  ctx.beginPath(); ctx.strokeStyle='rgba(107,70,193,.9)'; ctx.fillStyle='rgba(107,70,193,.18)'; ctx.lineWidth=2;
-  keys.forEach((k,i)=>{ const a=angle(i),v=riskVals[k]/100,x=cx+Math.cos(a)*r*v,y=cy+Math.sin(a)*r*v; i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
-  ctx.closePath(); ctx.fill(); ctx.stroke();
-  // Labels
-  ctx.fillStyle='#4A5568'; ctx.font='9px Arial'; ctx.textAlign='center';
-  keys.forEach((k,i)=>{
-    const a=angle(i), lx=cx+Math.cos(a)*(r+16), ly=cy+Math.sin(a)*(r+16);
-    const el=RISK_ELEMENTS.find(e=>e.key===k);
-    const lbl=el?el.label.split(' ')[0]:k;
-    ctx.fillText(lbl,lx,ly);
-    ctx.fillText(riskVals[k]+'%',lx,ly+9);
+  const estimateData = keys.map(k => riskVals[k]);
+  const benchmarkData = keys.map(() => 65);
+
+  if (_gcosRadarChart) { _gcosRadarChart.destroy(); _gcosRadarChart = null; }
+
+  _gcosRadarChart = new Chart(canvas, {
+    type: 'radar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Benchmark',
+          data: benchmarkData,
+          borderColor: 'rgba(107,70,193,.25)',
+          backgroundColor: 'rgba(107,70,193,.06)',
+          borderWidth: 1,
+          borderDash: [4, 3],
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          pointBackgroundColor: 'rgba(107,70,193,.3)',
+        },
+        {
+          label: 'Estimate',
+          data: estimateData,
+          borderColor: 'rgba(107,70,193,.9)',
+          backgroundColor: 'rgba(107,70,193,.18)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointHoverRadius: 6,
+          pointBackgroundColor: 'rgba(107,70,193,.9)',
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 200 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              const label = ctx.dataset.label;
+              const val = ctx.raw;
+              return `${label}: ${val}%`;
+            }
+          }
+        }
+      },
+      scales: {
+        r: {
+          min: 0,
+          max: 100,
+          ticks: {
+            stepSize: 25,
+            font: { size: 7 },
+            color: '#9AA8C0',
+            backdropColor: 'transparent',
+            callback: v => v + '%'
+          },
+          grid: { color: 'rgba(107,70,193,.1)' },
+          angleLines: { color: 'rgba(107,70,193,.12)' },
+          pointLabels: {
+            font: { size: 8 },
+            color: '#4A5568',
+            callback(label, index) {
+              const k = keys[index];
+              return [label, riskVals[k] + '%'];
+            }
+          }
+        }
+      }
+    }
   });
 }
 
