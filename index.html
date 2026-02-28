@@ -1261,7 +1261,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
               </select>
             </div>
             <div class="cb">
-              <canvas id="sim-hist" width="300" height="100" style="width:100%"></canvas>
+              <div style="position:relative;height:100px"><canvas id="sim-hist"></canvas></div>
               <div style="display:flex;gap:8px;margin-top:4px;font-size:8px;flex-wrap:wrap">
                 <span style="display:flex;align-items:center;gap:3px;color:var(--t3)"><span style="width:9px;height:8px;background:rgba(107,70,193,.25);border:1px solid rgba(107,70,193,.4);display:inline-block;border-radius:2px"></span>Database</span>
                 <span style="display:flex;align-items:center;gap:3px;color:var(--red)"><span style="width:2px;height:10px;background:var(--red);display:inline-block"></span>Target</span>
@@ -2578,6 +2578,12 @@ let _portfolioMap = null;
 let _portfolioMarkers = [];
 let _focusedBasin = null;
 let _simCrossplotChart = null;
+let _simHistChart = null;
+let _pcHoveredRank = null;
+let _pcLastA = null;
+let _pcLastT = null;
+let _pcListenersAdded = false;
+let _pcMouseX = 0, _pcMouseY = 0;
 
 function setupPortfolioMap() {
   const el = document.getElementById('portfolio-leaflet-map');
@@ -4369,7 +4375,6 @@ function renderSimilarityHistogram() {
   const a = currentAnalogue;
   const canvas = document.getElementById('sim-hist');
   if (!canvas) return;
-  const ctx = canvas.getContext('2d');
   const key = document.getElementById('sim-hist-param')?.value || 'por';
   const T = buildTargetFromSearch();
 
@@ -4381,61 +4386,91 @@ function renderSimilarityHistogram() {
   const bins = Array(BINS).fill(0);
   vals.forEach(v => { const i = Math.min(BINS-1, Math.floor((v-mn)/binW)); bins[i]++; });
 
-  const W = canvas.width, H = canvas.height;
-  const pad = {l:36, r:16, t:20, b:36};
-  const maxBin = Math.max(...bins);
-  const bw = (W-pad.l-pad.r)/BINS;
+  const binLabels = Array.from({length: BINS}, (_, i) => (mn + i * binW).toFixed(mx < 100 ? 1 : 0));
+  const tVal = +T[key];
+  const aVal = a ? +a[key] : null;
+  const aLabel = a ? a.name.split('—')[0].trim().substring(0, 12) : null;
 
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#FFFFFF'; ctx.fillRect(0,0,W,H);
+  const LABELS = {por:'Porosity (%)',perm:'Permeability (mD)',rf:'Recovery Factor (%)',ntg:'NTG (%)',depth:'Depth (m)',api:'API (°)',gor:'GOR (scf/bbl)'};
 
-  // Bars
-  bins.forEach((cnt,i) => {
-    const bh = cnt/maxBin*(H-pad.t-pad.b);
-    const bx = pad.l + i*bw;
-    const by = H-pad.b-bh;
-    ctx.fillStyle = 'rgba(107,70,193,.25)';
-    ctx.fillRect(bx+1, by, bw-2, bh);
-    ctx.strokeStyle = 'rgba(107,70,193,.5)'; ctx.lineWidth=1;
-    ctx.strokeRect(bx+1, by, bw-2, bh);
-    // X tick
-    if (i%2===0) {
-      ctx.fillStyle='#9AA8C0'; ctx.font='8px Segoe UI'; ctx.textAlign='center';
-      ctx.fillText((mn+i*binW).toFixed(mx<100?0:0), bx+bw/2, H-pad.b+12);
+  const vlinePlugin = {
+    id: 'vlines',
+    afterDraw(chart) {
+      const { ctx, chartArea } = chart;
+      const range = mx - mn;
+      function drawLine(val, color, label, dash) {
+        if (!val || isNaN(val) || val <= 0) return;
+        const x = chartArea.left + (val - mn) / range * (chartArea.right - chartArea.left);
+        if (x < chartArea.left || x > chartArea.right) return;
+        ctx.save();
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash(dash);
+        ctx.beginPath(); ctx.moveTo(x, chartArea.top); ctx.lineTo(x, chartArea.bottom); ctx.stroke();
+        ctx.setLineDash([]);
+        const rightSide = x > (chartArea.left + chartArea.right) / 2;
+        ctx.fillStyle = color; ctx.font = 'bold 8px Segoe UI';
+        ctx.textAlign = rightSide ? 'right' : 'left';
+        const off = rightSide ? -3 : 3;
+        ctx.fillText(label, x + off, chartArea.top + 9);
+        ctx.font = '8px Segoe UI';
+        ctx.fillText(val.toFixed(val < 10 ? 2 : 0), x + off, chartArea.top + 19);
+        ctx.restore();
+      }
+      drawLine(tVal, '#FF4D6A', 'Target', [5, 3]);
+      if (aVal !== null) drawLine(aVal, 'rgba(107,70,193,.9)', aLabel, []);
+    }
+  };
+
+  if (_simHistChart) { _simHistChart.destroy(); _simHistChart = null; }
+
+  _simHistChart = new Chart(canvas, {
+    type: 'bar',
+    plugins: [vlinePlugin],
+    data: {
+      labels: binLabels,
+      datasets: [{
+        label: 'Count',
+        data: bins,
+        backgroundColor: 'rgba(107,70,193,.25)',
+        borderColor: 'rgba(107,70,193,.5)',
+        borderWidth: 1,
+        borderRadius: 2,
+        barPercentage: 1.0,
+        categoryPercentage: 1.0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 200 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title(items) {
+              const i = items[0].dataIndex;
+              const lo = (mn + i * binW).toFixed(mx < 100 ? 1 : 0);
+              const hi = (mn + (i + 1) * binW).toFixed(mx < 100 ? 1 : 0);
+              return `${LABELS[key] || key}: ${lo} – ${hi}`;
+            },
+            label(item) { return `Count: ${item.raw}`; }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: {
+            font: { size: 8 }, color: '#9AA8C0', maxRotation: 0,
+            callback(val, i) { return i % 2 === 0 ? this.getLabelForValue(val) : ''; }
+          }
+        },
+        y: {
+          grid: { color: 'rgba(107,70,193,.07)' },
+          ticks: { font: { size: 8 }, color: '#9AA8C0', maxTicksLimit: 4 }
+        }
+      }
     }
   });
-
-  // Axes
-  ctx.strokeStyle='rgba(107,70,193,.3)'; ctx.lineWidth=1.5;
-  ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,H-pad.b); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b); ctx.lineTo(W-pad.r,H-pad.b); ctx.stroke();
-
-  function drawVLine(val, color, label, dash=[]) {
-    if (isNaN(val) || val === undefined) return;
-    const x = pad.l + (val-mn)/(mx-mn)*(W-pad.l-pad.r);
-    if (x < pad.l || x > W-pad.r) return;
-    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash(dash);
-    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, H-pad.b); ctx.stroke();
-    ctx.setLineDash([]);
-    // Label
-    ctx.fillStyle=color; ctx.font='bold 9px Segoe UI';
-    ctx.textAlign = x > W*0.7 ? 'right' : 'left';
-    ctx.fillText(label, x+(x>W*0.7?-4:4), pad.t+12);
-    ctx.fillStyle=color; ctx.font='8px Segoe UI';
-    ctx.fillText(val.toFixed(val<10?2:0), x+(x>W*0.7?-4:4), pad.t+23);
-  }
-
-  drawVLine(+T[key], '#FF4D6A', 'Target', [5,3]);
-  if (a) drawVLine(+a[key], 'rgba(107,70,193,.9)', a.name.split('—')[0].trim().substring(0,12));
-
-  // Y axis labels
-  ctx.fillStyle='#9AA8C0'; ctx.font='8px Segoe UI'; ctx.textAlign='right';
-  [0,0.5,1].forEach(f => ctx.fillText(Math.round(f*maxBin), pad.l-3, H-pad.b-f*(H-pad.t-pad.b)+3));
-
-  // Axis label
-  const LABELS = {por:'Porosity (%)',perm:'Permeability (mD)',rf:'Recovery Factor (%)',ntg:'NTG (%)',depth:'Depth (m)',api:'API (°)',gor:'GOR (scf/bbl)'};
-  ctx.fillStyle='#4A5568'; ctx.font='bold 10px Segoe UI'; ctx.textAlign='center';
-  ctx.fillText(LABELS[key]||key, W/2, H-4);
 }
 
 // ── 6. PARALLEL COORDINATES ───────────────────────────────────
@@ -4443,93 +4478,166 @@ function renderParallelCoords(a, T) {
   const canvas = document.getElementById('sim-parallel');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  const pad = {l:44, r:24, t:28, b:36};
 
+  // DPI sharpness fix
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.getBoundingClientRect().width || 300;
+  const cssH = 110;
+  canvas.width  = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  ctx.scale(dpr, dpr);
+  const W = cssW, H = cssH;
+
+  _pcLastA = a; _pcLastT = T;
+
+  const pad = {l:44, r:24, t:28, b:36};
   const AXES = [
-    { key:'por',   label:'Por%',  max:35  },
-    { key:'perm',  label:'Perm',  max:600 },
-    { key:'rf',    label:'RF%',   max:50  },
-    { key:'ntg',   label:'NTG%',  max:100 },
-    { key:'depth', label:'Depth', max:5000},
-    { key:'api',   label:'API°',  max:45  },
+    { key:'por',   label:'Por%',  max:35   },
+    { key:'perm',  label:'Perm',  max:600  },
+    { key:'rf',    label:'RF%',   max:50   },
+    { key:'ntg',   label:'NTG%',  max:100  },
+    { key:'depth', label:'Depth', max:5000 },
+    { key:'api',   label:'API°',  max:45   },
     { key:'gor',   label:'GOR',   max:15000},
-    { key:'sw',    label:'Sw',    max:1   },
+    { key:'sw',    label:'Sw',    max:1    },
   ];
 
   const n = AXES.length;
-  const axX = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
-  const axY = (v, ax) => H-pad.b - Math.max(0,Math.min(1,v/ax.max))*(H-pad.t-pad.b);
+  const axX = i => pad.l + i * (W - pad.l - pad.r) / (n - 1);
+  const axY = (v, ax) => H - pad.b - Math.max(0, Math.min(1, v / ax.max)) * (H - pad.t - pad.b);
 
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#FFFFFF'; ctx.fillRect(0,0,W,H);
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
 
-  // Draw axis lines
-  AXES.forEach((ax,i) => {
-    ctx.strokeStyle='rgba(107,70,193,.2)'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(axX(i),pad.t); ctx.lineTo(axX(i),H-pad.b); ctx.stroke();
-    // Label
-    ctx.fillStyle='#4A5568'; ctx.font='bold 9px Segoe UI'; ctx.textAlign='center';
-    ctx.fillText(ax.label, axX(i), H-pad.b+14);
-    // Min/Max ticks
-    ctx.fillStyle='#9AA8C0'; ctx.font='7px Segoe UI';
-    ctx.fillText('0', axX(i), H-pad.b+3);
-    ctx.fillText(ax.max>=1000?(ax.max/1000)+'k':ax.max, axX(i), pad.t-4);
+  // Axis lines + labels
+  AXES.forEach((ax, i) => {
+    ctx.strokeStyle = 'rgba(107,70,193,.2)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(axX(i), pad.t); ctx.lineTo(axX(i), H - pad.b); ctx.stroke();
+    ctx.fillStyle = '#4A5568'; ctx.font = 'bold 9px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillText(ax.label, axX(i), H - pad.b + 14);
+    ctx.fillStyle = '#9AA8C0'; ctx.font = '7px Segoe UI';
+    ctx.fillText('0', axX(i), H - pad.b + 3);
+    ctx.fillText(ax.max >= 1000 ? (ax.max / 1000) + 'k' : ax.max, axX(i), pad.t - 4);
   });
 
-  function drawLine(analogue, strokeStyle, lineW, alpha=1, dash=[]) {
-    ctx.beginPath();
-    ctx.setLineDash(dash);
-    ctx.globalAlpha = alpha;
-    AXES.forEach((ax,i) => {
+  function drawLine(analogue, strokeStyle, lineW, alpha = 1, dash = []) {
+    ctx.beginPath(); ctx.setLineDash(dash); ctx.globalAlpha = alpha;
+    AXES.forEach((ax, i) => {
       const v = +analogue[ax.key] || 0;
-      const x = axX(i), y = axY(v, ax);
-      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+      i === 0 ? ctx.moveTo(axX(i), axY(v, ax)) : ctx.lineTo(axX(i), axY(v, ax));
     });
     ctx.strokeStyle = strokeStyle; ctx.lineWidth = lineW; ctx.stroke();
     ctx.setLineDash([]); ctx.globalAlpha = 1;
   }
 
-  // All other analogues (faint)
+  // Others — faint, hovered line is bright
   searchResults.forEach(r => {
     if (a && r.rank === a.rank) return;
+    const isHovered = r.rank === _pcHoveredRank;
     const c = r.sim >= 80 ? 'rgba(0,200,255' : r.sim >= 65 ? 'rgba(240,165,0' : 'rgba(107,70,193';
-    drawLine(r, `${c},.5)`, 1, 0.3);
+    drawLine(r, `${c},${isHovered ? '1' : '.5'})`, isHovered ? 2.5 : 1, isHovered ? 0.9 : 0.3);
   });
 
-  // Target line
-  drawLine(T, '#FF4D6A', 3, 1, [6,3]);
+  // Target (dashed red)
+  drawLine(T, '#FF4D6A', 3, 1, [6, 3]);
 
-  // Selected analogue (bold)
+  // Selected analogue (bold purple + dots + value labels)
   if (a) {
     drawLine(a, 'rgba(107,70,193,.9)', 3);
-    // Dots at each axis
-    AXES.forEach((ax,i) => {
-      const v = +a[ax.key]||0;
-      ctx.fillStyle='var(--purple)'; ctx.beginPath();
-      ctx.arc(axX(i), axY(v,ax), 5, 0, Math.PI*2); ctx.fill();
-      // Value label
-      ctx.fillStyle='rgba(107,70,193,.8)'; ctx.font='8px Segoe UI'; ctx.textAlign='center';
-      ctx.fillText(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(v<10?1:0), axX(i), axY(v,ax)-8);
+    AXES.forEach((ax, i) => {
+      const v = +a[ax.key] || 0;
+      ctx.fillStyle = '#6B46C1'; ctx.beginPath();
+      ctx.arc(axX(i), axY(v, ax), 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(107,70,193,.8)'; ctx.font = '8px Segoe UI'; ctx.textAlign = 'center';
+      ctx.fillText(v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(v < 10 ? 1 : 0), axX(i), axY(v, ax) - 8);
     });
   }
 
-  // Target dots with value labels at each axis
-  AXES.forEach((ax,i) => {
-    const v = +T[ax.key]||0;
-    const x = axX(i), y = axY(v,ax);
-    // Outer ring
-    ctx.strokeStyle='#FF4D6A'; ctx.lineWidth=1.5;
-    ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.stroke();
-    ctx.fillStyle='#FF4D6A';
-    ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill();
-    // Value label below dot
-    ctx.fillStyle='rgba(255,77,106,.85)'; ctx.font='bold 8px Segoe UI'; ctx.textAlign='center';
-    const lbl = v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(v<10?1:0);
-    ctx.fillText(lbl, x, y+16);
+  // Target dots + value labels
+  AXES.forEach((ax, i) => {
+    const v = +T[ax.key] || 0;
+    const x = axX(i), y = axY(v, ax);
+    ctx.strokeStyle = '#FF4D6A'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#FF4D6A';
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,77,106,.85)'; ctx.font = 'bold 8px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillText(v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(v < 10 ? 1 : 0), x, y + 16);
   });
 
+  // Hover tooltip
+  if (_pcHoveredRank != null) {
+    const hr = searchResults.find(r => r.rank === _pcHoveredRank);
+    if (hr) {
+      const name = hr.name.split('—')[0].trim();
+      const simColor = hr.sim >= 80 ? '#00C48C' : hr.sim >= 65 ? '#FFB020' : '#FF4D6A';
+      ctx.font = 'bold 8px Segoe UI';
+      const tw = Math.max(ctx.measureText(name).width, ctx.measureText(`Sim: ${hr.sim}%`).width);
+      const bw = tw + 10, bh = 26;
+      const tx = Math.min(_pcMouseX + 8, W - bw - 4);
+      const ty = Math.max(_pcMouseY - bh - 6, pad.t);
+      ctx.fillStyle = 'rgba(30,20,60,.9)';
+      ctx.fillRect(tx, ty, bw, bh);
+      ctx.strokeStyle = 'rgba(107,70,193,.5)'; ctx.lineWidth = 0.5;
+      ctx.strokeRect(tx, ty, bw, bh);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 8px Segoe UI'; ctx.textAlign = 'left';
+      ctx.fillText(name, tx + 5, ty + 10);
+      ctx.fillStyle = simColor; ctx.font = '8px Segoe UI';
+      ctx.fillText(`Sim: ${hr.sim}%`, tx + 5, ty + 21);
+    }
+  }
+
   ctx.globalAlpha = 1;
+
+  // Attach mouse listeners once
+  if (!_pcListenersAdded) {
+    _pcListenersAdded = true;
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      _pcMouseX = mx; _pcMouseY = my;
+
+      // Recompute axis positions from current canvas size
+      const cw = rect.width || 300, ch = 110;
+      const p = {l:44, r:24, t:28, b:36};
+      const AX = [
+        {key:'por',max:35},{key:'perm',max:600},{key:'rf',max:50},{key:'ntg',max:100},
+        {key:'depth',max:5000},{key:'api',max:45},{key:'gor',max:15000},{key:'sw',max:1}
+      ];
+      const nn = AX.length;
+      const xf = i => p.l + i * (cw - p.l - p.r) / (nn - 1);
+      const yf = (v, ax) => ch - p.b - Math.max(0, Math.min(1, v / ax.max)) * (ch - p.t - p.b);
+
+      let best = null, bestDist = 10;
+      searchResults.forEach(r => {
+        if (_pcLastA && r.rank === _pcLastA.rank) return;
+        let minD = Infinity;
+        for (let i = 0; i < AX.length - 1; i++) {
+          const x1 = xf(i),     y1 = yf(+r[AX[i].key]   || 0, AX[i]);
+          const x2 = xf(i + 1), y2 = yf(+r[AX[i+1].key] || 0, AX[i + 1]);
+          const dx = x2 - x1, dy = y2 - y1, lsq = dx*dx + dy*dy;
+          const t = lsq ? Math.max(0, Math.min(1, ((mx-x1)*dx + (my-y1)*dy) / lsq)) : 0;
+          minD = Math.min(minD, Math.hypot(mx - (x1 + t*dx), my - (y1 + t*dy)));
+        }
+        if (minD < bestDist) { bestDist = minD; best = r.rank; }
+      });
+
+      if (best !== _pcHoveredRank) {
+        _pcHoveredRank = best;
+        canvas.style.cursor = best ? 'pointer' : 'default';
+        renderParallelCoords(_pcLastA, _pcLastT);
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      if (_pcHoveredRank !== null) {
+        _pcHoveredRank = null;
+        canvas.style.cursor = 'default';
+        renderParallelCoords(_pcLastA, _pcLastT);
+      }
+    });
+  }
 }
 
 function exportSimilarityPDF() { toast('Similarity Analysis PDF export coming soon', 'info'); }
