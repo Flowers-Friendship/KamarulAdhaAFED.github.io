@@ -2756,11 +2756,11 @@ function loadBasinLayer() {
 
   _basinLayer = L.geoJSON(window._basinsData, {
     style: () => ({
-      color:       '#FF0000',
-      weight:      3,
-      opacity:     1,
-      fillColor:   '#FF0000',
-      fillOpacity: 0.2,
+      color:       '#6B46C1',
+      weight:      1.5,
+      opacity:     0.8,
+      fillColor:   '#6B46C1',
+      fillOpacity: 0.08,
     }),
     onEachFeature(feature, layer) {
       const p = feature.properties;
