@@ -2382,11 +2382,6 @@ const PAGE_NAMES = {
 };
 
 function goTo(id, navEl) {
-  if (id !== 'basins' && _focusedBasin && _leafletMap) {
-    _focusedBasin = null;
-    _leafletMap.closePopup();
-    _leafletMap.flyTo([20, 20], 2, { duration: 1 });
-  }
   document.querySelectorAll('.sec').forEach(s => s.classList.remove('on'));
   document.querySelectorAll('.nav').forEach(n => n.classList.remove('on'));
   // Update page title and breadcrumb
@@ -2400,7 +2395,7 @@ function goTo(id, navEl) {
   document.getElementById('sec-'+id).classList.add('on');
   // Initialize section-specific components
   if (id === 'portfolio') setTimeout(setupPortfolioMap, 100);
-  if (id === 'basins') setTimeout(setupMap, 100);
+  if (id === 'basins' && !_leafletMap) setTimeout(setupMap, 100);
   if (id === 'risk') setTimeout(initProspectDropdown, 50);
   if (navEl) navEl.classList.add('on');
   else {
