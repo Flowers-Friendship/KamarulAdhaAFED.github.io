@@ -187,6 +187,8 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
 .tl-g{background:#DCFCE7;color:#166534}
 .tl-a{background:#FEF3C7;color:#92400E}
 .tl-r{background:#FEE2E2;color:#991B1B}
+.btn-view{font-size:10px;letter-spacing:.8px;text-transform:uppercase;background:var(--purple);color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;transition:opacity .15s}
+.btn-view:hover{opacity:.82}
 .badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:8px;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
 .bc{background:#EFF6FF;color:#1D4ED8}
 .bg{background:#FEF3C7;color:#92400E}
@@ -324,7 +326,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
 
 /* PULSE */
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.edafy-popup .leaflet-popup-content-wrapper{border-radius:8px;padding:0;box-shadow:0 4px 20px rgba(0,0,0,.15)}
+.edafy-popup .leaflet-popup-content-wrapper{border-radius:8px;padding:1;box-shadow:0 4px 20px rgba(0,0,0,.15)}
 .edafy-popup .leaflet-popup-content{margin:12px 14px;line-height:1.5}
 .map-area{border-radius:8px;overflow:hidden;min-height:280px}
 @keyframes pageIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -517,7 +519,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
         <div class="kpis" style="margin-bottom:10px">
           <div class="kpi c" onclick="goTo('basins',null)" style="cursor:pointer">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-              <div style="width:26px;height:26px;border-radius:6px;background:rgba(0,136,204,.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🗺️</div>
+              <!-- <div style="width:26px;height:26px;border-radius:6px;background:rgba(0,136,204,.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🗺️</div> -->
               <div class="kpi-lbl" style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t3)">Active Basins</div>
             </div>
             <div class="kpi-val" id="kpi-basins" style="font-size:26px;font-weight:800;color:var(--cyan)">612</div>
@@ -527,7 +529,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
           </div>
           <div class="kpi g" onclick="goTo('analogues',null)" style="cursor:pointer">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-              <div style="width:26px;height:26px;border-radius:6px;background:rgba(192,120,0,.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">⚗️</div>
+              <!-- <div style="width:26px;height:26px;border-radius:6px;background:rgba(192,120,0,.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">⚗️</div> -->
               <div class="kpi-lbl" style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t3)">Analogue Intervals</div>
             </div>
             <div class="kpi-val counter" id="kpi-analogues" data-target="5847" style="font-size:26px;font-weight:800;color:var(--gold)">0</div>
@@ -537,7 +539,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
           </div>
           <div class="kpi e">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-              <div style="width:26px;height:26px;border-radius:6px;background:rgba(0,135,90,.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📈</div>
+              <!-- <div style="width:26px;height:26px;border-radius:6px;background:rgba(0,135,90,.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📈</div> -->
               <div class="kpi-lbl" style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t3)">Avg Prospectivity</div>
             </div>
             <div class="kpi-val" id="kpi-prospectivity" style="font-size:26px;font-weight:800;color:var(--green)">67.4</div>
@@ -547,7 +549,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
           </div>
           <div class="kpi r" onclick="goTo('governance',null)" style="cursor:pointer">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-              <div style="width:26px;height:26px;border-radius:6px;background:rgba(217,48,37,.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🛡️</div>
+              <!-- <div style="width:26px;height:26px;border-radius:6px;background:rgba(217,48,37,.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🛡️</div> -->
               <div class="kpi-lbl" style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t3)">Data Quality</div>
             </div>
             <div class="kpi-val" id="kpi-quality" style="font-size:26px;font-weight:800;color:var(--green)">96.1%</div>
@@ -764,6 +766,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
               <th>Plays</th>
               <th onclick="sortBasins('score')">Prospectivity<span class="sort-ico">↕</span></th>
               <th>Status</th>
+              <th></th>
             </tr></thead>
             <tbody id="basin-tbody"></tbody>
           </table>
@@ -807,7 +810,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
             <div class="cb" style="padding:0">
               <div id="strat-column-wrap" style="overflow-y:auto;max-height:560px;padding:12px">
                 <div style="padding:60px;text-align:center;color:var(--t3)">
-                  <div style="font-size:36px;margin-bottom:12px">🪨</div>
+                  <!-- <div style="font-size:36px;margin-bottom:12px">🪨</div> -->
                   <div style="font-size:12px;font-weight:600">Select a basin to view its stratigraphic column</div>
                   <div style="font-size:10px;margin-top:6px">Formation-by-formation breakdown with lithology, age, HC potential and seal quality</div>
                 </div>
@@ -1319,7 +1322,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
       <div id="params-store-panel" style="display:none">
         <!-- Info bar -->
         <div style="background:#F5F0FF;border:1px solid #D8C9FF;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
-          <span style="font-size:18px">🗄️</span>
+          <span style="font-size:18px"></span>
           <div style="flex:1">
             <div style="font-size:11px;font-weight:700;color:var(--purple);margin-bottom:2px">Parameter Store — Source of Truth</div>
             <div style="font-size:10px;color:var(--t2)">These values are the authoritative inputs fed into Risk &amp; Uncertainty (Volumetric, Sensitivity, Monte Carlo). Edit here to update all downstream calculations. Monte Carlo simulation has moved to the <strong>Risk &amp; Uncertainty → Monte Carlo</strong> tab.</div>
@@ -1389,7 +1392,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
       <div id="risk-gcos-panel">
         <!-- Info banner -->
         <div style="background:#F5F0FF;border:1px solid #D8C9FF;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px">
-          <span style="font-size:20px">📋</span>
+          <span style="font-size:20px"></span>
           <div style="flex:1">
             <div style="font-size:11px;font-weight:700;color:var(--purple);margin-bottom:2px">SPE-PRMS Geological Chance of Success (GCoS) Calculator</div>
             <div style="font-size:10px;color:var(--t2)">GCoS = P<sub>source</sub> × P<sub>reservoir</sub> × P<sub>seal</sub> × P<sub>trap</sub> × P<sub>migration</sub> — Probabilistic Monte Carlo + risked STOIIP. Industry average: 15–35%.</div>
@@ -1583,7 +1586,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
       <!-- MONTE CARLO PANEL -->
       <div id="risk-mc-panel" style="display:none">
         <div style="background:#F5F0FF;border:1px solid #D8C9FF;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
-          <span style="font-size:18px">🎲</span>
+          <span style="font-size:18px"></span>
           <div style="flex:1">
             <div style="font-size:11px;font-weight:700;color:var(--purple);margin-bottom:2px">STOIIP Monte Carlo Simulation — Parameter Store</div>
             <div style="font-size:10px;color:var(--t2)">10,000 iterations using analogue-derived distributions. Input parameters are sourced from the <strong>Parameter Store</strong>. Results automatically sync to Volumetric and Sensitivity tabs.</div>
@@ -1632,7 +1635,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
       <div id="risk-sens-panel" style="display:none">
         <!-- Info bar -->
         <div style="background:#F5F0FF;border:1px solid #D8C9FF;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
-          <span style="font-size:18px">🌪️</span>
+          <span style="font-size:18px"></span>
           <div>
             <div style="font-size:11px;font-weight:700;color:var(--purple);margin-bottom:2px">STOIIP Sensitivity Analysis — Tornado & Spider Chart</div>
             <div style="font-size:10px;color:var(--t2)">Set P10/P50/P90 ranges for each parameter. The tornado chart ranks parameters by their impact on STOIIP. Spider chart shows relative sensitivity across the range. All charts update live.</div>
@@ -1787,7 +1790,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
         </div>
         <div id="bp-content">
           <div style="padding:48px;text-align:center;background:#fff;border-radius:10px;border:2px dashed #CBD5E0">
-            <div style="font-size:40px;margin-bottom:10px">🗺️</div>
+            <div style="font-size:40px;margin-bottom:10px"></div>
             <div style="font-size:14px;font-weight:600;color:var(--t2);margin-bottom:6px">Basin Exploration Profile</div>
             <div style="font-size:11px;color:var(--t3)">Select a basin from the dropdown above to view its full exploration maturity profile, petroleum systems analysis, and risk breakdown.</div>
           </div>
@@ -1799,7 +1802,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
     <section class="sec" id="sec-ingestion">
       <div class="tabs" style="flex-wrap:wrap">
         <div class="tab on" onclick="ingTab('overview',this)">Overview</div>
-        <div class="tab" onclick="ingTab('unified',this)" style="background:rgba(107,70,193,.07);color:var(--purple);border-bottom:2px solid var(--purple)">⚡ Unified Upload</div>
+        <div class="tab" onclick="ingTab('unified',this)" style="background:rgba(107,70,193,.07);color:var(--purple);border-bottom:2px solid var(--purple)">Unified Upload</div>
         <div class="tab" onclick="ingTab('reservoir',this)">Reservoir</div>
         <div class="tab" onclick="ingTab('geopressure',this)">Geopressure</div>
         <div class="tab" onclick="ingTab('geochem',this)">Geochemistry</div>
@@ -1838,13 +1841,13 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
         <!-- Dataset coverage chips -->
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px" id="unified-coverage-chips">
           <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE">Basin</div>
-          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#F0FDF4;color:#166534;border:1px solid #BBF7D0">◎ Analogue</div>
-          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#ECFEFF;color:#0E7490;border:1px solid #A5F3FC">⬡ Reservoir</div>
-          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A">⛏ Geopressure</div>
-          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#F0FDF4;color:#065F46;border:1px solid #A7F3D0">⚗ Geochemistry</div>
-          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#FFFBEB;color:#78350F;border:1px solid #FCD34D">◈ Mineralogy</div>
-          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#FFF1F2;color:#9F1239;border:1px solid #FECDD3">◉ Fluid PVT</div>
-          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#FAF5FF;color:#6B21A8;border:1px solid #E9D5FF">⬢ Diagenesis</div>
+          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#F0FDF4;color:#166534;border:1px solid #BBF7D0">Analogue</div>
+          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#ECFEFF;color:#0E7490;border:1px solid #A5F3FC">Reservoir</div>
+          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A">Geopressure</div>
+          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#F0FDF4;color:#065F46;border:1px solid #A7F3D0">Geochemistry</div>
+          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#FFFBEB;color:#78350F;border:1px solid #FCD34D">Mineralogy</div>
+          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#FFF1F2;color:#9F1239;border:1px solid #FECDD3">Fluid PVT</div>
+          <div style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:600;background:#FAF5FF;color:#6B21A8;border:1px solid #E9D5FF">Diagenesis</div>
         </div>
 
         <div class="g2" style="margin-bottom:16px">
@@ -2335,6 +2338,11 @@ const PAGE_NAMES = {
 };
 
 function goTo(id, navEl) {
+  if (id !== 'basins' && _focusedBasin && _leafletMap) {
+    _focusedBasin = null;
+    _leafletMap.closePopup();
+    _leafletMap.flyTo([20, 20], 2, { duration: 1 });
+  }
   document.querySelectorAll('.sec').forEach(s => s.classList.remove('on'));
   document.querySelectorAll('.nav').forEach(n => n.classList.remove('on'));
   // Update page title and breadcrumb
@@ -2568,6 +2576,7 @@ let _leafletMap = null;
 let _leafletMarkers = [];
 let _portfolioMap = null;
 let _portfolioMarkers = [];
+let _focusedBasin = null;
 
 function setupPortfolioMap() {
   const el = document.getElementById('portfolio-leaflet-map');
@@ -2636,6 +2645,22 @@ function getBasinCoords(basin) {
     'Australia':[-25,135],'Russia':[60,80],'West Africa':[5,5],
   };
   return regionFallbacks[basin.region] || [0,20];
+}
+
+function focusBasinOnMap(name) {
+  if (_focusedBasin === name) return;
+  _focusedBasin = name;
+  const b = BASINS.find(x => x.name === name);
+  if (!b || !_leafletMap) return;
+  const coords = getBasinCoords(b);
+  if (!coords) return;
+  document.getElementById('world-map')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  _leafletMap.once('moveend', () => {
+    const target = L.latLng(coords[0], coords[1]);
+    const marker = _leafletMarkers.find(m => m.getLatLng().distanceTo(target) < 5000);
+    if (marker) marker.openPopup();
+  });
+  _leafletMap.flyTo(coords, 6, { duration: 1.2 });
 }
 
 function setupMap() {
@@ -2920,7 +2945,7 @@ function renderBasinTable(data) {
     const tl = b.score >= 70 ? 'tl-g' : b.score >= 40 ? 'tl-a' : 'tl-r';
     const tlText = b.score >= 70 ? 'HIGH' : b.score >= 40 ? 'MEDIUM' : 'LOW';
     const hcBadge = b.hc === 'Oil' ? 'bg' : b.hc === 'Gas' ? 'be' : 'bc';
-    return `<tr style="cursor:pointer" onclick="showBasinDetail('${b.name}')">
+    return `<tr style="cursor:pointer" onclick="focusBasinOnMap('${b.name}')">
       <td style="color:var(--t1);font-weight:600">${b.name}</td>
       <td>${b.country}</td>
       <td>${b.tectonic}</td>
@@ -2930,6 +2955,7 @@ function renderBasinTable(data) {
       <td>${b.plays}</td>
       <td><div class="sbar"><div class="sbar-track"><div class="sbar-fill" style="width:${b.score}%;background:${c}"></div></div><span class="sval" style="color:${c}">${b.score}</span></div></td>
       <td><span class="tl ${tl}">${tlText}</span></td>
+      <td><button class="btn-view" onclick="showBasinDetail('${b.name}')">Details</button></td>
     </tr>`;
   }).join('');
 }
@@ -3006,11 +3032,11 @@ function showBasinDetail(name) {
 // ============================================================
 function runSearch() {
   const btn = document.getElementById('search-btn');
-  btn.textContent = '⬡ Searching…';
+  btn.textContent = 'Searching…';
   btn.disabled = true;
   loadBar();
   setTimeout(() => {
-    btn.textContent = '⬡ Run Search';
+    btn.textContent = 'Run Search';
     btn.disabled = false;
 
     // Read all search criteria
@@ -6631,7 +6657,6 @@ function renderLbPodium() {
     const gcos = estimateGCoS(b.scores);
     return `
       <div style="display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer" onclick="switchScreenTab('profiles',document.querySelectorAll('#screen-tabs .tab')[2]);setTimeout(()=>{document.getElementById('bp-basin-select').value='${b.name}';renderBasinProfile('${b.name}')},50)">
-        <div style="font-size:24px">${medals[i]}</div>
         <div style="text-align:center;max-width:140px">
           <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:2px;line-height:1.3">${b.name}</div>
           <div style="font-size:9px;color:var(--t3)">${b.region}</div>
@@ -6665,7 +6690,7 @@ function renderLeaderboardTable(data) {
     const tl = b.composite >= 70 ? 'tl-g' : b.composite >= 40 ? 'tl-a' : 'tl-r';
     const tlTxt = b.composite >= 70 ? '🟢 HIGH' : b.composite >= 40 ? '🟡 MEDIUM' : '🔴 LOW';
     const gcos = estimateGCoS(b.scores);
-    const rankIcon = b.rank===1?'🥇':b.rank===2?'🥈':b.rank===3?'🥉':'';
+    const rankIcon = b.rank===1?'':b.rank===2?'':b.rank===3?'':'';
     return `<tr onclick="switchScreenTab('profiles',document.querySelectorAll('#screen-tabs .tab')[2]);setTimeout(()=>{document.getElementById('bp-basin-select').value='${b.name}';renderBasinProfile('${b.name}')},50)" style="cursor:pointer" title="View full profile for ${b.name}">
       <td><span style="font-weight:700;color:${b.rank<=3?'var(--gold)':'var(--t3)'}">${rankIcon||b.rank}</span></td>
       <td><span style="font-weight:700;color:var(--purple)">${b.name}</span></td>
@@ -6948,14 +6973,14 @@ function renderIngHistory() {
     <div style="margin-top:12px;padding:12px 14px;background:rgba(255,107,43,.04);border:1px solid rgba(255,107,43,.14);border-radius:6px">
       <div style="font-size:9px;color:var(--brand2);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:8px">Download All EDAFY Templates</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
-        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('basin')">⬡ Basin Catalogue</button>
-        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('analogue')">◎ Analogue (Base)</button>
-        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('reservoir')">⬡ Reservoir Props</button>
-        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('geopressure')">⛏ Geopressure</button>
-        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('geochem')">⚗ Geochemistry</button>
-        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('mineral')">◈ Mineralogy</button>
-        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('fluid')">◉ Fluid PVT</button>
-        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('diagenesis')">⬢ Diagenesis</button>
+        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('basin')">Basin Catalogue</button>
+        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('analogue')">Analogue (Base)</button>
+        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('reservoir')">Reservoir Props</button>
+        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('geopressure')">Geopressure</button>
+        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('geochem')">Geochemistry</button>
+        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('mineral')">Mineralogy</button>
+        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('fluid')">Fluid PVT</button>
+        <button class="btn2" style="font-size:9px;padding:5px 8px;text-align:left" onclick="downloadTemplate('diagenesis')">Diagenesis</button>
       </div>
     </div>`;
 }
@@ -6980,70 +7005,70 @@ const CONNECTOR_STATE = [
 
 const ING_META = {
   reservoir: {
-    label:'Reservoir Properties', icon:'⬡', color:'var(--cyan)',
+    label:'Reservoir Properties', icon:'', color:'var(--cyan)',
     desc:'Core petrophysical data: porosity, permeability, pay thickness, drive mechanism, HC phase, fluid saturation.',
     fields:['analogue_name','basin','age','lithology','dep_env','depth_mtvdss','hc_phase','drive_mechanism','porosity_pct','permeability_md','recovery_factor_pct','ntg_pct','gor_scf_bbl','api_gravity','gross_pay_m','net_pay_m','temperature_c','reservoir_pressure_bar','water_saturation','bo_rb_stb','viscosity_cp'],
     required:['analogue_name','porosity_pct','permeability_md'],
     notes:'Values should be in the units specified in column headers. Leave blank if unknown.'
   },
   geopressure: {
-    label:'Geopressure', icon:'⛏', color:'var(--amber)',
+    label:'Geopressure', icon:'', color:'var(--amber)',
     desc:'Pore pressure data, gradients, mud weight window, overpressure regime and mechanisms.',
     fields:['analogue_name','basin','depth_mtvdss','pore_pressure_gradient_psi_ft','overburden_gradient_psi_ft','fracture_gradient_psi_ft','ppg_equivalent','ecd_ppg','pressure_coefficient','pressure_regime','overpressure_mechanism','mudweight_min_ppg','mudweight_max_ppg','leak_off_test_psi_ft','extended_leak_off_test','drillstem_test_pressure_psi','reservoir_pressure_ppg','rft_pressure_bar','pressure_depth_gradient','sonic_transit_time_us_ft','sonic_pore_pressure_method','sigma_v_bar','sigma_h_min_bar','sigma_h_max_bar','fault_reactivation_risk','wellbore_stability_risk'],
     required:['analogue_name','pore_pressure_gradient_psi_ft'],
     notes:'Pressure regime options: Normally pressured / Slightly overpressured / Moderately overpressured / Overpressured / Highly overpressured'
   },
   geochem: {
-    label:'Geochemistry', icon:'⚗', color:'var(--green)',
+    label:'Geochemistry', icon:'', color:'var(--green)',
     desc:'Source rock quality, maturity indicators, kerogen type, petroleum system parameters.',
     fields:['analogue_name','basin','source_formation','kerogen_type','toc_pct','vitrinite_reflectance_ro','hydrogen_index_mg_hc_g_toc','oxygen_index_mg_co2_g_toc','tmax_c','expulsion_efficiency_pct','charge_volume','migration_distance_km','oil_family','sulfur_pct','c15_plus_pct','predicted_api','s1_mg_hc_g_rock','s2_mg_hc_g_rock','s3_mg_co2_g_rock','pi_production_index','rock_eval_type','maturation_stage','thermal_alteration_index','carbon_preference_index','pr_ph_ratio','gammacerane_index','source_rock_thickness_m','total_organic_richness','kerogen_density_g_cc','expulsion_age_ma','peak_generation_age_ma','trap_formation_age_ma'],
     required:['analogue_name','toc_pct','vitrinite_reflectance_ro'],
     notes:'Kerogen types: Type I / Type II / Type III / Type II/III / Type II/IIS. Vitrinite reflectance in % Ro.'
   },
   mineral: {
-    label:'Mineralogy', icon:'◈', color:'var(--gold)',
+    label:'Mineralogy', icon:'', color:'var(--gold)',
     desc:'XRD modal analysis and point counting data for reservoir mineral composition.',
     fields:['analogue_name','basin','quartz_pct','feldspar_pct','rock_fragments_pct','kaolinite_pct','illite_pct','smectite_pct','chlorite_pct','calcite_cement_pct','dolomite_pct','pyrite_pct','siderite_pct','mica_pct','clay_total_pct','cement_type','ankerite_pct','zeolite_pct','halite_pct','apatite_pct','zircon_pct','biotite_pct','hornblende_pct','magnetite_pct','hematite_pct','total_cement_pct','porosity_preserving_cements','porosity_reducing_cements','detrital_clay_pct','authigenic_clay_pct','mixed_layer_clay_type','cec_meq_100g','grain_size_phi','sorting_coefficient','roundness','sphericity','thin_section_analysis','sem_edx_available'],
     required:['analogue_name','quartz_pct','clay_total_pct'],
     notes:'All percentages should sum to ~100%. Cement type examples: Silica / Calcite / Kaolinite / Mixed.'
   },
   fluid: {
-    label:'Fluid PVT', icon:'◉', color:'var(--red)',
+    label:'Fluid PVT', icon:'', color:'var(--red)',
     desc:'Fluid phase behaviour, PVT properties, gas composition and contamination levels.',
     fields:['analogue_name','basin','oil_density_g_cc','gas_specific_gravity','fvf_oil_rb_stb','bubble_point_bar','solution_gor_scf_stb','z_factor','brine_salinity_ppm','wor','h2s_ppm','co2_pct','n2_pct','c1_methane_pct','c2_ethane_pct','c3_propane_pct','c4_butane_pct','c5_pentane_pct','c6_hexane_pct','c7_plus_pct','mw_c7_plus_g_mol','fluid_type','phase_envelope_type','dew_point_bar','cricondentherm_c','cricondenbar_bar','reservoir_fluid_viscosity_cp','dead_oil_viscosity_cp','oil_compressibility_1_bar','gas_compressibility_factor','water_fvf_rb_stb','water_compressibility_1_bar','brine_viscosity_cp','asphaltene_content_pct','wax_content_pct','pour_point_c','cloud_point_c','mercury_ppm','arsenic_ppb','scale_tendency','emulsion_tendency'],
     required:['analogue_name','oil_density_g_cc'],
     notes:'H2S in ppm. CO2, N2, hydrocarbon gas fractions in % mol. Oil density in g/cc (e.g. 0.855).'
   },
   diagenesis: {
-    label:'Diagenesis', icon:'⬢', color:'var(--brand2)',
+    label:'Diagenesis', icon:'', color:'var(--brand2)',
     desc:'Diagenetic history: compaction, cementation, dissolution, clay authigenesis.',
     fields:['analogue_name','basin','burial_grade','compaction','cementation','dissolution','quartz_overgrowths','chlorite_coating','kaolinite_pore_fill','authigenic_clay','grain_coating','fluid_inclusion_th_c','mechanical_compaction_grade','chemical_compaction_grade','pressure_solution_intensity','stylolite_frequency','macro_porosity_type','micro_porosity_type','pore_throat_radius_um','entry_pressure_bar','mercury_injection_pc_bar','reservoir_quality_index','flow_zone_indicator','k_phi_transform','diagenetic_sequence','eogenetic_grade','mesogenetic_grade','telogenetic_grade','paleo_fluid_flow','overpressure_influence','burial_history_max_depth_m','uplift_erosion_m','paleotemperature_c','thermochronology_age_ma'],
     required:['analogue_name','compaction','cementation'],
     notes:'Use: Low / Moderate / High / Very High for compaction and cementation. Present / Absent / Partial for coatings.'
   },
   seismic: {
-    label:'Seismic & Structural', icon:'◈', color:'#8B5CF6',
+    label:'Seismic & Structural', icon:'', color:'#8B5CF6',
     desc:'Seismic attributes, structural interpretation, closure geometry and trap integrity data.',
     fields:['analogue_name','basin','survey_name','survey_type','vintage_year','dominant_frequency_hz','twt_closure_ms','structural_relief_m','closure_area_km2','trap_type','fault_seal_risk','amplitude_anomaly','bht_c','average_velocity_m_s','top_seal_formation','spill_point_m'],
     required:['analogue_name','trap_type'],
     notes:'Trap types: Anticlinal / Fault / Stratigraphic / Combination / Salt-related / Inversion. Fault seal risk: Low/Moderate/High.'
   },
   production: {
-    label:'Production & Economics', icon:'◇', color:'#059669',
+    label:'Production & Economics', icon:'', color:'#059669',
     desc:'Production history, decline curve parameters, well performance and economic metrics.',
     fields:['analogue_name','basin','field_name','discovery_year','first_production_year','peak_rate_bopd','cum_production_mmboe','reserves_mmboe','well_count','avg_ip30_bopd','di_decline_rate','b_factor','water_cut_pct','gor_producing','opex_usd_boe','capex_usd_boe','breakeven_usd_boe','npv_mm_usd','irr_pct'],
     required:['analogue_name','cum_production_mmboe'],
     notes:'Production rates in BOPD/BOEPD. Reserves in MMboe. Economics at project-level (not well-level). Decline type: Exponential/Hyperbolic/Harmonic.'
   },
   welldata: {
-    label:'Well & Core Data', icon:'◎', color:'#DC2626',
+    label:'Well & Core Data', icon:'', color:'#DC2626',
     desc:'Well header data, core analysis, wireline log statistics and formation evaluation results.',
     fields:['analogue_name','basin','well_name','uwi','well_type','spud_date','td_m','kb_elevation_m','water_depth_m','reservoir_formation','core_plugs_count','core_porosity_avg_pct','core_perm_avg_md','klinkenberg_pct','routine_sw_pct','xrd_quartz_avg_pct','xrd_clay_avg_pct','phie_log_avg','vsh_log_avg','sw_archie_avg','pore_throat_r35_um'],
     required:['analogue_name','well_name'],
     notes:'UWI format: country code + API number. Core data should be from RCA (Routine Core Analysis) or SCA (Special Core Analysis). Log averages from perforated intervals only.'
   },
   isotope: {
-    label:'Isotope & Biomarker', icon:'◉', color:'#7C3AED',
+    label:'Isotope & Biomarker', icon:'', color:'#7C3AED',
     desc:'Stable isotope data, biomarker ratios, oil-source correlation and biodegradation parameters.',
     fields:['analogue_name','basin','sample_id','sample_type','d13c_saturates','d13c_aromatics','d13c_whole_oil','d34s_sulfur','pr_ph_ratio','pr_nc17_ratio','ph_nc18_ratio','c27_sterane_pct','c28_sterane_pct','c29_sterane_pct','ts_tm_ratio','c31_hopane_22s_r','c35_c34_hopane','gammacerane_index','tricyclic_tetracyclic','biodegradation_pm_scale','oil_family'],
     required:['analogue_name','sample_id'],
@@ -7051,35 +7076,35 @@ const ING_META = {
   },
   // ---- NEW PARAMETER CATEGORIES ----
   petrophysics: {
-    label:'Petrophysics & Log Analysis', icon:'◎', color:'#0891B2',
+    label:'Petrophysics & Log Analysis', icon:'', color:'#0891B2',
     desc:'Wireline log interpretation, formation evaluation, fluid contact depths and saturation-height modelling.',
     fields:['analogue_name','basin','well_name','log_suite','depth_tvdss_m','phit_avg','phie_avg','vsh_avg','sw_avg','bvw_avg','moveable_hc_index','rwt_ohm_m','rw_temp_c','archie_a','archie_m','archie_n','formation_factor','resistivity_index','pickett_slope','ooip_log_mbbls','j_function_perm_cutoff','pore_throat_r35_um','capillary_pressure_psi','fwl_mtvdss','owc_mtvdss','goc_mtvdss','log_quality_flag','depth_match_correction_m','sonic_dt_us_ft','density_rhob_g_cc','neutron_nphi','gamma_ray_api','sp_mv','caliper_in'],
     required:['analogue_name','phie_avg','sw_avg'],
     notes:'All averages over net pay interval. FWL = Free Water Level (from capillary pressure); OWC = Oil-Water Contact (from log). Log quality: Good/Acceptable/Poor.'
   },
   geomechanics: {
-    label:'Geomechanics & Stress', icon:'◆', color:'#B45309',
+    label:'Geomechanics & Stress', icon:'', color:'#B45309',
     desc:'In-situ stress state, rock mechanical properties, fracture characterisation and wellbore stability parameters.',
     fields:['analogue_name','basin','depth_mtvdss','ucs_mpa','youngs_modulus_gpa','poissons_ratio','tensile_strength_mpa','cohesion_mpa','friction_angle_deg','biot_coefficient','unconfined_compressive_strength','point_load_index','brazilian_tensile_strength','sigma_v_mpa','sigma_h_min_mpa','sigma_h_max_mpa','pp_gradient_mpa_m','sv_gradient_mpa_m','shmin_gradient_mpa_m','shmax_gradient_mpa_m','stress_regime','shmax_azimuth_deg','mud_weight_window_ppg_min','mud_weight_window_ppg_max','breakout_width_deg','drilling_induced_fracture','caliper_breakout_presence','natural_fracture_density_per_m','fracture_orientation_deg','fracture_aperture_mm','fracture_intensity','formation_integrity_test_mpa','leak_off_gradient_mpa_m','critical_depletion_mpa','sand_production_risk','compaction_risk'],
     required:['analogue_name','ucs_mpa'],
     notes:'Stress regime: Normal / Strike-slip / Reverse. UCS in MPa. Youngs Modulus in GPa. All gradients in MPa/m unless otherwise stated.'
   },
   thermal: {
-    label:'Thermal & Basin Modelling', icon:'◈', color:'#DC2626',
+    label:'Thermal & Basin Modelling', icon:'', color:'#DC2626',
     desc:'Thermal maturity, heat flow, burial history and petroleum system modelling parameters.',
     fields:['analogue_name','basin','formation','present_depth_m','max_burial_depth_m','erosion_thickness_m','age_max_burial_ma','age_onset_generation_ma','age_peak_generation_ma','age_expulsion_ma','vitrinite_reflectance_ro','tmax_c','tti_lopatin','easy_ro_pct','surface_heat_flow_mw_m2','basal_heat_flow_mw_m2','thermal_gradient_c_km','present_temperature_c','max_palaeotemperature_c','cooling_rate_c_ma','uplift_rate_m_ma','subsidence_rate_m_ma','tectonic_subsidence_m','sediment_thermal_conductivity','radiogenic_heat_production','crustal_thickness_km','lithospheric_thickness_km','inversion_magnitude_m','trap_timing_vs_generation','petroleum_system_integrity','charge_risk_rating'],
     required:['analogue_name','surface_heat_flow_mw_m2'],
     notes:'Heat flow in mW/m². Vitrinite reflectance in %Ro. TTI = Time-Temperature Index (Lopatin method). Charge risk: Low / Moderate / High / Critical.'
   },
   environmental: {
-    label:'Environmental & HSE', icon:'◇', color:'#059669',
+    label:'Environmental & HSE', icon:'', color:'#059669',
     desc:'Environmental sensitivity, regulatory data, H₂S/CO₂ content, and HSE classification for exploration targets.',
     fields:['analogue_name','basin','country','h2s_ppm','co2_pct','so2_ppm','hg_ppb','benzene_ppm','radioactivity_bq_kg','naturally_occurring_radioactive','temperature_surface_c','cold_vent_presence','seafloor_stability','water_depth_m','protected_area_flag','marine_mammal_presence','coral_reef_proximity_km','mangrove_proximity_km','fishery_sensitivity','indigenous_land_flag','cultural_heritage_sensitivity','seismic_survey_restriction','drilling_moratorium','environmental_impact_category','spill_response_tier','nearest_port_km','emergency_response_time_h','co2_storage_potential_mt','water_injection_feasibility','produced_water_salinity_ppm','scale_inhibitor_required','asphaltene_deposition_risk','wax_deposition_risk','hydrate_risk'],
     required:['analogue_name','h2s_ppm'],
     notes:'H₂S >10 ppm requires H₂S contingency plan. CO₂ >5% may affect commercial viability. Environmental impact: Low / Moderate / High / Critical.'
   },
   commercials: {
-    label:'Commercial & Economic', icon:'◎', color:'#6B21A8',
+    label:'Commercial & Economic', icon:'', color:'#6B21A8',
     desc:'Commercial parameters: break-even economics, risked NPV, FID metrics, infrastructure proximity and fiscal terms.',
     fields:['analogue_name','basin','country','discovery_name','operator','working_interest_pct','gross_resources_mmboe','net_resources_mmboe','recovery_factor_pct','plateau_rate_boepd','plateau_duration_yr','field_life_yr','first_oil_year','development_concept','capex_development_musd','capex_per_boe_usd','opex_usd_boe','royalty_pct','tax_rate_pct','government_take_pct','breakeven_price_usd_bbl','npv_10_musd','irr_pct','payback_period_yr','risked_emv_musd','unrisked_emv_musd','fiscal_regime','psc_vs_concession','price_deck_assumption','discount_rate_pct','infrastructure_access','pipeline_distance_km','nearest_fpso_km','processing_hub_proximity_km','market_access','lng_vs_domestic','gas_monetisation_route','contingent_resources_class','prospective_resources_low','prospective_resources_best','prospective_resources_high'],
     required:['analogue_name','npv_10_musd'],
@@ -7164,21 +7189,21 @@ function ingTab(tab, el) {
 
 function renderIngOverview() {
   const TILES = [
-    {key:'reservoir',  label:'Reservoir Properties',  icon:'⬡', desc:'Petrophysics, pay thickness, drive, HC phase', color:'var(--cyan)'},
-    {key:'geopressure',label:'Geopressure',           icon:'⛏', desc:'Pore pressure, fracture gradient, mud window', color:'var(--amber)'},
-    {key:'geochem',    label:'Geochemistry',          icon:'⚗', desc:'TOC, Ro%, kerogen type, expulsion efficiency', color:'var(--green)'},
-    {key:'mineral',    label:'Mineralogy',            icon:'◈', desc:'XRD modal analysis, clay minerals, cements',  color:'var(--gold)'},
-    {key:'fluid',      label:'Fluid PVT',             icon:'◉', desc:'Oil density, FVF, gas composition, H₂S, CO₂',color:'var(--red)'},
-    {key:'diagenesis', label:'Diagenesis',            icon:'⬢', desc:'Compaction, cementation, dissolution, clay',  color:'var(--brand2)'},
-    {key:'seismic',    label:'Seismic & Structural',  icon:'◈', desc:'Trap type, closure area, amplitude anomaly',  color:'#8B5CF6'},
-    {key:'production', label:'Production & Economics',icon:'◇', desc:'EUR, peak rate, decline, OPEX/CAPEX',        color:'#059669'},
-    {key:'welldata',   label:'Well & Core Data',      icon:'◎', desc:'Well header, core porosity, log averages',   color:'#DC2626'},
-    {key:'isotope',    label:'Isotope & Biomarker',   icon:'◉', desc:'δ¹³C, biomarker ratios, oil correlation',    color:'#7C3AED'},
-    {key:'petrophysics',label:'Petrophysics & Logs',  icon:'◎', desc:'PHIE, Sw, formation evaluation, contacts',   color:'#0891B2'},
-    {key:'geomechanics',label:'Geomechanics',         icon:'◆', desc:'UCS, stress state, fractures, wellbore stability',color:'#B45309'},
-    {key:'thermal',    label:'Thermal & Basin Model', icon:'◈', desc:'Heat flow, maturity, burial history, TTI',   color:'#DC2626'},
-    {key:'environmental',label:'Environmental & HSE', icon:'◇', desc:'H₂S, CO₂, protected areas, spill risk',     color:'#059669'},
-    {key:'commercials', label:'Commercial & Economic',icon:'◎', desc:'NPV, IRR, breakeven, government take, FID',  color:'#6B21A8'},
+    {key:'reservoir',  label:'Reservoir Properties',  icon:'', desc:'Petrophysics, pay thickness, drive, HC phase', color:'var(--cyan)'},
+    {key:'geopressure',label:'Geopressure',           icon:'', desc:'Pore pressure, fracture gradient, mud window', color:'var(--amber)'},
+    {key:'geochem',    label:'Geochemistry',          icon:'', desc:'TOC, Ro%, kerogen type, expulsion efficiency', color:'var(--green)'},
+    {key:'mineral',    label:'Mineralogy',            icon:'', desc:'XRD modal analysis, clay minerals, cements',  color:'var(--gold)'},
+    {key:'fluid',      label:'Fluid PVT',             icon:'', desc:'Oil density, FVF, gas composition, H₂S, CO₂',color:'var(--red)'},
+    {key:'diagenesis', label:'Diagenesis',            icon:'', desc:'Compaction, cementation, dissolution, clay',  color:'var(--brand2)'},
+    {key:'seismic',    label:'Seismic & Structural',  icon:'', desc:'Trap type, closure area, amplitude anomaly',  color:'#8B5CF6'},
+    {key:'production', label:'Production & Economics',icon:'', desc:'EUR, peak rate, decline, OPEX/CAPEX',        color:'#059669'},
+    {key:'welldata',   label:'Well & Core Data',      icon:'', desc:'Well header, core porosity, log averages',   color:'#DC2626'},
+    {key:'isotope',    label:'Isotope & Biomarker',   icon:'', desc:'δ¹³C, biomarker ratios, oil correlation',    color:'#7C3AED'},
+    {key:'petrophysics',label:'Petrophysics & Logs',  icon:'', desc:'PHIE, Sw, formation evaluation, contacts',   color:'#0891B2'},
+    {key:'geomechanics',label:'Geomechanics',         icon:'', desc:'UCS, stress state, fractures, wellbore stability',color:'#B45309'},
+    {key:'thermal',    label:'Thermal & Basin Model', icon:'', desc:'Heat flow, maturity, burial history, TTI',   color:'#DC2626'},
+    {key:'environmental',label:'Environmental & HSE', icon:'', desc:'H₂S, CO₂, protected areas, spill risk',     color:'#059669'},
+    {key:'commercials', label:'Commercial & Economic',icon:'', desc:'NPV, IRR, breakeven, government take, FID',  color:'#6B21A8'},
   ];
   const el = document.getElementById('ing-dataset-tiles');
   if (!el) return;
@@ -7245,7 +7270,7 @@ function addFileRowTyped(key, name, state) {
   el.innerHTML = `
     <span style="font-size:20px;flex-shrink:0">${icons[state]}</span>
     <div style="flex:1;min-width:0">
-      <div style="font-size:11px;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📄 ${name}</div>
+      <div style="font-size:11px;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
       <div style="font-size:9px;color:var(--t3);margin-top:2px">${new Date().toLocaleTimeString()}</div>
     </div>
     <span style="font-size:10px;font-weight:700;color:${colors[state]};flex-shrink:0">${labels[state]}</span>`;
@@ -8629,7 +8654,7 @@ function renderRiskProfile() {
     if (!opAnas.length) { opEl.innerHTML = '<div style="font-size:10px;color:var(--t3);padding:8px 0">No overpressure flags detected</div>'; }
     else opEl.innerHTML = opAnas.map(a=>`
       <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #F0F2F8">
-        <div style="font-size:18px">⚠️</div>
+        <div style="font-size:18px"></div>
         <div style="flex:1">
           <div style="font-size:10px;font-weight:600;color:var(--t1)">${a.name}</div>
           <div style="font-size:9px;color:var(--t3)">${a.basin} · ${a.depth}m</div>
@@ -8653,7 +8678,7 @@ function renderRiskProfile() {
       if (a.geochem?.sulfur_pct>1) flags.push(`Sulfur: ${a.geochem.sulfur_pct}%`);
       if (a.fluid?.co2_pct>5) flags.push(`CO₂: ${a.fluid.co2_pct}%`);
       return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #F0F2F8">
-        <div style="font-size:18px">☣️</div>
+        <div style="font-size:18px"></div>
         <div style="flex:1">
           <div style="font-size:10px;font-weight:600;color:var(--t1)">${a.name}</div>
           <div style="font-size:9px;color:var(--t3)">${a.basin}</div>
@@ -9060,12 +9085,12 @@ function renderExpFormatCards() {
   const el = document.getElementById('export-format-cards');
   if (!el) return;
   const cards = [
-    {fmt:'csv',   icon:'📄', label:'CSV Spreadsheet',  desc:'Flat file; opens in Excel or any GIS tool',         color:'#166534', bg:'#F0FDF4'},
-    {fmt:'json',  icon:'{ }', label:'JSON / GeoJSON',  desc:'Structured data for API integration & mapping',      color:'#1D4ED8', bg:'#EFF6FF'},
-    {fmt:'gis',   icon:'🗺️',  label:'GIS Shapefile',   desc:'ESRI .shp with centroid coordinates; QGIS ready',    color:'#6B21A8', bg:'#FAF5FF'},
-    {fmt:'pdf',   icon:'📋',  label:'Basin Report PDF', desc:'Formatted exploration summary per basin',            color:'#92400E', bg:'#FFFBEB'},
-    {fmt:'excel', icon:'📊',  label:'Excel Workbook',  desc:'Multi-sheet .xlsx with pivot-ready data & charts',   color:'#065F46', bg:'#ECFDF5'},
-    {fmt:'api',   icon:'⚡',  label:'API Endpoint',    desc:'REST URL to stream basin data into your platform',   color:'#9F1239', bg:'#FFF1F2'},
+    {fmt:'csv',   icon:'', label:'CSV Spreadsheet',  desc:'Flat file; opens in Excel or any GIS tool',         color:'#166534', bg:'#F0FDF4'},
+    {fmt:'json',  icon:'', label:'JSON / GeoJSON',  desc:'Structured data for API integration & mapping',      color:'#1D4ED8', bg:'#EFF6FF'},
+    {fmt:'gis',   icon:'',  label:'GIS Shapefile',   desc:'ESRI .shp with centroid coordinates; QGIS ready',    color:'#6B21A8', bg:'#FAF5FF'},
+    {fmt:'pdf',   icon:'',  label:'Basin Report PDF', desc:'Formatted exploration summary per basin',            color:'#92400E', bg:'#FFFBEB'},
+    {fmt:'excel', icon:'',  label:'Excel Workbook',  desc:'Multi-sheet .xlsx with pivot-ready data & charts',   color:'#065F46', bg:'#ECFDF5'},
+    {fmt:'api',   icon:'',  label:'API Endpoint',    desc:'REST URL to stream basin data into your platform',   color:'#9F1239', bg:'#FFF1F2'},
   ];
   el.innerHTML = cards.map(c => `
     <div class="card" style="cursor:pointer;border:1px solid ${c.color}22;transition:box-shadow .2s" onclick="runExport('${c.fmt}')"
