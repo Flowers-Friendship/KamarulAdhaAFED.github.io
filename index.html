@@ -213,6 +213,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
 /* MAP */
 .map-area{height:300px;background:#EEF2FF;border-radius:6px;position:relative;overflow:hidden;cursor:pointer;border:1px solid #E2E8F0}
 .map-area svg{width:100%;height:100%}
+.leaflet-pane svg{width:auto!important;height:auto!important}
 .map-lbl{position:absolute;top:10px;left:10px;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--purple);background:rgba(255,255,255,.9);padding:3px 8px;border-radius:3px;border:1px solid #E2E8F0}
 .map-legend{position:absolute;bottom:10px;right:10px;background:rgba(255,255,255,.95);border:1px solid #E2E8F0;border-radius:6px;padding:7px 11px;font-size:9px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
 .map-legend-item{display:flex;align-items:center;gap:5px;color:var(--t2);margin-bottom:3px}
@@ -388,6 +389,7 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
 </style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="basins_simplified.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
@@ -395,6 +397,15 @@ tr:hover td{background:#F7F8FF;color:var(--t1)}
 <div class="map-area" id="world-map" style="position:relative">
   <div id="leaflet-map" style="width:100%;height:100%;border-radius:8px;z-index:1"></div>
   <div id="map-tt" class="map-tooltip" style="display:none;position:absolute;z-index:9999;pointer-events:none"></div>
+  <button onclick="if(_leafletMap){_leafletMap.closePopup();_leafletMap.flyTo([20,20],2,{duration:0.8})}"
+    title="Reset map view"
+    style="position:absolute;top:10px;right:44px;z-index:1000;
+           background:rgba(26,32,44,.82);color:#fff;
+           border:1px solid rgba(255,255,255,.18);border-radius:5px;
+           padding:4px 10px;font-size:10px;font-weight:600;
+           cursor:pointer;font-family:inherit;letter-spacing:.4px">
+    ⌂ Reset View
+  </button>
 </div>
 <!-- SIDEBAR -->
 <nav class="sb" id="sidebar">
@@ -2607,6 +2618,7 @@ function closeModal() { document.getElementById('modal').classList.remove('open'
 // ============================================================
 let _leafletMap = null;
 let _leafletMarkers = [];
+let _basinLayer = null;   // L.geoJSON layer for basin boundary polygons
 let _portfolioMap = null;
 let _portfolioMarkers = [];
 let _focusedBasin = null;
@@ -2716,6 +2728,7 @@ function setupMap() {
 
   // Init Leaflet map
   if (_leafletMap) { _leafletMap.remove(); _leafletMap = null; }
+  _basinLayer = null; // clear orphaned reference from destroyed map
   _leafletMap = L.map('leaflet-map', {
     center: [20, 20], zoom: 2,
     minZoom: 2, maxZoom: 10,
@@ -2732,6 +2745,58 @@ function setupMap() {
   L.control.attribution({position:'bottomright'}).addTo(_leafletMap).setPrefix('© OpenStreetMap | EDAFY');
 
   renderMapMarkers();
+  loadBasinLayer();
+}
+
+function loadBasinLayer() {
+  if (!_leafletMap || !window._basinsData) return;
+
+  // Remove any previous layer instance (e.g. from prior map reinit)
+  if (_basinLayer) { _leafletMap.removeLayer(_basinLayer); _basinLayer = null; }
+
+  _basinLayer = L.geoJSON(window._basinsData, {
+    style: () => ({
+      color:       '#FF0000',
+      weight:      3,
+      opacity:     1,
+      fillColor:   '#FF0000',
+      fillOpacity: 0.2,
+    }),
+    onEachFeature(feature, layer) {
+      const p = feature.properties;
+      const countries = (p.country_names || '').replace(/~/g, ', ');
+      const area = p.basin_sqkm
+        ? Math.round(p.basin_sqkm).toLocaleString() + ' km²' : '—';
+      layer.bindPopup(
+        `<div style="font-family:Segoe UI,sans-serif;min-width:190px">
+          <div style="font-size:12px;font-weight:700;color:#2D1B69;margin-bottom:6px">${p.basin_name || '—'}</div>
+          <table style="width:100%;font-size:10px;border-collapse:collapse">
+            <tr><td style="color:#8896A5;padding:2px 6px 2px 0">Countries</td><td style="font-weight:600">${countries || '—'}</td></tr>
+            <tr><td style="color:#8896A5;padding:2px 6px 2px 0">Type</td><td style="font-weight:600">${p.basin_type || '—'}</td></tr>
+            <tr><td style="color:#8896A5;padding:2px 6px 2px 0">Area</td><td style="font-weight:600">${area}</td></tr>
+          </table>
+        </div>`,
+        { maxWidth: 250, className: 'edafy-popup', offset: [0, 50], autoPan: false }
+      );
+      layer.on({
+        mouseover(e) {
+          e.target.setStyle({ weight: 5, fillOpacity: 0.45, opacity: 1 });
+          e.target.bringToFront();
+        },
+        mouseout(e) { _basinLayer.resetStyle(e.target); },
+        click(e) {
+          const center = e.target.getBounds().getCenter();
+          e.target.closePopup();
+          _leafletMap.once('moveend', () => e.target.openPopup(center));
+          _leafletMap.flyTo(center, 5, { duration: 0.8 });
+        },
+      });
+    }
+  }).addTo(_leafletMap);
+
+  if (_basinLayer.getBounds().isValid()) {
+    _leafletMap.fitBounds(_basinLayer.getBounds(), { padding: [20, 20] });
+  }
 }
 
 function renderMapMarkers() {
