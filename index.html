@@ -14,92 +14,8 @@
     <script src="basins_simplified.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <style>
-      .sb {
-        position: fixed;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: var(--sb-width);
-        background: var(--sb);
-        display: flex;
-        flex-direction: column;
-        z-index: 200;
-        transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-        overflow: hidden;
-        box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
-      }
-      .sb.collapsed {
-        width: 56px;
-      }
-      .sb-logo {
-        padding: 16px 16px 14px;
-        border-bottom: 1px solid var(--sb-b);
-        flex-shrink: 0;
-        background: rgba(0, 0, 0, 0.15);
-      }
-      .sb-brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 5px;
-      }
-      .sb-brand-icon {
-        width: 30px;
-        height: 30px;
-        flex-shrink: 0;
-      }
-      .sb-brand-texts {
-        overflow: hidden;
-        white-space: nowrap;
-        transition: opacity 0.2s;
-      }
-      .sb.collapsed .sb-brand-texts {
-        opacity: 0;
-        width: 0;
-      }
-      .sb-brand-name {
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 2px;
-        color: rgba(255, 255, 255, 0.9);
-        text-transform: uppercase;
-      }
-      .sb-brand-sub {
-        font-size: 7px;
-        letter-spacing: 1px;
-        color: var(--brand);
-        font-weight: 600;
-        text-transform: uppercase;
-      }
-      .sb-product-wrap {
-        overflow: hidden;
-        white-space: nowrap;
-        transition: opacity 0.2s;
-      }
-      .sb.collapsed .sb-product-wrap {
-        opacity: 0;
-      }
-      .sb-product {
-        font-size: 15px;
-        font-weight: 900;
-        letter-spacing: 2.5px;
-        color: #fff;
-      }
-      .sb-product-sub {
-        font-size: 7px;
-        letter-spacing: 2px;
-        color: rgba(255, 255, 255, 0.45);
-        margin-top: 1px;
-        text-transform: uppercase;
-      }
-    </style>
   </head>
   <body>
-    <!-- <div class="map-area" id="world-map" style="position:relative">
-              <div id="leaflet-map" style="width:100%;height:100%;border-radius:8px;z-index:1"></div>
-              <div id="map-tt" class="map-tooltip" style="display:none;position:absolute;z-index:9999;pointer-events:none"></div>
-            </div> -->
     <div class="map-area" id="world-map" style="position: relative">
       <div
         id="leaflet-map"
@@ -731,12 +647,12 @@
           <span style="color: var(--t4); font-size: 10px">/</span>
           <span
             id="breadcrumb-section"
-            style="font-size: 10px; color: var(--t3); font-weight: 600"
-          ></span>
+            style="font-size: 10px; color: var(--t3); font-weight: 600">
+          </span>
           <span
             id="breadcrumb-sub"
-            style="font-size: 10px; color: var(--t3)"
-          ></span>
+            style="font-size: 10px; color: var(--t3)">
+          </span>
         </div>
         <div class="tb-div"></div>
         <div class="nlp" id="nlp-wrap">
@@ -927,14 +843,12 @@
             </div>
 
             <div class="g21">
-              <div class="card card-tall">
+              <!-- <div class="card card-tall">
                 <div class="ch">
-                  <span class="ct"
-                    >Global Basin Map — Prospectivity Overlay</span
-                  ><span class="ca" onclick="goTo('basins', null)"
-                    >Full Catalogue →</span
-                  >
+                  <span class="ct">Global Basin Map — Prospectivity Overlay</span>
+                  <span class="ca" onclick="goTo('basins', null)">Full Catalogue →</span>
                 </div>
+
                 <div class="cb" style="padding: 0">
                   <div
                     class="map-area"
@@ -948,8 +862,9 @@
                   >
                     <div
                       id="portfolio-leaflet-map"
-                      style="width: 100%; height: 100%; z-index: 1"
-                    ></div>
+                      style="width: 100%; height: 100%; z-index: 1">
+                    </div>
+
                     <div
                       class="map-lbl"
                       style="
@@ -961,6 +876,7 @@
                     >
                       PROSPECTIVITY HEAT MAP — GLOBAL VIEW
                     </div>
+                    
                     <div
                       class="map-legend"
                       style="
@@ -986,9 +902,20 @@
                       </div>
                       <div class="map-legend-item">
                         <div class="ldot" style="background: #c62828"></div>
-                        Low (<40)
+                        <p>Low (<40)</p>
                       </div>
                     </div>
+                  </div>
+                </div>
+              </div> -->
+
+              <div class="card">
+                <div class="ch">
+                  <span class="ct">Resource Distribution P10/P50/P90</span>
+                </div>
+                <div class="cb">
+                  <div class="chart-container">
+                    <canvas id="resource-dist-canvas"></canvas>
                   </div>
                 </div>
               </div>
@@ -1019,12 +946,12 @@
                     >
                   </div>
                 </div>
-                <div class="cb" style="" id="activity-feed"></div>
+                <div class="cb" id="activity-feed"></div>
               </div>
             </div>
 
             <div class="g3">
-              <div class="card">
+              <div class="card colspan-2">
                 <div class="ch">
                   <span class="ct">Top Basins by Prospectivity</span
                   ><span class="ca" onclick="goTo('screening', null)"
@@ -1038,7 +965,7 @@
                 ></div>
               </div>
 
-              <div class="card">
+              <!-- <div class="card">
                 <div class="ch">
                   <span class="ct">Resource Distribution P10/P50/P90</span>
                 </div>
@@ -1047,7 +974,7 @@
                     <canvas id="resource-dist-canvas"></canvas>
                   </div>
                 </div>
-              </div>
+              </div> -->
 
               <div class="card">
                 <div class="ch">
@@ -1314,7 +1241,6 @@
             <div
               class="card"
               style="
-                margin-bottom: 14px;
                 border: 1px solid rgba(124, 58, 237, 0.18);
               "
             >
@@ -6294,6 +6220,7 @@
                     gap: 7px;
                     align-items: center;
                     flex-wrap: wrap;
+                    margin-top: 12px;
                   "
                 >
                   <button class="btn" onclick="runSearch()" id="search-btn">
@@ -7143,7 +7070,7 @@
                 <!-- Full-width tab bar — all tabs always visible -->
                 <div
                   id="dtab-bar"
-                  style="overflow-x: auto; white-space: nowrap"
+                  style="white-space: nowrap"
                 >
                   <div
                     class="dtab on"
@@ -7203,7 +7130,7 @@
                 <div
                   style="
                     padding: 16px 18px;
-                    max-height: 480px;
+                    max-height: none;
                     overflow-y: auto;
                   "
                   id="ana-detail-body"
@@ -7925,6 +7852,7 @@
             <div class="card">
               <div class="ch">
                 <span class="ct">Global Parameter Benchmarks</span>
+
                 <div style="display: flex; gap: 6px">
                   <select
                     class="fc"
@@ -7937,8 +7865,10 @@
                     <option value="rf">Recovery Factor</option>
                     <option value="ntg">NTG</option>
                     <option value="depth">Depth</option>
-                    <option value="api">API Gravity</option></select
-                  ><select
+                    <option value="api">API Gravity</option>
+                  </select>
+
+                  <select
                     class="fc"
                     id="bm-group"
                     style="width: 140px; padding: 6px"
@@ -7951,6 +7881,7 @@
                   </select>
                 </div>
               </div>
+
               <div class="cb">
                 <canvas id="bm-canvas" height="300"></canvas>
               </div>
@@ -8005,7 +7936,7 @@
                   >See where your analogue sits in the global distribution</span
                 >
               </div>
-              <div class="cb" id="bm-pct-body">
+              <div class="" id="bm-pct-body">
                 <div
                   style="
                     text-align: center;
@@ -10386,7 +10317,7 @@
                       style="font-size: 9px; padding: 3px 8px"
                       onclick="saveEconScenario()"
                     >
-                      💾 Save Scenario
+                      Save Scenario
                     </button>
                   </div>
                 </div>
@@ -11189,7 +11120,7 @@
                   "
                 >
                   Run DCF first, then save scenarios using the
-                  <b>💾 Save Scenario</b> button in the DCF tab. Scenarios will
+                  <b>Save Scenario</b> button in the DCF tab. Scenarios will
                   appear here for side-by-side comparison.
                 </div>
               </div>
@@ -11249,7 +11180,6 @@
                 color: var(--t2);
               "
             >
-              <span style="font-size: 16px">🛢️</span>
               <div>
                 <b>Spot prices:</b> Live via Yahoo Finance (BZ=F · CL=F · TTF=F
                 · NG=F) — fetched directly from Yahoo's v8 API using your
@@ -11962,7 +11892,7 @@
                 <div class="ch">
                   <span class="ct">Fiscal Regime Benchmarks</span>
                 </div>
-                <div class="cb" id="econ-fiscal-body" style="max-height: none">
+                <div class="" id="econ-fiscal-body" style="max-height: none">
                   <div id="econ-fiscal-list"></div>
                 </div>
               </div>
@@ -12292,7 +12222,7 @@
                     </button>
                   </div>
                 </div>
-                <div class="cb" id="portopt-alloc-body">
+                <div class="" id="portopt-alloc-body">
                   <div
                     style="text-align: center; padding: 28px; color: var(--t3)"
                   >
@@ -12362,7 +12292,7 @@
                   </select>
                 </div>
               </div>
-              <div class="cb" style="overflow-x: auto">
+              <div class="" style="overflow-x: auto">
                 <table
                   style="
                     width: 100%;
@@ -12645,16 +12575,16 @@
 
           <div class="tabs" id="sens-tabs">
             <div class="tab on" onclick="switchSensTab('tornado', this)">
-              🌪 Tornado
+              Tornado
             </div>
             <div class="tab" onclick="switchSensTab('spider', this)">
-              🕸 Spider Plot
+              Spider Plot
             </div>
             <div class="tab" onclick="switchSensTab('npv', this)">
-              📈 NPV vs Price
+              NPV vs Price
             </div>
             <div class="tab" onclick="switchSensTab('scenario', this)">
-              📋 Scenario Table
+              Scenario Table
             </div>
           </div>
 
@@ -12918,54 +12848,24 @@
         <!-- ==================== INGESTION ==================== -->
         <section class="sec" id="sec-ingestion">
           <div class="tabs" style="flex-wrap: wrap">
-            <div class="tab on" onclick="ingTab('overview', this)">
-              Overview
-            </div>
-            <div
-              class="tab"
-              onclick="ingTab('unified', this)"
-              style="
-                background: rgba(13, 76, 146, 0.07);
-                color: var(--purple);
-                border-bottom: 2px solid var(--purple);
-              "
-            >
-              Unified Upload
-            </div>
+            <div class="tab on" onclick="ingTab('overview', this)">Overview</div>
+            <div class="tab" onclick="ingTab('unified', this)">Unified Upload</div>
             <div class="tab" onclick="ingTab('reservoir', this)">Reservoir</div>
-            <div class="tab" onclick="ingTab('geopressure', this)">
-              Geopressure
-            </div>
-            <div class="tab" onclick="ingTab('geochem', this)">
-              Geochemistry
-            </div>
+            <div class="tab" onclick="ingTab('geopressure', this)">Geopressure</div>
+            <div class="tab" onclick="ingTab('geochem', this)">Geochemistry</div>
             <div class="tab" onclick="ingTab('mineral', this)">Mineralogy</div>
             <div class="tab" onclick="ingTab('fluid', this)">Fluid PVT</div>
-            <div class="tab" onclick="ingTab('diagenesis', this)">
-              Diagenesis
-            </div>
+            <div class="tab" onclick="ingTab('diagenesis', this)">Diagenesis</div>
             <div class="tab" onclick="ingTab('seismic', this)">Seismic</div>
-            <div class="tab" onclick="ingTab('production', this)">
-              Production
-            </div>
+            <div class="tab" onclick="ingTab('production', this)">Production</div>
             <div class="tab" onclick="ingTab('welldata', this)">Well Data</div>
             <div class="tab" onclick="ingTab('isotope', this)">Isotope</div>
-            <div class="tab" onclick="ingTab('petrophysics', this)">
-              Petrophysics
-            </div>
-            <div class="tab" onclick="ingTab('geomechanics', this)">
-              Geomechanics
-            </div>
+            <div class="tab" onclick="ingTab('petrophysics', this)">Petrophysics</div>
+            <div class="tab" onclick="ingTab('geomechanics', this)">Geomechanics</div>
             <div class="tab" onclick="ingTab('thermal', this)">Thermal</div>
-            <div class="tab" onclick="ingTab('environmental', this)">
-              Environmental
-            </div>
-            <div class="tab" onclick="ingTab('commercials', this)">
-              Commercial
-            </div>
-            <div class="tab" onclick="ingTab('connectors', this)">
-              Connectors
-            </div>
+            <div class="tab" onclick="ingTab('environmental', this)">Environmental</div>
+            <div class="tab" onclick="ingTab('commercials', this)">Commercial</div>
+            <div class="tab" onclick="ingTab('connectors', this)">Connectors</div>
             <div class="tab" onclick="ingTab('dedup', this)">Dedup Queue</div>
           </div>
 
@@ -13567,18 +13467,6 @@
             </div>
             <div class="tab" onclick="switchGovTab('files', this)">
               Ingested Files
-              <span
-                id="gov-files-badge"
-                style="
-                  background: var(--brand);
-                  color: #fff;
-                  border-radius: 10px;
-                  padding: 1px 6px;
-                  font-size: 8px;
-                  margin-left: 4px;
-                "
-                >0</span
-              >
             </div>
             <div class="tab" onclick="switchGovTab('audit', this)">
               Audit Log
@@ -13784,142 +13672,148 @@
           <div
             style="
               display: flex;
-              align-items: center;
+              justify-content: space-between;
               gap: 10px;
               margin-bottom: 14px;
               position: relative;
             "
-          >
-            <div
-              style="
-                width: 36px;
-                height: 36px;
-                border-radius: 10px;
-                background: linear-gradient(135deg, #0d4c92, #2b7acc);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 18px;
-                box-shadow: 0 4px 12px rgba(13, 76, 146, 0.3);
-              "
-            >
-              🕸
-            </div>
-            <div>
+          >         
+            <div style="
+              display: flex;
+              align-items: center;
+              gap: 10px;
+            ">
               <div
                 style="
-                  font-size: 15px;
-                  font-weight: 800;
-                  color: var(--t1);
-                  letter-spacing: -0.2px;
+                  width: 36px;
+                  height: 36px;
+                  border-radius: 10px;
+                  background: linear-gradient(135deg, #3a4ced, #5588f7);
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-size: 18px;
                 "
-              >
-                Petroleum System Knowledge Graph
-              </div>
-              <div style="font-size: 10px; color: var(--t3)">
-                Interactive causal network · drag nodes · live risk propagation
-                · flow animation · 41 nodes · 57 edges
+              ></div>
+              <div style="display:flex; flex-direction: column;">
+                <div
+                  style="
+                    font-size: 15px;
+                    font-weight: 800;
+                    color: var(--t1);
+                    letter-spacing: -0.2px;
+                  "
+                >
+                  Petroleum System Knowledge Graph
+                </div>
+                <div style="font-size: 10px; color: var(--t3)">
+                  Interactive causal network · drag nodes · live risk propagation
+                  · flow animation · 41 nodes · 57 edges
+                </div>
               </div>
             </div>
-            <!-- Basin Context Selector -->
-            <div
-              style="
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                margin-left: 16px;
-              "
-            >
-              <select
-                id="pse-basin-select"
-                class="fc"
-                style="
-                  font-size: 10px;
-                  padding: 5px 10px;
-                  min-width: 220px;
-                  background: var(--bg2);
-                  border: 1px solid var(--b2);
-                  color: var(--t1);
-                  border-radius: 6px;
-                  font-weight: 600;
-                "
-                onchange="pse_loadBasin(this.value)"
-              >
-                <option value="">— Select Basin —</option>
-              </select>
-            </div>
-            <div
-              style="
-                margin-left: auto;
-                display: flex;
-                gap: 8px;
-                flex-wrap: wrap;
-                align-items: center;
-              "
-            >
-              <!-- ── Interactive Propagate Risk Button ── -->
-              <button
-                id="pse-prop-btn"
-                onclick="pse_openPropPanel()"
+
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <!-- Basin Context Selector -->
+              <div
                 style="
                   display: flex;
                   align-items: center;
-                  gap: 7px;
-                  padding: 7px 14px;
-                  border-radius: 8px;
-                  border: 1.5px solid #f59e0b;
-                  background: linear-gradient(
-                    135deg,
-                    rgba(245, 158, 11, 0.12),
-                    rgba(234, 88, 12, 0.08)
-                  );
-                  color: #f59e0b;
-                  font-size: 10px;
-                  font-weight: 700;
-                  letter-spacing: 0.8px;
-                  cursor: pointer;
-                  position: relative;
-                  overflow: hidden;
-                  transition: all 0.2s;
-                  font-family: inherit;
-                "
-                onmouseenter="
-                  this.style.background =
-                    'linear-gradient(135deg,rgba(245,158,11,.22),rgba(234,88,12,.16))';
-                  this.style.boxShadow = '0 0 18px rgba(245,158,11,.35)';
-                "
-                onmouseleave="
-                  this.style.background =
-                    'linear-gradient(135deg,rgba(245,158,11,.12),rgba(234,88,12,.08))';
-                  this.style.boxShadow = 'none';
+                  gap: 6px;
+                  margin-left: 16px;
                 "
               >
-                <span
-                  id="pse-prop-icon"
-                  style="font-size: 14px; transition: transform 0.3s"
-                ></span>
-                <span id="pse-prop-label">PROPAGATE RISK</span>
-                <span
-                  id="pse-prop-badge"
+                <select
+                  id="pse-basin-select"
+                  class="fc"
                   style="
-                    display: none;
-                    background: #f59e0b;
-                    color: #000;
-                    font-size: 7px;
-                    font-weight: 800;
-                    padding: 1px 5px;
-                    border-radius: 10px;
-                    letter-spacing: 0.5px;
+                    font-size: 10px;
+                    padding: 5px 10px;
+                    min-width: 220px;
+                    background: var(--bg2);
+                    border: 1px solid var(--b2);
+                    color: var(--t1);
+                    border-radius: 6px;
+                    font-weight: 600;
                   "
-                  >LIVE</span
+                  onchange="pse_loadBasin(this.value)"
                 >
-              </button>
-              <button class="btn2" onclick="pse_flowSim()">Flow Sim</button>
-              <button class="btn" onclick="pse_autoLayout()">
-                Auto Layout
-              </button>
-              <button class="btn" onclick="pse_openAdd()">Node</button>
-              <button class="btn" onclick="pse_exportJSON()">Export</button>
+                  <option value="">— Select Basin —</option>
+                </select>
+              </div>
+              <div
+                style="
+                  margin-left: auto;
+                  display: flex;
+                  gap: 8px;
+                  flex-wrap: wrap;
+                  align-items: center;
+                "
+              >
+                <!-- ── Interactive Propagate Risk Button ── -->
+                <button
+                  id="pse-prop-btn"
+                  onclick="pse_openPropPanel()"
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 7px;
+                    padding: 7px 14px;
+                    border-radius: 8px;
+                    border: 1.5px solid #f59e0b;
+                    background: linear-gradient(
+                      135deg,
+                      rgba(245, 158, 11, 0.12),
+                      rgba(234, 88, 12, 0.08)
+                    );
+                    color: #f59e0b;
+                    font-size: 10px;
+                    font-weight: 700;
+                    letter-spacing: 0.8px;
+                    cursor: pointer;
+                    position: relative;
+                    overflow: hidden;
+                    transition: all 0.2s;
+                    font-family: inherit;
+                  "
+                  onmouseenter="
+                    this.style.background =
+                      'linear-gradient(135deg,rgba(245,158,11,.22),rgba(234,88,12,.16))';
+                    this.style.boxShadow = '0 0 18px rgba(245,158,11,.35)';
+                  "
+                  onmouseleave="
+                    this.style.background =
+                      'linear-gradient(135deg,rgba(245,158,11,.12),rgba(234,88,12,.08))';
+                    this.style.boxShadow = 'none';
+                  "
+                >
+                  <span
+                    id="pse-prop-icon"
+                    style="font-size: 14px; transition: transform 0.3s"
+                  ></span>
+                  <span id="pse-prop-label">PROPAGATE RISK</span>
+                  <span
+                    id="pse-prop-badge"
+                    style="
+                      display: none;
+                      background: #f59e0b;
+                      color: #000;
+                      font-size: 7px;
+                      font-weight: 800;
+                      padding: 1px 5px;
+                      border-radius: 10px;
+                      letter-spacing: 0.5px;
+                    "
+                    >LIVE</span
+                  >
+                </button>
+                <button class="btn2" onclick="pse_flowSim()">Flow Sim</button>
+                <button class="btn" onclick="pse_autoLayout()">
+                  Auto Layout
+                </button>
+                <button class="btn" onclick="pse_openAdd()">Node</button>
+                <button class="btn" onclick="pse_exportJSON()">Export</button>
+              </div>
             </div>
 
             <!-- ── Propagate Risk Panel (dropdown) ── -->
@@ -16573,7 +16467,7 @@
             </div>
             <div class="card">
               <div class="ch"><div class="ct">Evidence Log</div></div>
-              <div class="cb">
+              <div class="">
                 <table>
                   <thead>
                     <tr>
@@ -16918,7 +16812,7 @@
                 Top Analogue Matches — Ranked by Embedding Similarity
               </div>
             </div>
-            <div class="cb" style="max-height: 380px">
+            <div class="" style="max-height: 380px">
               <table>
                 <thead>
                   <tr>
@@ -19032,6 +18926,7 @@
         ingestion: "Data Ingestion",
         governance: "Governance & Audit",
         aiconfig: "AI Configuration",
+        petrosystem: "Petrosystem"
       };
 
       const PAGE_NAMES = {
@@ -19052,6 +18947,7 @@
         ingestion: "Data Ingestion",
         governance: "Governance",
         aiconfig: "AI Configuration",
+        petrosystem: "Petrosystem"
       };
 
       function goTo(id, navEl) {
@@ -19065,8 +18961,21 @@
         const pageName = PAGE_NAMES[id] || id;
         document.title = pageName + " — EDAFY";
         const bc = document.getElementById("breadcrumb-section");
-        if (bc) bc.textContent = pageName;
-        document.getElementById("breadcrumb-sub").textContent = "";
+
+        // After the section is activated
+        document.getElementById("sec-" + id).classList.add("on");
+
+        // 🔥 Find tabs inside the active section
+        const activeSection = document.getElementById("sec-" + id);
+        const tabsContainer = activeSection.querySelector(".tabs");
+
+      if (tabsContainer) {
+        const firstTab = tabsContainer.querySelector(".tab");
+
+        if (firstTab && bc) {
+          bc.textContent = firstTab.textContent.trim();
+        }
+      }
         // Update URL hash for multi-page feel
         if (history.pushState) history.pushState(null, null, "#" + id);
         document.getElementById("sec-" + id).classList.add("on");
@@ -19076,6 +18985,7 @@
         if (id === "basins") setTimeout(setupMap, 100);
         if (id === "risk") setTimeout(initProspectDropdown, 50);
         if (id === "ranking") setTimeout(renderRankMatrix, 100);
+        if (id === "benchmark") setTimeout(renderBenchmarks, 100);
         if (navEl) navEl.classList.add("on");
         else {
           document.querySelectorAll(".nav").forEach((n) => {
@@ -19234,19 +19144,25 @@
       // PARAMS TABS
       // ============================================================
       function switchParamsTab(tab, el) {
-        document.getElementById("params-dist-panel").style.display =
-          tab === "dist" ? "block" : "none";
-        document.getElementById("params-store-panel").style.display =
-          tab === "store" ? "block" : "none";
+        ["dist", "store"].forEach((t) => {
+          const p = document.getElementById("params-" + t + "-panel");
+          if (p) p.style.display = t === tab ? "block" : "none";
+        });
+
         if (el) {
-          el.closest(".tabs")
+          el.parentElement
             .querySelectorAll(".tab")
             .forEach((t) => t.classList.remove("on"));
           el.classList.add("on");
         }
-        if (tab === "dist") {
-          renderDists();
-        }
+
+        // Optional: update breadcrumb if you have one
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) bc.textContent = el?.textContent.trim() || "";
+
+        // Call tab-specific functions
+        if (tab === "dist") renderDists();
+        // Add more tabs later if needed
       }
 
       // ============================================================
@@ -19257,12 +19173,21 @@
           const p = document.getElementById("screen-" + t + "-panel");
           if (p) p.style.display = t === tab ? "block" : "none";
         });
+
         if (el) {
           el.closest(".tabs")
             .querySelectorAll(".tab")
             .forEach((t) => t.classList.remove("on"));
+
           el.classList.add("on");
+
+          // ✅ Update breadcrumb
+          const bc = document.getElementById("breadcrumb-section");
+          if (bc) {
+            bc.textContent = el.textContent.trim();
+          }
         }
+
         if (tab === "leaderboard") renderLeaderboard();
         if (tab === "profiles") populateBasinProfileSelect();
       }
@@ -19270,20 +19195,34 @@
       // ============================================================
       // ANALOGUE TABS — with inactive state management
       // ============================================================
-      let _searchHasRun = false; // set to true after first successful search
+      let _searchHasRun = false; // becomes true after first successful search
 
       function anaTabGuard(tab, el) {
+
         if (!_searchHasRun) {
           toast(
             "Run an Analogue Search first to unlock Comparison Table and Similarity Analysis",
-            "warning",
+            "warning"
           );
-          // briefly flash the tab as inactive
-          el.style.opacity = "0.4";
-          setTimeout(() => (el.style.opacity = ""), 600);
+
+          if (el) {
+            el.style.opacity = "0.4";
+            setTimeout(() => {
+              el.style.opacity = "";
+            }, 600);
+          }
+
           return;
         }
+
+        // allow tab switch
         switchAnalogueTab(tab, el);
+
+        // update breadcrumb
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc && el) {
+          bc.textContent = el.textContent.trim();
+        }
       }
 
       function switchAnalogueTab(tab, el) {
@@ -19991,7 +19930,7 @@
           .sort((a, b) => b.score - a.score)
           .slice(0, 5);
         document.getElementById("top-basins-table").innerHTML = `
-    <table><thead><tr><th>#</th><th>Basin</th><th>Region</th><th colspan="2">Score</th><th>Status</th></tr></thead>
+    <table><thead><tr><th>#</th><th>Basin</th><th>Region</th><th>Score</th><th>Status</th></tr></thead>
     <tbody>${sorted
       .map((b, i) => {
         const c =
@@ -20006,8 +19945,18 @@
         <td style="color:${i === 0 ? "var(--gold)" : "var(--t3)"};font-weight:700">${i + 1}</td>
         <td style="color:var(--t1);font-weight:600">${b.name}</td>
         <td>${b.region}</td>
-        <td><div class="sbar"><div class="sbar-track"><div class="sbar-fill" style="width:${b.score}%;background:${c}"></div></div><span class="sval" style="color:${c}">${b.score}</span></div></td>
-        <td><span class="tl ${tl}">${tlText}</span></td>
+        <td>
+          <div class="sbar" style="width:100%">
+            <div class="sbar-track">
+              <div class="sbar-fill" style="width:${b.score}%;background:${c}">
+              </div>
+            </div>
+            <span class="sval" style="color:${c}">${b.score}</span>
+          </div>
+        </td>
+        <td>
+          <span class="tl ${tl}">${tlText}</span>
+        </td>
       </tr>`;
       })
       .join("")}</tbody></table>`;
@@ -20511,17 +20460,17 @@
             const hcBadge =
               b.hc === "Oil" ? "bg" : b.hc === "Gas" ? "be" : "bc";
             return `<tr style="cursor:pointer" onclick="focusBasinOnMap('${b.name}')">
-      <td style="color:var(--t1);font-weight:600">${b.name}</td>
-      <td>${b.country}</td>
-      <td>${b.tectonic}</td>
-      <td>${b.age}</td>
-      <td><span class="badge ${hcBadge}">${b.hc}</span></td>
-      <td>${b.area.toLocaleString()}</td>
-      <td>${b.plays}</td>
-      <td><div class="sbar"><div class="sbar-track"><div class="sbar-fill" style="width:${b.score}%;background:${c}"></div></div><span class="sval" style="color:${c}">${b.score}</span></div></td>
-      <td><span class="tl ${tl}">${tlText}</span></td>
-      <td><button class="btn-view" onclick="showBasinDetail('${b.name}')">Details</button></td>
-    </tr>`;
+              <td style="color:var(--t1);font-weight:600">${b.name}</td>
+              <td>${b.country}</td>
+              <td>${b.tectonic}</td>
+              <td>${b.age}</td>
+              <td><span class="badge ${hcBadge}">${b.hc}</span></td>
+              <td>${b.area.toLocaleString()}</td>
+              <td>${b.plays}</td>
+              <td><div class="sbar"><div class="sbar-track"><div class="sbar-fill" style="width:${b.score}%;background:${c}"></div></div><span class="sval" style="color:${c}">${b.score}</span></div></td>
+              <td><span class="tl ${tl}">${tlText}</span></td>
+              <td><button class="btn-view" onclick="showBasinDetail('${b.name}')">Details</button></td>
+            </tr>`;
           })
           .join("");
       }
@@ -23131,29 +23080,31 @@
                 fuzzyBadges = `<div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:4px">${badges.join("")}</div>`;
             }
 
-            return `<div class="ana-hcard" id="ana-${a.rank}" onclick="selectAnalogue(${a.rank})">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-        <div style="font-size:9px;font-weight:700;color:var(--t3)">#${a.rank}</div>
-        <div style="text-align:right">
-          <div style="font-size:16px;font-weight:700;color:${c};line-height:1">${a.sim}%</div>
-          <div style="font-size:7px;color:var(--t3);letter-spacing:.5px">${_fuzzyEnabled ? "FUZZY" : "MATCH"}</div>
-        </div>
-      </div>
-      <div style="font-size:10px;font-weight:700;color:var(--t1);line-height:1.3;margin-bottom:4px">${a.name.replace(" — ", '<br><span style="color:var(--t3);font-weight:400">').replace(/$/, "</span>")}</div>
-      <div style="font-size:9px;color:var(--t3);margin-bottom:7px">${a.age} · ${a.depth}m</div>
-      ${fuzzyBadges}
-      ${a._basinCtx && a._basinCtx.basinRank ? `<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px"><span style="background:${a._basinCtx.bonus > 0 ? "rgba(0,135,90,.08)" : a._basinCtx.bonus < 0 ? "rgba(220,38,38,.08)" : "rgba(100,116,139,.06)"};color:${a._basinCtx.bonus > 0 ? "var(--green)" : a._basinCtx.bonus < 0 ? "var(--red)" : "var(--t3)"};font-size:7px;padding:1px 5px;border-radius:3px" title="Basin #${a._basinCtx.basinRank} (composite ${a._basinCtx.basinComposite}) → ${a._basinCtx.bonus > 0 ? "+" : a._basinCtx.bonus < 0 ? "" : "+"}${a._basinCtx.bonus} pts">🔗 Basin #${a._basinCtx.basinRank} ${a._basinCtx.bonus > 0 ? "↑" + a._basinCtx.bonus : a._basinCtx.bonus < 0 ? "↓" + Math.abs(a._basinCtx.bonus) : ""}</span></div>` : ""}
-      <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">
-        <span style="background:rgba(0,200,255,.1);color:var(--cyan);font-size:8px;padding:1px 5px;border-radius:3px">φ ${a.por}%</span>
-        <span style="background:rgba(240,165,0,.1);color:var(--gold);font-size:8px;padding:1px 5px;border-radius:3px">k ${a.perm}</span>
-        <span style="background:rgba(0,229,160,.1);color:var(--green);font-size:8px;padding:1px 5px;border-radius:3px">RF ${a.rf}%</span>
-      </div>
-      ${geoFlag || chemFlag ? `<div style="font-size:9px;color:var(--amber)">${geoFlag ? "⚠ Overpressure " : ""}${chemFlag ? "☣ High S" : ""}</div>` : ""}
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding-top:5px;border-top:1px solid rgba(0,200,255,.06)">
-        <span style="font-size:8px;color:var(--t3)">${a.hc}</span>
-        <input type="checkbox" style="accent-color:var(--cyan);width:11px;height:11px" onclick="event.stopPropagation();toggleCompare(${a.rank},event)" title="Compare">
-      </div>
-    </div>`;
+            return `
+              <div class="ana-hcard" id="ana-${a.rank}" onclick="selectAnalogue(${a.rank})">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+                  <div style="font-size:9px;font-weight:700;color:var(--t3)">#${a.rank}</div>
+                  <div style="text-align:right">
+                    <div style="font-size:16px;font-weight:700;color:${c};line-height:1">${a.sim}%</div>
+                    <div style="font-size:7px;color:var(--t3);letter-spacing:.5px">${_fuzzyEnabled ? "FUZZY" : "MATCH"}</div>
+                  </div>
+                </div>
+                <div style="font-size:10px;font-weight:700;color:var(--t1);line-height:1.3;margin-bottom:4px">${a.name.replace(" — ", '<br><span style="color:var(--t3);font-weight:400">').replace(/$/, "</span>")}</div>
+                <div style="font-size:9px;color:var(--t3);margin-bottom:7px">${a.age} · ${a.depth}m</div>
+                ${fuzzyBadges}
+                ${a._basinCtx && a._basinCtx.basinRank ? `<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px"><span style="background:${a._basinCtx.bonus > 0 ? "rgba(0,135,90,.08)" : a._basinCtx.bonus < 0 ? "rgba(220,38,38,.08)" : "rgba(100,116,139,.06)"};color:${a._basinCtx.bonus > 0 ? "var(--green)" : a._basinCtx.bonus < 0 ? "var(--red)" : "var(--t3)"};font-size:7px;padding:1px 5px;border-radius:3px" title="Basin #${a._basinCtx.basinRank} (composite ${a._basinCtx.basinComposite}) → ${a._basinCtx.bonus > 0 ? "+" : a._basinCtx.bonus < 0 ? "" : "+"}${a._basinCtx.bonus} pts">🔗 Basin #${a._basinCtx.basinRank} ${a._basinCtx.bonus > 0 ? "↑" + a._basinCtx.bonus : a._basinCtx.bonus < 0 ? "↓" + Math.abs(a._basinCtx.bonus) : ""}</span></div>` : ""}
+                <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">
+                  <span style="background:rgba(0,200,255,.1);color:var(--cyan);font-size:8px;padding:1px 5px;border-radius:3px">φ ${a.por}%</span>
+                  <span style="background:rgba(240,165,0,.1);color:var(--gold);font-size:8px;padding:1px 5px;border-radius:3px">k ${a.perm}</span>
+                  <span style="background:rgba(0,229,160,.1);color:var(--green);font-size:8px;padding:1px 5px;border-radius:3px">RF ${a.rf}%</span>
+                </div>
+                ${geoFlag || chemFlag ? `<div style="font-size:9px;color:var(--amber)">${geoFlag ? "⚠ Overpressure " : ""}${chemFlag ? "☣ High S" : ""}</div>` : ""}
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding-top:5px;border-top:1px solid rgba(0,200,255,.06)">
+                  <span style="font-size:8px;color:var(--t3)">${a.hc}</span>
+                  <input type="checkbox" style="accent-color:var(--cyan);width:11px;height:11px" onclick="event.stopPropagation();toggleCompare(${a.rank},event)" title="Compare">
+                </div>
+              </div>
+            `;
           })
           .join("");
 
@@ -29936,13 +29887,22 @@
       }
 
       function ingTab(tab, el) {
+        // Allow passing a selector string
         if (typeof el === "string") el = document.querySelector(el);
+
+        // Highlight active tab
         if (el && el.closest) {
           el.closest(".tabs")
             ?.querySelectorAll(".tab")
             .forEach((t) => t.classList.remove("on"));
           el.classList?.add("on");
         }
+
+        // ✅ Update breadcrumb
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) bc.textContent = el?.textContent.trim() || "";
+
+        // All panels
         const all = [
           "overview",
           "unified",
@@ -29968,10 +29928,11 @@
           const p = document.getElementById("ing-" + t + "-panel");
           if (p) p.style.display = t === tab ? "block" : "none";
         });
-        // Render overview tiles on first open
+
+        // Tab-specific render / init logic
         if (tab === "overview") renderIngOverview();
-        // Init unified panel on first open
         if (tab === "unified") renderUnifiedSchema();
+
         // Lazily inject per-type panel HTML
         const typedTabs = [
           "reservoir",
@@ -29997,6 +29958,7 @@
             p.dataset.rendered = "1";
           }
         }
+
         if (tab === "connectors") renderConnectorCards();
         if (tab === "dedup") renderDedupQueue();
       }
@@ -33288,10 +33250,19 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
           const p = document.getElementById("pt-" + t + "-panel");
           if (p) p.style.display = t === tab ? "block" : "none";
         });
+
         el.closest(".tabs")
           .querySelectorAll(".tab")
           .forEach((t) => t.classList.remove("on"));
+
         el.classList.add("on");
+
+        // ✅ Update breadcrumb
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) {
+          bc.textContent = el.textContent.trim();
+        }
+
         if (tab === "resource") renderResourceSummary();
         if (tab === "risk") renderRiskProfile();
       }
@@ -34138,10 +34109,17 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
           const p = document.getElementById("basin-" + t + "-panel");
           if (p) p.style.display = t === tab ? "block" : "none";
         });
+
         el.closest(".tabs")
           .querySelectorAll(".tab")
           .forEach((t) => t.classList.remove("on"));
+
         el.classList.add("on");
+
+        // ✅ Update breadcrumb
+        document.getElementById("breadcrumb-section").textContent =
+          el.textContent.trim();
+
         if (tab === "strat") initStratTab();
         if (tab === "export") initExportTab();
       }
@@ -35531,10 +35509,18 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
           const p = document.getElementById(`sens-${t}-panel`);
           if (p) p.style.display = t === tab ? "block" : "none";
         });
+
+        // Highlight active tab
         document
           .querySelectorAll("#sens-tabs .tab")
           .forEach((t) => t.classList.remove("on"));
         if (el) el.classList.add("on");
+
+        // ✅ Update breadcrumb
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) bc.textContent = el?.textContent.trim() || "";
+
+        // Tab-specific functions
         if (tab === "tornado") {
           buildSensParamTable();
           renderTornado();
@@ -37136,25 +37122,24 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
       // GOVERNANCE
       // ============================================================
       function switchGovTab(tab, el) {
+        // Highlight active tab
         document
           .querySelectorAll("#gov-tabs .tab")
           .forEach((t) => t.classList.remove("on"));
         if (el) el.classList.add("on");
-        // Hide all governance panels
-        [
-          "gov-pipeline-panel",
-          "gov-files-panel",
-          "gov-audit-panel",
-          "gov-roles-panel",
-        ].forEach((id) => {
-          const p = document.getElementById(id);
-          if (p) p.style.display = "none";
+
+        // ✅ Update breadcrumb (default to "Pipeline" if el is not provided)
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) bc.textContent = el?.textContent.trim() || "Pipeline";
+
+        // All governance panels
+        const panels = ["pipeline", "files", "audit", "roles"];
+        panels.forEach((t) => {
+          const p = document.getElementById(`gov-${t}-panel`);
+          if (p) p.style.display = t === tab ? "block" : "none";
         });
-        // Show selected panel
-        const panelId = "gov-" + tab + "-panel";
-        const panel = document.getElementById(panelId);
-        if (panel) panel.style.display = "";
-        // Init panel data
+
+        // Tab-specific functions
         if (tab === "files") renderGovFilesPanel();
         if (tab === "audit") renderAuditLog(AUDIT_ENTRIES);
         if (tab === "pipeline") {
@@ -38619,10 +38604,22 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
           const p = document.getElementById("vol-" + t + "-panel");
           if (p) p.style.display = t === tab ? "block" : "none";
         });
-        el.parentElement
-          .querySelectorAll(".tab")
-          .forEach((t) => t.classList.remove("on"));
-        el.classList.add("on");
+
+        // Highlight active tab
+        if (el) {
+          el.parentElement
+            .querySelectorAll(".tab")
+            .forEach((t) => t.classList.remove("on"));
+          el.classList.add("on");
+        }
+
+        // ✅ Update breadcrumb
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) bc.textContent = el?.textContent.trim() || "";
+
+        // Optional: call tab-specific functions
+        if (tab === "mc") initVolInputs();
+        if (tab === "results") renderVolFormula();
       }
 
       function initVolInputs() {
@@ -39550,10 +39547,20 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
           const p = document.getElementById("econ-" + t + "-panel");
           if (p) p.style.display = t === tab ? "block" : "none";
         });
-        el.parentElement
-          .querySelectorAll(".tab")
-          .forEach((t) => t.classList.remove("on"));
-        el.classList.add("on");
+
+        // Highlight active tab
+        if (el) {
+          el.parentElement
+            .querySelectorAll(".tab")
+            .forEach((t) => t.classList.remove("on"));
+          el.classList.add("on");
+        }
+
+        // ✅ Update breadcrumb
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) bc.textContent = el?.textContent.trim() || "";
+
+        // Tab-specific functions
         if (tab === "sensitivity" && econLastResult) {
           drawEconTornado();
           drawEconNPVvsPrice();
@@ -41716,10 +41723,20 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
           const p = document.getElementById("tc-" + t + "-panel");
           if (p) p.style.display = t === tab ? "block" : "none";
         });
-        el.parentElement
-          .querySelectorAll(".tab")
-          .forEach((t) => t.classList.remove("on"));
-        el.classList.add("on");
+
+        // Highlight active tab
+        if (el) {
+          el.parentElement
+            .querySelectorAll(".tab")
+            .forEach((t) => t.classList.remove("on"));
+          el.classList.add("on");
+        }
+
+        // ✅ Update breadcrumb
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) bc.textContent = el?.textContent.trim() || "";
+
+        // Call tab-specific functions
         if (tab === "overlay") renderTCOverlay();
         if (tab === "forecast") renderTCForecast();
       }
@@ -41915,10 +41932,20 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
           const p = document.getElementById("bm-" + t + "-panel");
           if (p) p.style.display = t === tab ? "block" : "none";
         });
+
         el.parentElement
           .querySelectorAll(".tab")
           .forEach((t) => t.classList.remove("on"));
+
         el.classList.add("on");
+
+        // ✅ Update breadcrumb
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) {
+          bc.textContent = el.textContent.trim();
+        }
+
+        if (tab === "global") renderBenchmarks();
         if (tab === "basin") initBasinBMDropdowns();
         if (tab === "percentile") renderPercentileAnalysis();
       }
@@ -41934,10 +41961,10 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
             ? (arr.reduce((s, v) => s + v, 0) / arr.length).toFixed(1)
             : "—";
         document.getElementById("bm-kpis").innerHTML = `
-    <div class="kpi e" style="text-align:center"><div class="kpi-lbl">Avg Porosity</div><div class="kpi-val" style="color:var(--cyan)">${avg(allPor)}%</div><div class="kpi-sub">${allPor.length} samples</div></div>
-    <div class="kpi g" style="text-align:center"><div class="kpi-lbl">Avg Permeability</div><div class="kpi-val" style="color:var(--gold)">${avg(allPerm)}</div><div class="kpi-sub">mD</div></div>
-    <div class="kpi c" style="text-align:center"><div class="kpi-lbl">Avg Recovery</div><div class="kpi-val" style="color:var(--green)">${avg(allRF)}%</div><div class="kpi-sub">${allRF.length} fields</div></div>
-    <div class="kpi r" style="text-align:center"><div class="kpi-lbl">Avg API</div><div class="kpi-val" style="color:var(--purple)">${avg(allAPI)}°</div><div class="kpi-sub">${allAPI.length} samples</div></div>`;
+          <div class="kpi e" style="text-align:center"><div class="kpi-lbl">Avg Porosity</div><div class="kpi-val" style="color:var(--cyan)">${avg(allPor)}%</div><div class="kpi-sub">${allPor.length} samples</div></div>
+          <div class="kpi g" style="text-align:center"><div class="kpi-lbl">Avg Permeability</div><div class="kpi-val" style="color:var(--gold)">${avg(allPerm)}</div><div class="kpi-sub">mD</div></div>
+          <div class="kpi c" style="text-align:center"><div class="kpi-lbl">Avg Recovery</div><div class="kpi-val" style="color:var(--green)">${avg(allRF)}%</div><div class="kpi-sub">${allRF.length} fields</div></div>
+          <div class="kpi r" style="text-align:center"><div class="kpi-lbl">Avg API</div><div class="kpi-val" style="color:var(--purple)">${avg(allAPI)}°</div><div class="kpi-sub">${allAPI.length} samples</div></div>`;
         // Chart
         const param = document.getElementById("bm-param")?.value || "por";
         const groupBy = document.getElementById("bm-group")?.value || "dep";
@@ -42118,10 +42145,19 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
           const p = document.getElementById("rank-" + t + "-panel");
           if (p) p.style.display = t === tab ? "block" : "none";
         });
+
         el.parentElement
           .querySelectorAll(".tab")
           .forEach((t) => t.classList.remove("on"));
+
         el.classList.add("on");
+
+        // ✅ Update breadcrumb
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) {
+          bc.textContent = el.textContent.trim();
+        }
+
         if (tab === "matrix") renderRankMatrix();
         if (tab === "bubble") renderRankBubble();
         if (tab === "shortlist") renderRankShortlist();
@@ -43208,10 +43244,19 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
           const p = document.getElementById("pf-" + t + "-panel");
           if (p) p.style.display = t === tab ? "block" : "none";
         });
+
         el.parentElement
           .querySelectorAll(".tab")
           .forEach((t) => t.classList.remove("on"));
+
         el.classList.add("on");
+
+        // ✅ Update breadcrumb
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) {
+          bc.textContent = el.textContent.trim();
+        }
+
         if (tab === "crs") renderCRS();
         if (tab === "leads") renderLeadInventory();
       }
@@ -51832,11 +51877,18 @@ Kutei Basin — Tunu Field,Kutei Basin,580,348,40,62,2400,9.4,35,1480,28,22,PSC,
           const p = document.getElementById(`portopt-${t}-panel`);
           if (p) p.style.display = t === tab ? "block" : "none";
         });
+
+        // Highlight active tab
         document
           .querySelectorAll("#portopt-tabs .tab")
           .forEach((t) => t.classList.remove("on"));
         if (el) el.classList.add("on");
 
+        // ✅ Update breadcrumb
+        const bc = document.getElementById("breadcrumb-section");
+        if (bc) bc.textContent = el?.textContent.trim() || "";
+
+        // Tab-specific functions
         if (tab === "frontier") renderEfficientFrontier();
         if (tab === "allocation") renderAllocationTab();
         if (tab === "projects") renderProjectUniverse();
