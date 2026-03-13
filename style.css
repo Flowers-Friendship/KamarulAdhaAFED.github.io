@@ -3105,7 +3105,7 @@ color: rgba(255, 255, 255, 0.25);
 .aiqb-btn:hover{
      background:rgba(124,58,237,.22);
      border-color:rgba(124,58,237,.7);
-     color:#fff
+     color:rgba(124,58,237,.7);
 }
 
 .aiqb-inp{
