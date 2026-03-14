@@ -48,18 +48,22 @@ margin: 0;
 
 /* ── SIDEBAR ── */
 .sb {
-position: fixed;
-left: 0;
-top: 0;
-bottom: 0;
-width: var(--sb-width);
-background: var(--sb);
-display: flex;
-flex-direction: column;
-z-index: 200;
-transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-overflow: hidden;
-box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--sb-width);
+  background: var(--sb);
+  display: flex;
+  flex-direction: column;
+  z-index: 200;
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* FIXED: Change 'hidden' to 'visible' so dropdowns can stick out */
+  overflow-x: visible; 
+  overflow-y: clip; /* Keeps the vertical edges clean while allowing horizontal breakout */
+  
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
 }
 .sb.collapsed {
 width: 56px;
@@ -91,14 +95,14 @@ opacity: 0;
 width: 0;
 }
 .sb-brand-name {
-font-size: 10px;
+font-size: 14px;
 font-weight: 700;
 letter-spacing: 2px;
 color: rgba(255, 255, 255, 0.9);
 text-transform: uppercase;
 }
 .sb-brand-sub {
-font-size: 7px;
+font-size: 10px;
 letter-spacing: 1px;
 color: var(--brand);
 font-weight: 600;
@@ -119,11 +123,24 @@ letter-spacing: 2.5px;
 color: #fff;
 }
 .sb-product-sub {
-font-size: 7px;
+font-size: 10px;
 letter-spacing: 2px;
 color: rgba(255, 255, 255, 0.45);
 margin-top: 1px;
 text-transform: uppercase;
+}
+
+.sb.collapsed .sb-logo {
+  /* Reduce side padding from 16px to 13px (56 - 13 - 13 = 30px exact) */
+  /* Or even better, use 12px to give it 1px of wiggle room */
+     padding-left: 13px;
+     padding-right: 13px;
+}
+
+/* Ensure the brand container centers the icon when the text is gone */
+.sb.collapsed .sb-brand {
+     gap: 10px;
+     justify-content: start;
 }
 
 .sb-toggle-btn {
@@ -227,10 +244,34 @@ background: rgba(255, 255, 255, 0.08);
 color: #fff;
 border-left-color: rgba(255, 255, 255, 0.3);
 }
-.nav.on {
+/* .nav.on {
 background: rgba(123, 95, 224, 0.3);
 color: #fff;
 border-left-color: var(--purple2);
+} */
+
+/* Style for the child items when they are active */
+.nav.on {
+     background-color: rgba(59, 42, 99, 0.5);
+     color: white !important;
+     position: relative;
+}
+
+/* The purple vertical bar on the left for the active child */
+.nav.on::before {
+     content: "";
+     position: absolute;
+     left: 0;
+     top: 20%;
+     height: 60%;
+     width: 3px;
+     background-color: #6366f1; /* Indigo-500 */
+     border-radius: 0 4px 4px 0;
+}
+
+/* Optional: Make the parent icon glow when active */
+.nav-group-parent.on svg {
+    filter: drop-shadow(0 0 3px rgba(165, 180, 252, 0.5));
 }
 .nav svg {
 width: 10px;
@@ -306,7 +347,7 @@ flex-shrink: 0;
 }
 .sb-btm {
 margin-top: auto;
-padding: 14px 16px;
+padding: 12px;
 border-top: 1px solid var(--sb-b);
 flex-shrink: 0;
 overflow: hidden;
