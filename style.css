@@ -590,8 +590,8 @@ max-height: 55vh;
 overflow-y: auto;
 }
 
-#rank-matrix-panel{
-max-height: 55vh;
+#sec-ranking{
+max-height: 60vh;
 overflow-y: auto;
 }
 
@@ -1133,6 +1133,10 @@ border-radius: 10px;
 font-size: 9px;
 font-weight: 700;
 letter-spacing: 0.5px;
+}
+.tl-c {
+background: #bae6fd;
+color: #0369a1;
 }
 .tl-g {
 background: #dcfce7;
