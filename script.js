@@ -2,1569 +2,1582 @@
       // ============================================================
       // DATA
       // ============================================================
-     const BASINS = [
-          {
-               name: "Zagros Fold Belt",
-               osduId: "osdu:master-data--GeoPoliticalEntity:ZagrosFoldBelt:1",
-               country: "Iran / Iraq",
-               region: "Middle East",
-               tectonic: "Fold Belt",
-               age: "Cambrian–Miocene",
-               hc: "Oil",
-               area: 234500,
-               plays: 18,
-               score: 92,
-               status: "Mature",
-          },
-          {
-               name: "Permian Basin",
-               osduId: "osdu:master-data--GeoPoliticalEntity:PermianBasin:1",
-               country: "USA",
-               region: "North America",
-               tectonic: "Intracratonic",
-               age: "Permian",
-               hc: "Oil",
-               area: 180000,
-               plays: 22,
-               score: 88,
-               status: "Mature",
-          },
-          {
-               name: "North Sea",
-               osduId: "osdu:master-data--GeoPoliticalEntity:NorthSea:1",
-               country: "UK / Norway",
-               region: "Europe",
-               tectonic: "Rift Basin",
-               age: "Triassic–Paleocene",
-               hc: "Oil & Gas",
-               area: 750000,
-               plays: 24,
-               score: 81,
-               status: "Mature",
-          },
-          {
-               name: "Kutei Basin",
-               osduId: "osdu:master-data--GeoPoliticalEntity:KuteiBasin:1",
-               country: "Indonesia",
-               region: "Southeast Asia",
-               tectonic: "Foreland",
-               age: "Eocene–Miocene",
-               hc: "Gas",
-               area: 165000,
-               plays: 12,
-               score: 74,
-               status: "Active",
-          },
-          {
-               name: "Nile Delta",
-               osduId: "osdu:master-data--GeoPoliticalEntity:NileDelta:1",
-               country: "Egypt",
-               region: "North Africa",
-               tectonic: "Passive Margin",
-               age: "Oligocene–Recent",
-               hc: "Gas",
-               area: 89000,
-               plays: 8,
-               score: 68,
-               status: "Active",
-          },
-          {
-               name: "Murzuq Basin",
-               osduId: "osdu:master-data--GeoPoliticalEntity:MurzuqBasin:1",
-               country: "Libya",
-               region: "North Africa",
-               tectonic: "Intracratonic",
-               age: "Silurian–Devonian",
-               hc: "Oil",
-               area: 320000,
-               plays: 5,
-               score: 42,
-               status: "Active",
-          },
-          {
-               name: "Sergipe-Alagoas",
-               osduId: "osdu:master-data--GeoPoliticalEntity:SergipeAlagoas:1",
-               country: "Brazil",
-               region: "South America",
-               tectonic: "Passive Margin",
-               age: "Cretaceous–Recent",
-               hc: "Oil & Gas",
-               area: 42000,
-               plays: 9,
-               score: 35,
-               status: "Frontier",
-          },
-          {
-               name: "Malay Basin",
-               osduId: "osdu:master-data--GeoPoliticalEntity:MalayBasin:1",
-               country: "Malaysia",
-               region: "Southeast Asia",
-               tectonic: "Rift Basin",
-               age: "Eocene–Miocene",
-               hc: "Gas",
-               area: 85000,
-               plays: 10,
-               score: 77,
-               status: "Mature",
-          },
-          {
-               name: "Niger Delta",
-               osduId: "osdu:master-data--GeoPoliticalEntity:NigerDelta:1",
-               country: "Nigeria",
-               region: "West Africa",
-               tectonic: "Passive Margin",
-               age: "Eocene–Recent",
-               hc: "Oil & Gas",
-               area: 300000,
-               plays: 20,
-               score: 72,
-               status: "Mature",
-          },
-          {
-               name: "South Caspian",
-               osduId: "osdu:master-data--GeoPoliticalEntity:SouthCaspian:1",
-               country: "Azerbaijan",
-               region: "Middle East",
-               tectonic: "Foreland",
-               age: "Oligocene–Miocene",
-               hc: "Oil & Gas",
-               area: 70000,
-               plays: 8,
-               score: 80,
-               status: "Active",
-          },
-          {
-               name: "Barents Sea",
-               osduId: "osdu:master-data--GeoPoliticalEntity:BarentsSea:1",
-               country: "Norway",
-               region: "Europe",
-               tectonic: "Passive Margin",
-               age: "Triassic–Cretaceous",
-               hc: "Gas",
-               area: 1100000,
-               plays: 15,
-               score: 58,
-               status: "Frontier",
-          },
-          {
-               name: "Browse Basin",
-               osduId: "osdu:master-data--GeoPoliticalEntity:BrowseBasin:1",
-               country: "Australia",
-               region: "Australasia",
-               tectonic: "Passive Margin",
-               age: "Jurassic–Cretaceous",
-               hc: "Gas",
-               area: 140000,
-               plays: 7,
-               score: 63,
-               status: "Active",
-          },
-          {
-               name: "East Greenland",
-               osduId: "osdu:master-data--GeoPoliticalEntity:EastGreenland:1",
-               country: "Greenland",
-               region: "Arctic",
-               tectonic: "Rift Basin",
-               age: "Jurassic–Cretaceous",
-               hc: "Oil",
-               area: 95000,
-               plays: 3,
-               score: 28,
-               status: "Frontier",
-          },
-          {
-               name: "Tarim Basin",
-               osduId: "osdu:master-data--GeoPoliticalEntity:TarimBasin:1",
-               country: "China",
-               region: "Asia",
-               tectonic: "Intracratonic",
-               age: "Cambrian–Triassic",
-               hc: "Oil & Gas",
-               area: 560000,
-               plays: 16,
-               score: 65,
-               status: "Active",
-          },
-          {
-               name: "Neuquén Basin",
-               osduId: "osdu:master-data--GeoPoliticalEntity:NeuquenBasin:1",
-               country: "Argentina",
-               region: "South America",
-               tectonic: "Foreland",
-               age: "Triassic–Cretaceous",
-               hc: "Oil & Gas",
-               area: 120000,
-               plays: 11,
-               score: 70,
-               status: "Active",
-          },
-     ];
+      const BASINS = [
+            {
+                name: "Zagros Fold Belt",
+                osduId: "osdu:master-data--GeoPoliticalEntity:ZagrosFoldBelt:1",
+                country: "Iran / Iraq",
+                region: "Middle East",
+                tectonic: "Fold Belt",
+                age: "Cambrian–Miocene",
+                hc: "Oil",
+                area: 234500,
+                plays: 18,
+                score: 92,
+                status: "Mature",
+            },
+            {
+                name: "Permian Basin",
+                osduId: "osdu:master-data--GeoPoliticalEntity:PermianBasin:1",
+                country: "USA",
+                region: "North America",
+                tectonic: "Intracratonic",
+                age: "Permian",
+                hc: "Oil",
+                area: 180000,
+                plays: 22,
+                score: 88,
+                status: "Mature",
+            },
+            {
+                name: "North Sea",
+                osduId: "osdu:master-data--GeoPoliticalEntity:NorthSea:1",
+                country: "UK / Norway",
+                region: "Europe",
+                tectonic: "Rift Basin",
+                age: "Triassic–Paleocene",
+                hc: "Oil & Gas",
+                area: 750000,
+                plays: 24,
+                score: 81,
+                status: "Mature",
+            },
+            {
+                name: "Kutei Basin",
+                osduId: "osdu:master-data--GeoPoliticalEntity:KuteiBasin:1",
+                country: "Indonesia",
+                region: "Southeast Asia",
+                tectonic: "Foreland",
+                age: "Eocene–Miocene",
+                hc: "Gas",
+                area: 165000,
+                plays: 12,
+                score: 74,
+                status: "Active",
+            },
+            {
+                name: "Nile Delta",
+                osduId: "osdu:master-data--GeoPoliticalEntity:NileDelta:1",
+                country: "Egypt",
+                region: "North Africa",
+                tectonic: "Passive Margin",
+                age: "Oligocene–Recent",
+                hc: "Gas",
+                area: 89000,
+                plays: 8,
+                score: 68,
+                status: "Active",
+            },
+            {
+                name: "Murzuq Basin",
+                osduId: "osdu:master-data--GeoPoliticalEntity:MurzuqBasin:1",
+                country: "Libya",
+                region: "North Africa",
+                tectonic: "Intracratonic",
+                age: "Silurian–Devonian",
+                hc: "Oil",
+                area: 320000,
+                plays: 5,
+                score: 42,
+                status: "Active",
+            },
+            {
+                name: "Sergipe-Alagoas",
+                osduId: "osdu:master-data--GeoPoliticalEntity:SergipeAlagoas:1",
+                country: "Brazil",
+                region: "South America",
+                tectonic: "Passive Margin",
+                age: "Cretaceous–Recent",
+                hc: "Oil & Gas",
+                area: 42000,
+                plays: 9,
+                score: 35,
+                status: "Frontier",
+            },
+            {
+                name: "Malay Basin",
+                osduId: "osdu:master-data--GeoPoliticalEntity:MalayBasin:1",
+                country: "Malaysia",
+                region: "Southeast Asia",
+                tectonic: "Rift Basin",
+                age: "Eocene–Miocene",
+                hc: "Gas",
+                area: 85000,
+                plays: 10,
+                score: 77,
+                status: "Mature",
+            },
+            {
+                name: "Niger Delta",
+                osduId: "osdu:master-data--GeoPoliticalEntity:NigerDelta:1",
+                country: "Nigeria",
+                region: "West Africa",
+                tectonic: "Passive Margin",
+                age: "Eocene–Recent",
+                hc: "Oil & Gas",
+                area: 300000,
+                plays: 20,
+                score: 72,
+                status: "Mature",
+            },
+            {
+                name: "South Caspian",
+                osduId: "osdu:master-data--GeoPoliticalEntity:SouthCaspian:1",
+                country: "Azerbaijan",
+                region: "Middle East",
+                tectonic: "Foreland",
+                age: "Oligocene–Miocene",
+                hc: "Oil & Gas",
+                area: 70000,
+                plays: 8,
+                score: 80,
+                status: "Active",
+            },
+            {
+                name: "Barents Sea",
+                osduId: "osdu:master-data--GeoPoliticalEntity:BarentsSea:1",
+                country: "Norway",
+                region: "Europe",
+                tectonic: "Passive Margin",
+                age: "Triassic–Cretaceous",
+                hc: "Gas",
+                area: 1100000,
+                plays: 15,
+                score: 58,
+                status: "Frontier",
+            },
+            {
+                name: "Browse Basin",
+                osduId: "osdu:master-data--GeoPoliticalEntity:BrowseBasin:1",
+                country: "Australia",
+                region: "Australasia",
+                tectonic: "Passive Margin",
+                age: "Jurassic–Cretaceous",
+                hc: "Gas",
+                area: 140000,
+                plays: 7,
+                score: 63,
+                status: "Active",
+            },
+            {
+                name: "East Greenland",
+                osduId: "osdu:master-data--GeoPoliticalEntity:EastGreenland:1",
+                country: "Greenland",
+                region: "Arctic",
+                tectonic: "Rift Basin",
+                age: "Jurassic–Cretaceous",
+                hc: "Oil",
+                area: 95000,
+                plays: 3,
+                score: 28,
+                status: "Frontier",
+            },
+            {
+                name: "Tarim Basin",
+                osduId: "osdu:master-data--GeoPoliticalEntity:TarimBasin:1",
+                country: "China",
+                region: "Asia",
+                tectonic: "Intracratonic",
+                age: "Cambrian–Triassic",
+                hc: "Oil & Gas",
+                area: 560000,
+                plays: 16,
+                score: 65,
+                status: "Active",
+            },
+            {
+                name: "Neuquén Basin",
+                osduId: "osdu:master-data--GeoPoliticalEntity:NeuquenBasin:1",
+                country: "Argentina",
+                region: "South America",
+                tectonic: "Foreland",
+                age: "Triassic–Cretaceous",
+                hc: "Oil & Gas",
+                area: 120000,
+                plays: 11,
+                score: 70,
+                status: "Active",
+            },
+      ];
 
-     const ANALOGUES = [
-          {
-               rank: 1,
-               name: "Malay Basin — Arang Fm.",
-               basin: "Malay Basin",
-               age: "Miocene",
-               lith: "Sandstone",
-               dep: "Deltaic",
-               depth: 2800,
-               hc: "Oil",
-               drive: "Water Drive",
-               por: 24.2,
-               perm: 412,
-               rf: 38,
-               ntg: 68,
-               gor: 520,
-               api: 34,
-               sim: 93,
-               // Reservoir properties
-               temp: 98,
-               pres_res: 285,
-               sw: 0.22,
-               bo: 1.28,
-               visc: 1.8,
-               gross_pay: 42,
-               net_pay: 29,
-               // Geopressure
-               geo: {
-               pres_grad: 0.465,
-               obstr_grad: 1.02,
-               frac_grad: 0.75,
-               ppg: 8.95,
-               ecd: 9.1,
-               overpressure: "Slight",
-               overpressure_mech: "Compaction disequilibrium",
-               pressure_regime: "Slightly overpressured",
-               mudweight_min: 9.0,
-               mudweight_max: 10.5,
-               pressure_coeff: 1.02,
-               },
-               // Geochemistry — source rock
-               geochem: {
-               toc: 2.8,
-               ro_vitrinite: 0.62,
-               hindex: 380,
-               oindex: 42,
-               tmax: 432,
-               kerogen_type: "Type II",
-               source_fm: "Brown Shale Fm.",
-               expulsion_eff: 62,
-               charge_volume: "High",
-               migration_dist: 18,
-               oil_family: "Waxy",
-               sulfur_pct: 0.18,
-               c15_plus: 72,
-               api_pred: 33,
-               },
-               // Mineralogy
-               mineral: {
-               quartz: 62,
-               feldspar: 14,
-               rock_fragments: 8,
-               kaolinite: 7,
-               illite: 4,
-               smectite: 2,
-               chlorite: 1,
-               calcite_cement: 2,
-               dolomite: 0,
-               pyrite: 0.5,
-               siderite: 0,
-               mica: 0.5,
-               clay_total: 14,
-               cement_type: "Silica + Kaolinite",
-               },
-               // Diagenesis
-               diagenesis: {
-               compaction: "Moderate",
-               cementation: "Low–Moderate",
-               dissolution: "Present (feldspar leaching)",
-               burial_grade: "Early–Middle burial",
-               qovergrowths: "Minor",
-               chlorite_coat: "Absent",
-               kaolinite_pore: "Present",
-               authigenic_clay: "Kaolinite dominant",
-               grain_coating: "Partial",
-               fluid_inclusion_th: 88,
-               },
-               // Fluid properties
-               fluid: {
-               oil_density: 0.855,
-               gas_sg: 0.72,
-               brine_sal: 22400,
-               h2s_ppm: 12,
-               co2_pct: 3.2,
-               n2_pct: 1.1,
-               c1_pct: 38,
-               c2_pct: 8,
-               c3_pct: 5,
-               wor: 0.4,
-               gfr: 520,
-               pb: 185,
-               rs: 85,
-               fvf_oil: 1.28,
-               z_factor: 0.88,
-               },
-          },
-          {
-               rank: 2,
-               name: "Kutei Basin — Tunu Field",
-               basin: "Kutei Basin",
-               age: "Miocene",
-               lith: "Sandstone",
-               dep: "Fluvio-Deltaic",
-               depth: 3100,
-               hc: "Gas",
-               drive: "Solution Gas",
-               por: 22.8,
-               perm: 285,
-               rf: 35,
-               ntg: 62,
-               gor: 8400,
-               api: 36,
-               sim: 87,
-               temp: 112,
-               pres_res: 318,
-               sw: 0.28,
-               bo: 1.22,
-               visc: 0.9,
-               gross_pay: 88,
-               net_pay: 55,
-               geo: {
-               pres_grad: 0.478,
-               obstr_grad: 1.05,
-               frac_grad: 0.78,
-               ppg: 9.18,
-               ecd: 9.4,
-               overpressure: "Moderate",
-               overpressure_mech: "Hydrocarbon generation",
-               pressure_regime: "Moderately overpressured",
-               mudweight_min: 9.3,
-               mudweight_max: 11.0,
-               pressure_coeff: 1.08,
-               },
-               geochem: {
-               toc: 3.2,
-               ro_vitrinite: 0.74,
-               hindex: 290,
-               oindex: 28,
-               tmax: 445,
-               kerogen_type: "Type II/III",
-               source_fm: "Pamaluan Shale",
-               expulsion_eff: 55,
-               charge_volume: "Very High",
-               migration_dist: 8,
-               oil_family: "Paraffinic",
-               sulfur_pct: 0.08,
-               c15_plus: 48,
-               api_pred: 36,
-               },
-               mineral: {
-               quartz: 58,
-               feldspar: 18,
-               rock_fragments: 10,
-               kaolinite: 5,
-               illite: 5,
-               smectite: 1,
-               chlorite: 2,
-               calcite_cement: 1,
-               dolomite: 0,
-               pyrite: 0.3,
-               siderite: 0.2,
-               mica: 0.5,
-               clay_total: 13,
-               cement_type: "Silica",
-               },
-               diagenesis: {
-               compaction: "Moderate–High",
-               cementation: "Low",
-               dissolution: "Extensive (feldspar)",
-               burial_grade: "Middle burial",
-               qovergrowths: "Present",
-               chlorite_coat: "Partial",
-               kaolinite_pore: "Absent",
-               authigenic_clay: "Illite + Chlorite",
-               grain_coating: "Moderate",
-               fluid_inclusion_th: 102,
-               },
-               fluid: {
-               oil_density: 0.842,
-               gas_sg: 0.68,
-               brine_sal: 18600,
-               h2s_ppm: 5,
-               co2_pct: 1.8,
-               n2_pct: 2.2,
-               c1_pct: 88,
-               c2_pct: 5,
-               c3_pct: 2,
-               wor: 0.1,
-               gfr: 8400,
-               pb: 220,
-               rs: 42,
-               fvf_oil: 1.22,
-               z_factor: 0.92,
-               },
-          },
-          {
-               rank: 3,
-               name: "Borneo — Miri Formation",
-               basin: "Borneo Basin",
-               age: "Eocene",
-               lith: "Sandstone",
-               dep: "Shallow Marine",
-               depth: 3400,
-               hc: "Oil",
-               drive: "Water Drive",
-               por: 19.5,
-               perm: 195,
-               rf: 31,
-               ntg: 55,
-               gor: 480,
-               api: 30,
-               sim: 79,
-               temp: 118,
-               pres_res: 348,
-               sw: 0.3,
-               bo: 1.19,
-               visc: 3.1,
-               gross_pay: 56,
-               net_pay: 31,
-               geo: {
-               pres_grad: 0.452,
-               obstr_grad: 1.01,
-               frac_grad: 0.72,
-               ppg: 8.68,
-               ecd: 9.0,
-               overpressure: "Normal",
-               overpressure_mech: "None",
-               pressure_regime: "Normally pressured",
-               mudweight_min: 8.6,
-               mudweight_max: 9.5,
-               pressure_coeff: 0.98,
-               },
-               geochem: {
-               toc: 1.9,
-               ro_vitrinite: 0.88,
-               hindex: 195,
-               oindex: 55,
-               tmax: 458,
-               kerogen_type: "Type II/III",
-               source_fm: "Eocene Lacustrine Shale",
-               expulsion_eff: 48,
-               charge_volume: "Moderate",
-               migration_dist: 32,
-               oil_family: "Biodegraded waxy",
-               sulfur_pct: 0.44,
-               c15_plus: 80,
-               api_pred: 29,
-               },
-               mineral: {
-               quartz: 55,
-               feldspar: 12,
-               rock_fragments: 14,
-               kaolinite: 9,
-               illite: 3,
-               smectite: 3,
-               chlorite: 2,
-               calcite_cement: 4,
-               dolomite: 1,
-               pyrite: 0.8,
-               siderite: 0.2,
-               mica: 1.0,
-               clay_total: 17,
-               cement_type: "Calcite + Kaolinite",
-               },
-               diagenesis: {
-               compaction: "High",
-               cementation: "Moderate",
-               dissolution: "Minor",
-               burial_grade: "Deep burial",
-               qovergrowths: "Moderate",
-               chlorite_coat: "Absent",
-               kaolinite_pore: "Present",
-               authigenic_clay: "Kaolinite dominant",
-               grain_coating: "Minor",
-               fluid_inclusion_th: 115,
-               },
-               fluid: {
-               oil_density: 0.878,
-               gas_sg: 0.75,
-               brine_sal: 28900,
-               h2s_ppm: 35,
-               co2_pct: 4.8,
-               n2_pct: 0.8,
-               c1_pct: 28,
-               c2_pct: 6,
-               c3_pct: 4,
-               wor: 1.2,
-               gfr: 480,
-               pb: 142,
-               rs: 72,
-               fvf_oil: 1.19,
-               z_factor: 0.86,
-               },
-          },
-          {
-               rank: 4,
-               name: "Niger Delta — Agbada Fm.",
-               basin: "Niger Delta",
-               age: "Miocene",
-               lith: "Sandstone",
-               dep: "Deltaic",
-               depth: 3200,
-               hc: "Oil & Gas",
-               drive: "Solution Gas",
-               por: 21.3,
-               perm: 310,
-               rf: 34,
-               ntg: 60,
-               gor: 680,
-               api: 33,
-               sim: 74,
-               temp: 108,
-               pres_res: 326,
-               sw: 0.25,
-               bo: 1.25,
-               visc: 2.2,
-               gross_pay: 72,
-               net_pay: 43,
-               geo: {
-               pres_grad: 0.489,
-               obstr_grad: 1.08,
-               frac_grad: 0.8,
-               ppg: 9.4,
-               ecd: 9.7,
-               overpressure: "High",
-               overpressure_mech: "Compaction disequilibrium + gas generation",
-               pressure_regime: "Overpressured",
-               mudweight_min: 9.5,
-               mudweight_max: 12.0,
-               pressure_coeff: 1.15,
-               },
-               geochem: {
-               toc: 3.8,
-               ro_vitrinite: 0.68,
-               hindex: 420,
-               oindex: 35,
-               tmax: 438,
-               kerogen_type: "Type II",
-               source_fm: "Akata Shale",
-               expulsion_eff: 70,
-               charge_volume: "Very High",
-               migration_dist: 12,
-               oil_family: "Paraffinic-naphthenic",
-               sulfur_pct: 0.22,
-               c15_plus: 65,
-               api_pred: 34,
-               },
-               mineral: {
-               quartz: 60,
-               feldspar: 15,
-               rock_fragments: 9,
-               kaolinite: 6,
-               illite: 5,
-               smectite: 2,
-               chlorite: 1,
-               calcite_cement: 2,
-               dolomite: 0,
-               pyrite: 0.4,
-               siderite: 0.1,
-               mica: 0.5,
-               clay_total: 14,
-               cement_type: "Silica + Minor Calcite",
-               },
-               diagenesis: {
-               compaction: "Moderate",
-               cementation: "Low",
-               dissolution: "Present (feldspars + carbonates)",
-               burial_grade: "Early–Middle burial",
-               qovergrowths: "Minor",
-               chlorite_coat: "Local",
-               kaolinite_pore: "Present",
-               authigenic_clay: "Kaolinite + Illite",
-               grain_coating: "Partial",
-               fluid_inclusion_th: 95,
-               },
-               fluid: {
-               oil_density: 0.862,
-               gas_sg: 0.7,
-               brine_sal: 24500,
-               h2s_ppm: 8,
-               co2_pct: 2.5,
-               n2_pct: 1.5,
-               c1_pct: 52,
-               c2_pct: 9,
-               c3_pct: 6,
-               wor: 0.6,
-               gfr: 680,
-               pb: 198,
-               rs: 92,
-               fvf_oil: 1.25,
-               z_factor: 0.9,
-               },
-          },
-          {
-               rank: 5,
-               name: "Nile Delta — Biogenic Play",
-               basin: "Nile Delta",
-               age: "Pliocene",
-               lith: "Sandstone",
-               dep: "Fluvio-Deltaic",
-               depth: 2200,
-               hc: "Gas",
-               drive: "Water Drive",
-               por: 28.1,
-               perm: 580,
-               rf: 42,
-               ntg: 75,
-               gor: 12000,
-               api: 38,
-               sim: 68,
-               temp: 82,
-               pres_res: 218,
-               sw: 0.18,
-               bo: 1.12,
-               visc: 0.6,
-               gross_pay: 120,
-               net_pay: 90,
-               geo: {
-               pres_grad: 0.442,
-               obstr_grad: 0.98,
-               frac_grad: 0.7,
-               ppg: 8.5,
-               ecd: 8.7,
-               overpressure: "Normal",
-               overpressure_mech: "None",
-               pressure_regime: "Normally pressured",
-               mudweight_min: 8.4,
-               mudweight_max: 9.2,
-               pressure_coeff: 0.95,
-               },
-               geochem: {
-               toc: 1.2,
-               ro_vitrinite: 0.38,
-               hindex: 520,
-               oindex: 20,
-               tmax: 418,
-               kerogen_type: "Type II (biogenic gas)",
-               source_fm: "Biogenic (in-situ)",
-               expulsion_eff: 90,
-               charge_volume: "High",
-               migration_dist: 2,
-               oil_family: "Biogenic gas",
-               sulfur_pct: 0.02,
-               c15_plus: 15,
-               api_pred: 40,
-               },
-               mineral: {
-               quartz: 72,
-               feldspar: 8,
-               rock_fragments: 5,
-               kaolinite: 4,
-               illite: 3,
-               smectite: 4,
-               chlorite: 1,
-               calcite_cement: 1,
-               dolomite: 0,
-               pyrite: 0.2,
-               siderite: 0,
-               mica: 0.3,
-               clay_total: 12,
-               cement_type: "Minor Silica",
-               },
-               diagenesis: {
-               compaction: "Low",
-               cementation: "Very Low",
-               dissolution: "Negligible",
-               burial_grade: "Shallow burial",
-               qovergrowths: "Absent",
-               chlorite_coat: "Absent",
-               kaolinite_pore: "Minor",
-               authigenic_clay: "Smectite",
-               grain_coating: "Absent",
-               fluid_inclusion_th: 62,
-               },
-               fluid: {
-               oil_density: 0.832,
-               gas_sg: 0.62,
-               brine_sal: 15200,
-               h2s_ppm: 0,
-               co2_pct: 0.8,
-               n2_pct: 0.5,
-               c1_pct: 97,
-               c2_pct: 1,
-               c3_pct: 0.5,
-               wor: 0.05,
-               gfr: 12000,
-               pb: 95,
-               rs: 28,
-               fvf_oil: 1.12,
-               z_factor: 0.95,
-               },
-          },
-          {
-               rank: 6,
-               name: "Gulf of Mexico — Wilcox",
-               basin: "Gulf of Mexico",
-               age: "Eocene",
-               lith: "Sandstone",
-               dep: "Deep Marine",
-               depth: 4800,
-               hc: "Oil",
-               drive: "Water Drive",
-               por: 17.2,
-               perm: 88,
-               rf: 28,
-               ntg: 48,
-               gor: 420,
-               api: 29,
-               sim: 62,
-               temp: 148,
-               pres_res: 580,
-               sw: 0.34,
-               bo: 1.35,
-               visc: 4.8,
-               gross_pay: 62,
-               net_pay: 30,
-               geo: {
-               pres_grad: 0.722,
-               obstr_grad: 1.18,
-               frac_grad: 0.92,
-               ppg: 13.88,
-               ecd: 14.2,
-               overpressure: "Extreme",
-               overpressure_mech:
-               "Compaction disequilibrium + smectite-illite transformation",
-               pressure_regime: "Highly overpressured",
-               mudweight_min: 14.0,
-               mudweight_max: 16.5,
-               pressure_coeff: 1.55,
-               },
-               geochem: {
-               toc: 4.2,
-               ro_vitrinite: 0.95,
-               hindex: 280,
-               oindex: 48,
-               tmax: 462,
-               kerogen_type: "Type II/IIS",
-               source_fm: "Tuscaloosa Marine Shale",
-               expulsion_eff: 58,
-               charge_volume: "High",
-               migration_dist: 45,
-               oil_family: "Sulfur-rich",
-               sulfur_pct: 1.8,
-               c15_plus: 85,
-               api_pred: 28,
-               },
-               mineral: {
-               quartz: 48,
-               feldspar: 20,
-               rock_fragments: 12,
-               kaolinite: 5,
-               illite: 8,
-               smectite: 1,
-               chlorite: 4,
-               calcite_cement: 5,
-               dolomite: 2,
-               pyrite: 1.2,
-               siderite: 0.4,
-               mica: 1.4,
-               clay_total: 18,
-               cement_type: "Calcite + Illite + Chlorite",
-               },
-               diagenesis: {
-               compaction: "Very High",
-               cementation: "High",
-               dissolution: "Moderate (carbonate)",
-               burial_grade: "Deep–Ultradeep burial",
-               qovergrowths: "Extensive",
-               chlorite_coat: "Present",
-               kaolinite_pore: "Absent",
-               authigenic_clay: "Illite dominant",
-               grain_coating: "Strong",
-               fluid_inclusion_th: 138,
-               },
-               fluid: {
-               oil_density: 0.884,
-               gas_sg: 0.78,
-               brine_sal: 38500,
-               h2s_ppm: 120,
-               co2_pct: 8.2,
-               n2_pct: 1.8,
-               c1_pct: 22,
-               c2_pct: 5,
-               c3_pct: 3,
-               wor: 2.1,
-               gfr: 420,
-               pb: 128,
-               rs: 68,
-               fvf_oil: 1.35,
-               z_factor: 0.82,
-               },
-          },
-          {
-               rank: 7,
-               name: "West Africa — Pliocene SS",
-               basin: "Congo Basin",
-               age: "Pliocene",
-               lith: "Sandstone",
-               dep: "Turbidite",
-               depth: 2600,
-               hc: "Oil",
-               drive: "Combination",
-               por: 23.5,
-               perm: 340,
-               rf: 36,
-               ntg: 58,
-               gor: 540,
-               api: 32,
-               sim: 60,
-               temp: 92,
-               pres_res: 262,
-               sw: 0.26,
-               bo: 1.24,
-               visc: 2.5,
-               gross_pay: 50,
-               net_pay: 29,
-               geo: {
-               pres_grad: 0.468,
-               obstr_grad: 1.03,
-               frac_grad: 0.76,
-               ppg: 9.0,
-               ecd: 9.2,
-               overpressure: "Slight",
-               overpressure_mech: "Compaction",
-               pressure_regime: "Slightly overpressured",
-               mudweight_min: 9.0,
-               mudweight_max: 10.0,
-               pressure_coeff: 1.04,
-               },
-               geochem: {
-               toc: 2.5,
-               ro_vitrinite: 0.55,
-               hindex: 340,
-               oindex: 38,
-               tmax: 428,
-               kerogen_type: "Type II",
-               source_fm: "Deep-water Maastrichtian Shale",
-               expulsion_eff: 52,
-               charge_volume: "Moderate",
-               migration_dist: 22,
-               oil_family: "Paraffinic",
-               sulfur_pct: 0.15,
-               c15_plus: 70,
-               api_pred: 32,
-               },
-               mineral: {
-               quartz: 64,
-               feldspar: 13,
-               rock_fragments: 8,
-               kaolinite: 6,
-               illite: 4,
-               smectite: 2,
-               chlorite: 1,
-               calcite_cement: 2,
-               dolomite: 0,
-               pyrite: 0.5,
-               siderite: 0.1,
-               mica: 0.4,
-               clay_total: 13,
-               cement_type: "Silica + Kaolinite",
-               },
-               diagenesis: {
-               compaction: "Low–Moderate",
-               cementation: "Low",
-               dissolution: "Present (feldspar)",
-               burial_grade: "Early–Middle burial",
-               qovergrowths: "Minor",
-               chlorite_coat: "Absent",
-               kaolinite_pore: "Present",
-               authigenic_clay: "Kaolinite",
-               grain_coating: "Minor",
-               fluid_inclusion_th: 78,
-               },
-               fluid: {
-               oil_density: 0.866,
-               gas_sg: 0.71,
-               brine_sal: 21000,
-               h2s_ppm: 18,
-               co2_pct: 3.5,
-               n2_pct: 1.2,
-               c1_pct: 42,
-               c2_pct: 8,
-               c3_pct: 5,
-               wor: 0.8,
-               gfr: 540,
-               pb: 168,
-               rs: 80,
-               fvf_oil: 1.24,
-               z_factor: 0.89,
-               },
-          },
-     ];
+      const ANALOGUES = [
+            {
+                rank: 1,
+                name: "Malay Basin — Arang Fm.",
+                basin: "Malay Basin",
+                age: "Miocene",
+                lith: "Sandstone",
+                dep: "Deltaic",
+                depth: 2800,
+                hc: "Oil",
+                drive: "Water Drive",
+                por: 24.2,
+                perm: 412,
+                rf: 38,
+                ntg: 68,
+                gor: 520,
+                api: 34,
+                sim: 93,
+                // Reservoir properties
+                temp: 98,
+                pres_res: 285,
+                sw: 0.22,
+                bo: 1.28,
+                visc: 1.8,
+                gross_pay: 42,
+                net_pay: 29,
+                // Geopressure
+                geo: {
+                pres_grad: 0.465,
+                obstr_grad: 1.02,
+                frac_grad: 0.75,
+                ppg: 8.95,
+                ecd: 9.1,
+                overpressure: "Slight",
+                overpressure_mech: "Compaction disequilibrium",
+                pressure_regime: "Slightly overpressured",
+                mudweight_min: 9.0,
+                mudweight_max: 10.5,
+                pressure_coeff: 1.02,
+                },
+                // Geochemistry — source rock
+                geochem: {
+                toc: 2.8,
+                ro_vitrinite: 0.62,
+                hindex: 380,
+                oindex: 42,
+                tmax: 432,
+                kerogen_type: "Type II",
+                source_fm: "Brown Shale Fm.",
+                expulsion_eff: 62,
+                charge_volume: "High",
+                migration_dist: 18,
+                oil_family: "Waxy",
+                sulfur_pct: 0.18,
+                c15_plus: 72,
+                api_pred: 33,
+                },
+                // Mineralogy
+                mineral: {
+                quartz: 62,
+                feldspar: 14,
+                rock_fragments: 8,
+                kaolinite: 7,
+                illite: 4,
+                smectite: 2,
+                chlorite: 1,
+                calcite_cement: 2,
+                dolomite: 0,
+                pyrite: 0.5,
+                siderite: 0,
+                mica: 0.5,
+                clay_total: 14,
+                cement_type: "Silica + Kaolinite",
+                },
+                // Diagenesis
+                diagenesis: {
+                compaction: "Moderate",
+                cementation: "Low–Moderate",
+                dissolution: "Present (feldspar leaching)",
+                burial_grade: "Early–Middle burial",
+                qovergrowths: "Minor",
+                chlorite_coat: "Absent",
+                kaolinite_pore: "Present",
+                authigenic_clay: "Kaolinite dominant",
+                grain_coating: "Partial",
+                fluid_inclusion_th: 88,
+                },
+                // Fluid properties
+                fluid: {
+                oil_density: 0.855,
+                gas_sg: 0.72,
+                brine_sal: 22400,
+                h2s_ppm: 12,
+                co2_pct: 3.2,
+                n2_pct: 1.1,
+                c1_pct: 38,
+                c2_pct: 8,
+                c3_pct: 5,
+                wor: 0.4,
+                gfr: 520,
+                pb: 185,
+                rs: 85,
+                fvf_oil: 1.28,
+                z_factor: 0.88,
+                },
+            },
+            {
+                rank: 2,
+                name: "Kutei Basin — Tunu Field",
+                basin: "Kutei Basin",
+                age: "Miocene",
+                lith: "Sandstone",
+                dep: "Fluvio-Deltaic",
+                depth: 3100,
+                hc: "Gas",
+                drive: "Solution Gas",
+                por: 22.8,
+                perm: 285,
+                rf: 35,
+                ntg: 62,
+                gor: 8400,
+                api: 36,
+                sim: 87,
+                temp: 112,
+                pres_res: 318,
+                sw: 0.28,
+                bo: 1.22,
+                visc: 0.9,
+                gross_pay: 88,
+                net_pay: 55,
+                geo: {
+                pres_grad: 0.478,
+                obstr_grad: 1.05,
+                frac_grad: 0.78,
+                ppg: 9.18,
+                ecd: 9.4,
+                overpressure: "Moderate",
+                overpressure_mech: "Hydrocarbon generation",
+                pressure_regime: "Moderately overpressured",
+                mudweight_min: 9.3,
+                mudweight_max: 11.0,
+                pressure_coeff: 1.08,
+                },
+                geochem: {
+                toc: 3.2,
+                ro_vitrinite: 0.74,
+                hindex: 290,
+                oindex: 28,
+                tmax: 445,
+                kerogen_type: "Type II/III",
+                source_fm: "Pamaluan Shale",
+                expulsion_eff: 55,
+                charge_volume: "Very High",
+                migration_dist: 8,
+                oil_family: "Paraffinic",
+                sulfur_pct: 0.08,
+                c15_plus: 48,
+                api_pred: 36,
+                },
+                mineral: {
+                quartz: 58,
+                feldspar: 18,
+                rock_fragments: 10,
+                kaolinite: 5,
+                illite: 5,
+                smectite: 1,
+                chlorite: 2,
+                calcite_cement: 1,
+                dolomite: 0,
+                pyrite: 0.3,
+                siderite: 0.2,
+                mica: 0.5,
+                clay_total: 13,
+                cement_type: "Silica",
+                },
+                diagenesis: {
+                compaction: "Moderate–High",
+                cementation: "Low",
+                dissolution: "Extensive (feldspar)",
+                burial_grade: "Middle burial",
+                qovergrowths: "Present",
+                chlorite_coat: "Partial",
+                kaolinite_pore: "Absent",
+                authigenic_clay: "Illite + Chlorite",
+                grain_coating: "Moderate",
+                fluid_inclusion_th: 102,
+                },
+                fluid: {
+                oil_density: 0.842,
+                gas_sg: 0.68,
+                brine_sal: 18600,
+                h2s_ppm: 5,
+                co2_pct: 1.8,
+                n2_pct: 2.2,
+                c1_pct: 88,
+                c2_pct: 5,
+                c3_pct: 2,
+                wor: 0.1,
+                gfr: 8400,
+                pb: 220,
+                rs: 42,
+                fvf_oil: 1.22,
+                z_factor: 0.92,
+                },
+            },
+            {
+                rank: 3,
+                name: "Borneo — Miri Formation",
+                basin: "Borneo Basin",
+                age: "Eocene",
+                lith: "Sandstone",
+                dep: "Shallow Marine",
+                depth: 3400,
+                hc: "Oil",
+                drive: "Water Drive",
+                por: 19.5,
+                perm: 195,
+                rf: 31,
+                ntg: 55,
+                gor: 480,
+                api: 30,
+                sim: 79,
+                temp: 118,
+                pres_res: 348,
+                sw: 0.3,
+                bo: 1.19,
+                visc: 3.1,
+                gross_pay: 56,
+                net_pay: 31,
+                geo: {
+                pres_grad: 0.452,
+                obstr_grad: 1.01,
+                frac_grad: 0.72,
+                ppg: 8.68,
+                ecd: 9.0,
+                overpressure: "Normal",
+                overpressure_mech: "None",
+                pressure_regime: "Normally pressured",
+                mudweight_min: 8.6,
+                mudweight_max: 9.5,
+                pressure_coeff: 0.98,
+                },
+                geochem: {
+                toc: 1.9,
+                ro_vitrinite: 0.88,
+                hindex: 195,
+                oindex: 55,
+                tmax: 458,
+                kerogen_type: "Type II/III",
+                source_fm: "Eocene Lacustrine Shale",
+                expulsion_eff: 48,
+                charge_volume: "Moderate",
+                migration_dist: 32,
+                oil_family: "Biodegraded waxy",
+                sulfur_pct: 0.44,
+                c15_plus: 80,
+                api_pred: 29,
+                },
+                mineral: {
+                quartz: 55,
+                feldspar: 12,
+                rock_fragments: 14,
+                kaolinite: 9,
+                illite: 3,
+                smectite: 3,
+                chlorite: 2,
+                calcite_cement: 4,
+                dolomite: 1,
+                pyrite: 0.8,
+                siderite: 0.2,
+                mica: 1.0,
+                clay_total: 17,
+                cement_type: "Calcite + Kaolinite",
+                },
+                diagenesis: {
+                compaction: "High",
+                cementation: "Moderate",
+                dissolution: "Minor",
+                burial_grade: "Deep burial",
+                qovergrowths: "Moderate",
+                chlorite_coat: "Absent",
+                kaolinite_pore: "Present",
+                authigenic_clay: "Kaolinite dominant",
+                grain_coating: "Minor",
+                fluid_inclusion_th: 115,
+                },
+                fluid: {
+                oil_density: 0.878,
+                gas_sg: 0.75,
+                brine_sal: 28900,
+                h2s_ppm: 35,
+                co2_pct: 4.8,
+                n2_pct: 0.8,
+                c1_pct: 28,
+                c2_pct: 6,
+                c3_pct: 4,
+                wor: 1.2,
+                gfr: 480,
+                pb: 142,
+                rs: 72,
+                fvf_oil: 1.19,
+                z_factor: 0.86,
+                },
+            },
+            {
+                rank: 4,
+                name: "Niger Delta — Agbada Fm.",
+                basin: "Niger Delta",
+                age: "Miocene",
+                lith: "Sandstone",
+                dep: "Deltaic",
+                depth: 3200,
+                hc: "Oil & Gas",
+                drive: "Solution Gas",
+                por: 21.3,
+                perm: 310,
+                rf: 34,
+                ntg: 60,
+                gor: 680,
+                api: 33,
+                sim: 74,
+                temp: 108,
+                pres_res: 326,
+                sw: 0.25,
+                bo: 1.25,
+                visc: 2.2,
+                gross_pay: 72,
+                net_pay: 43,
+                geo: {
+                pres_grad: 0.489,
+                obstr_grad: 1.08,
+                frac_grad: 0.8,
+                ppg: 9.4,
+                ecd: 9.7,
+                overpressure: "High",
+                overpressure_mech: "Compaction disequilibrium + gas generation",
+                pressure_regime: "Overpressured",
+                mudweight_min: 9.5,
+                mudweight_max: 12.0,
+                pressure_coeff: 1.15,
+                },
+                geochem: {
+                toc: 3.8,
+                ro_vitrinite: 0.68,
+                hindex: 420,
+                oindex: 35,
+                tmax: 438,
+                kerogen_type: "Type II",
+                source_fm: "Akata Shale",
+                expulsion_eff: 70,
+                charge_volume: "Very High",
+                migration_dist: 12,
+                oil_family: "Paraffinic-naphthenic",
+                sulfur_pct: 0.22,
+                c15_plus: 65,
+                api_pred: 34,
+                },
+                mineral: {
+                quartz: 60,
+                feldspar: 15,
+                rock_fragments: 9,
+                kaolinite: 6,
+                illite: 5,
+                smectite: 2,
+                chlorite: 1,
+                calcite_cement: 2,
+                dolomite: 0,
+                pyrite: 0.4,
+                siderite: 0.1,
+                mica: 0.5,
+                clay_total: 14,
+                cement_type: "Silica + Minor Calcite",
+                },
+                diagenesis: {
+                compaction: "Moderate",
+                cementation: "Low",
+                dissolution: "Present (feldspars + carbonates)",
+                burial_grade: "Early–Middle burial",
+                qovergrowths: "Minor",
+                chlorite_coat: "Local",
+                kaolinite_pore: "Present",
+                authigenic_clay: "Kaolinite + Illite",
+                grain_coating: "Partial",
+                fluid_inclusion_th: 95,
+                },
+                fluid: {
+                oil_density: 0.862,
+                gas_sg: 0.7,
+                brine_sal: 24500,
+                h2s_ppm: 8,
+                co2_pct: 2.5,
+                n2_pct: 1.5,
+                c1_pct: 52,
+                c2_pct: 9,
+                c3_pct: 6,
+                wor: 0.6,
+                gfr: 680,
+                pb: 198,
+                rs: 92,
+                fvf_oil: 1.25,
+                z_factor: 0.9,
+                },
+            },
+            {
+                rank: 5,
+                name: "Nile Delta — Biogenic Play",
+                basin: "Nile Delta",
+                age: "Pliocene",
+                lith: "Sandstone",
+                dep: "Fluvio-Deltaic",
+                depth: 2200,
+                hc: "Gas",
+                drive: "Water Drive",
+                por: 28.1,
+                perm: 580,
+                rf: 42,
+                ntg: 75,
+                gor: 12000,
+                api: 38,
+                sim: 68,
+                temp: 82,
+                pres_res: 218,
+                sw: 0.18,
+                bo: 1.12,
+                visc: 0.6,
+                gross_pay: 120,
+                net_pay: 90,
+                geo: {
+                pres_grad: 0.442,
+                obstr_grad: 0.98,
+                frac_grad: 0.7,
+                ppg: 8.5,
+                ecd: 8.7,
+                overpressure: "Normal",
+                overpressure_mech: "None",
+                pressure_regime: "Normally pressured",
+                mudweight_min: 8.4,
+                mudweight_max: 9.2,
+                pressure_coeff: 0.95,
+                },
+                geochem: {
+                toc: 1.2,
+                ro_vitrinite: 0.38,
+                hindex: 520,
+                oindex: 20,
+                tmax: 418,
+                kerogen_type: "Type II (biogenic gas)",
+                source_fm: "Biogenic (in-situ)",
+                expulsion_eff: 90,
+                charge_volume: "High",
+                migration_dist: 2,
+                oil_family: "Biogenic gas",
+                sulfur_pct: 0.02,
+                c15_plus: 15,
+                api_pred: 40,
+                },
+                mineral: {
+                quartz: 72,
+                feldspar: 8,
+                rock_fragments: 5,
+                kaolinite: 4,
+                illite: 3,
+                smectite: 4,
+                chlorite: 1,
+                calcite_cement: 1,
+                dolomite: 0,
+                pyrite: 0.2,
+                siderite: 0,
+                mica: 0.3,
+                clay_total: 12,
+                cement_type: "Minor Silica",
+                },
+                diagenesis: {
+                compaction: "Low",
+                cementation: "Very Low",
+                dissolution: "Negligible",
+                burial_grade: "Shallow burial",
+                qovergrowths: "Absent",
+                chlorite_coat: "Absent",
+                kaolinite_pore: "Minor",
+                authigenic_clay: "Smectite",
+                grain_coating: "Absent",
+                fluid_inclusion_th: 62,
+                },
+                fluid: {
+                oil_density: 0.832,
+                gas_sg: 0.62,
+                brine_sal: 15200,
+                h2s_ppm: 0,
+                co2_pct: 0.8,
+                n2_pct: 0.5,
+                c1_pct: 97,
+                c2_pct: 1,
+                c3_pct: 0.5,
+                wor: 0.05,
+                gfr: 12000,
+                pb: 95,
+                rs: 28,
+                fvf_oil: 1.12,
+                z_factor: 0.95,
+                },
+            },
+            {
+                rank: 6,
+                name: "Gulf of Mexico — Wilcox",
+                basin: "Gulf of Mexico",
+                age: "Eocene",
+                lith: "Sandstone",
+                dep: "Deep Marine",
+                depth: 4800,
+                hc: "Oil",
+                drive: "Water Drive",
+                por: 17.2,
+                perm: 88,
+                rf: 28,
+                ntg: 48,
+                gor: 420,
+                api: 29,
+                sim: 62,
+                temp: 148,
+                pres_res: 580,
+                sw: 0.34,
+                bo: 1.35,
+                visc: 4.8,
+                gross_pay: 62,
+                net_pay: 30,
+                geo: {
+                pres_grad: 0.722,
+                obstr_grad: 1.18,
+                frac_grad: 0.92,
+                ppg: 13.88,
+                ecd: 14.2,
+                overpressure: "Extreme",
+                overpressure_mech:
+                "Compaction disequilibrium + smectite-illite transformation",
+                pressure_regime: "Highly overpressured",
+                mudweight_min: 14.0,
+                mudweight_max: 16.5,
+                pressure_coeff: 1.55,
+                },
+                geochem: {
+                toc: 4.2,
+                ro_vitrinite: 0.95,
+                hindex: 280,
+                oindex: 48,
+                tmax: 462,
+                kerogen_type: "Type II/IIS",
+                source_fm: "Tuscaloosa Marine Shale",
+                expulsion_eff: 58,
+                charge_volume: "High",
+                migration_dist: 45,
+                oil_family: "Sulfur-rich",
+                sulfur_pct: 1.8,
+                c15_plus: 85,
+                api_pred: 28,
+                },
+                mineral: {
+                quartz: 48,
+                feldspar: 20,
+                rock_fragments: 12,
+                kaolinite: 5,
+                illite: 8,
+                smectite: 1,
+                chlorite: 4,
+                calcite_cement: 5,
+                dolomite: 2,
+                pyrite: 1.2,
+                siderite: 0.4,
+                mica: 1.4,
+                clay_total: 18,
+                cement_type: "Calcite + Illite + Chlorite",
+                },
+                diagenesis: {
+                compaction: "Very High",
+                cementation: "High",
+                dissolution: "Moderate (carbonate)",
+                burial_grade: "Deep–Ultradeep burial",
+                qovergrowths: "Extensive",
+                chlorite_coat: "Present",
+                kaolinite_pore: "Absent",
+                authigenic_clay: "Illite dominant",
+                grain_coating: "Strong",
+                fluid_inclusion_th: 138,
+                },
+                fluid: {
+                oil_density: 0.884,
+                gas_sg: 0.78,
+                brine_sal: 38500,
+                h2s_ppm: 120,
+                co2_pct: 8.2,
+                n2_pct: 1.8,
+                c1_pct: 22,
+                c2_pct: 5,
+                c3_pct: 3,
+                wor: 2.1,
+                gfr: 420,
+                pb: 128,
+                rs: 68,
+                fvf_oil: 1.35,
+                z_factor: 0.82,
+                },
+            },
+            {
+                rank: 7,
+                name: "West Africa — Pliocene SS",
+                basin: "Congo Basin",
+                age: "Pliocene",
+                lith: "Sandstone",
+                dep: "Turbidite",
+                depth: 2600,
+                hc: "Oil",
+                drive: "Combination",
+                por: 23.5,
+                perm: 340,
+                rf: 36,
+                ntg: 58,
+                gor: 540,
+                api: 32,
+                sim: 60,
+                temp: 92,
+                pres_res: 262,
+                sw: 0.26,
+                bo: 1.24,
+                visc: 2.5,
+                gross_pay: 50,
+                net_pay: 29,
+                geo: {
+                pres_grad: 0.468,
+                obstr_grad: 1.03,
+                frac_grad: 0.76,
+                ppg: 9.0,
+                ecd: 9.2,
+                overpressure: "Slight",
+                overpressure_mech: "Compaction",
+                pressure_regime: "Slightly overpressured",
+                mudweight_min: 9.0,
+                mudweight_max: 10.0,
+                pressure_coeff: 1.04,
+                },
+                geochem: {
+                toc: 2.5,
+                ro_vitrinite: 0.55,
+                hindex: 340,
+                oindex: 38,
+                tmax: 428,
+                kerogen_type: "Type II",
+                source_fm: "Deep-water Maastrichtian Shale",
+                expulsion_eff: 52,
+                charge_volume: "Moderate",
+                migration_dist: 22,
+                oil_family: "Paraffinic",
+                sulfur_pct: 0.15,
+                c15_plus: 70,
+                api_pred: 32,
+                },
+                mineral: {
+                quartz: 64,
+                feldspar: 13,
+                rock_fragments: 8,
+                kaolinite: 6,
+                illite: 4,
+                smectite: 2,
+                chlorite: 1,
+                calcite_cement: 2,
+                dolomite: 0,
+                pyrite: 0.5,
+                siderite: 0.1,
+                mica: 0.4,
+                clay_total: 13,
+                cement_type: "Silica + Kaolinite",
+                },
+                diagenesis: {
+                compaction: "Low–Moderate",
+                cementation: "Low",
+                dissolution: "Present (feldspar)",
+                burial_grade: "Early–Middle burial",
+                qovergrowths: "Minor",
+                chlorite_coat: "Absent",
+                kaolinite_pore: "Present",
+                authigenic_clay: "Kaolinite",
+                grain_coating: "Minor",
+                fluid_inclusion_th: 78,
+                },
+                fluid: {
+                oil_density: 0.866,
+                gas_sg: 0.71,
+                brine_sal: 21000,
+                h2s_ppm: 18,
+                co2_pct: 3.5,
+                n2_pct: 1.2,
+                c1_pct: 42,
+                c2_pct: 8,
+                c3_pct: 5,
+                wor: 0.8,
+                gfr: 540,
+                pb: 168,
+                rs: 80,
+                fvf_oil: 1.24,
+                z_factor: 0.89,
+                },
+            },
+      ];
 
      // ── Extended data stores mapped from EDAFY Master Template sheets ──
-     let PETROLEUM_SYSTEMS = [];
-     let LITHOSTRATIGRAPHY = [];
-     let PLAYS = [];
-     let RESOURCES_PROB = [];
-     let RESERVES_PRODUCTION = [];
-     let PROSPECTS_DATA = [];
-     let GEOCHEMISTRY_FLUIDS = [];
-     let RISK_PROBABILITIES = [];
+      let PETROLEUM_SYSTEMS = [];
+      let LITHOSTRATIGRAPHY = [];
+      let PLAYS = [];
+      let RESOURCES_PROB = [];
+      let RESERVES_PRODUCTION = [];
+      let PROSPECTS_DATA = [];
+      let GEOCHEMISTRY_FLUIDS = [];
+      let RISK_PROBABILITIES = [];
 
-     const RISK_ELEMENTS = [
-          {
-               key: "source",
-               label: "Source / Charge",
-               val: 75,
-               default: 75,
-               bench: "55–85%",
-               lo: 55,
-               hi: 85,
-          },
-          {
-               key: "reservoir",
-               label: "Reservoir Presence",
-               val: 80,
-               default: 80,
-               bench: "65–90%",
-               lo: 65,
-               hi: 90,
-          },
-          {
-               key: "seal",
-               label: "Seal Integrity",
-               val: 65,
-               default: 65,
-               bench: "50–80%",
-               lo: 50,
-               hi: 80,
-          },
-          {
-               key: "trap",
-               label: "Trap Geometry",
-               val: 70,
-               default: 70,
-               bench: "60–85%",
-               lo: 60,
-               hi: 85,
-          },
-          {
-               key: "migration",
-               label: "Migration Pathway",
-               val: 85,
-               default: 85,
-               bench: "50–75%",
-               lo: 50,
-               hi: 75,
-          },
-     ];
+      const RISK_ELEMENTS = [
+            {
+                key: "source",
+                label: "Source / Charge",
+                val: 75,
+                default: 75,
+                bench: "55–85%",
+                lo: 55,
+                hi: 85,
+            },
+            {
+                key: "reservoir",
+                label: "Reservoir Presence",
+                val: 80,
+                default: 80,
+                bench: "65–90%",
+                lo: 65,
+                hi: 90,
+            },
+            {
+                key: "seal",
+                label: "Seal Integrity",
+                val: 65,
+                default: 65,
+                bench: "50–80%",
+                lo: 50,
+                hi: 80,
+            },
+            {
+                key: "trap",
+                label: "Trap Geometry",
+                val: 70,
+                default: 70,
+                bench: "60–85%",
+                lo: 60,
+                hi: 85,
+            },
+            {
+                key: "migration",
+                label: "Migration Pathway",
+                val: 85,
+                default: 85,
+                bench: "50–75%",
+                lo: 50,
+                hi: 75,
+            },
+      ];
 
-     const SCREEN_CRITERIA = [
-          { key: "source", label: "Source Rock Quality", val: 20 },
-          { key: "reservoir", label: "Reservoir Quality", val: 25 },
-          { key: "seal", label: "Seal Effectiveness", val: 15 },
-          { key: "charge", label: "Charge Risk", val: 15 },
-          { key: "commercial", label: "Commercial Attractiveness", val: 15 },
-          { key: "country", label: "Country Risk", val: 10 },
-     ];
+      const SCREEN_CRITERIA = [
+            { key: "source", label: "Source Rock Quality", val: 20 },
+            { key: "reservoir", label: "Reservoir Quality", val: 25 },
+            { key: "seal", label: "Seal Effectiveness", val: 15 },
+            { key: "charge", label: "Charge Risk", val: 15 },
+            { key: "commercial", label: "Commercial Attractiveness", val: 15 },
+            { key: "country", label: "Country Risk", val: 10 },
+      ];
 
-     const GOV_QUEUE = [
-          {
-               id: "RES-48821",
-               dataset: "C&C Reservoirs Analogue",
-               flag: "Near-duplicate (89% match)",
-               flagType: "warn",
-               source: "C&C Bulk Import",
-               age: "2h",
-          },
-          {
-               id: "BAS-12043",
-               dataset: "IHS Basin Monitor",
-               flag: "Coordinate outside basin polygon",
-               flagType: "error",
-               source: "IHS Weekly",
-               age: "4h",
-          },
-          {
-               id: "SRC-7821",
-               dataset: "Neftex Source Rock",
-               flag: "Missing mandatory: Ro% field",
-               flagType: "warn",
-               source: "Neftex Weekly",
-               age: "1d",
-          },
-     ];
+      const GOV_QUEUE = [
+            {
+                id: "RES-48821",
+                dataset: "C&C Reservoirs Analogue",
+                flag: "Near-duplicate (89% match)",
+                flagType: "warn",
+                source: "C&C Bulk Import",
+                age: "2h",
+            },
+            {
+                id: "BAS-12043",
+                dataset: "IHS Basin Monitor",
+                flag: "Coordinate outside basin polygon",
+                flagType: "error",
+                source: "IHS Weekly",
+                age: "4h",
+            },
+            {
+                id: "SRC-7821",
+                dataset: "Neftex Source Rock",
+                flag: "Missing mandatory: Ro% field",
+                flagType: "warn",
+                source: "Neftex Weekly",
+                age: "1d",
+            },
+      ];
 
-     // Prospects for GCoS Calculator
-     let PROSPECTS = [
-          {
-          name: "Prospect Alpha",
-          basin: "Zagros Fold Belt",
-          type: "Structural",
-          target: "Asmari Carbonate",
-          depth: 2400,
-          ps: 55,
-          pr: 70,
-          pse: 65,
-          pt: 60,
-          pm: 72,
-          },
-          {
-          name: "Prospect Beta",
-          basin: "Kutei Basin",
-          type: "Stratigraphic",
-          target: "Balikpapan SS",
-          depth: 3100,
-          ps: 40,
-          pr: 65,
-          pse: 55,
-          pt: 50,
-          pm: 60,
-          },
-          {
-          name: "Prospect Gamma",
-          basin: "Malay Basin",
-          type: "Structural",
-          target: "Middle Group Sands",
-          depth: 2800,
-          ps: 50,
-          pr: 75,
-          pse: 60,
-          pt: 55,
-          pm: 65,
-          },
-          {
-          name: "Prospect Delta",
-          basin: "Nile Delta",
-          type: "Stratigraphic",
-          target: "Abu Madi Channel SS",
-          depth: 3600,
-          ps: 45,
-          pr: 60,
-          pse: 70,
-          pt: 65,
-          pm: 58,
-          },
-          {
-          name: "Prospect Epsilon",
-          basin: "North Sea",
-          type: "Structural",
-          target: "Brent Sandstone",
-          depth: 3200,
-          ps: 60,
-          pr: 80,
-          pse: 75,
-          pt: 70,
-          pm: 68,
-          },
-          {
-          name: "Prospect Zeta",
-          basin: "Permian Basin",
-          type: "Unconventional",
-          target: "Wolfcamp Shale",
-          depth: 2900,
-          ps: 75,
-          pr: 55,
-          pse: 80,
-          pt: 70,
-          pm: 62,
-          },
-          {
-          name: "Prospect Eta",
-          basin: "Niger Delta",
-          type: "Structural",
-          target: "Agbada Paralic SS",
-          depth: 2200,
-          ps: 65,
-          pr: 72,
-          pse: 68,
-          pt: 58,
-          pm: 70,
-          },
-     ];
-     let currentProspect = "Prospect Alpha";
+      // Prospects for GCoS Calculator
+      let PROSPECTS = [
+            {
+            name: "Prospect Alpha",
+            basin: "Zagros Fold Belt",
+            type: "Structural",
+            target: "Asmari Carbonate",
+            depth: 2400,
+            ps: 55,
+            pr: 70,
+            pse: 65,
+            pt: 60,
+            pm: 72,
+            },
+            {
+            name: "Prospect Beta",
+            basin: "Kutei Basin",
+            type: "Stratigraphic",
+            target: "Balikpapan SS",
+            depth: 3100,
+            ps: 40,
+            pr: 65,
+            pse: 55,
+            pt: 50,
+            pm: 60,
+            },
+            {
+            name: "Prospect Gamma",
+            basin: "Malay Basin",
+            type: "Structural",
+            target: "Middle Group Sands",
+            depth: 2800,
+            ps: 50,
+            pr: 75,
+            pse: 60,
+            pt: 55,
+            pm: 65,
+            },
+            {
+            name: "Prospect Delta",
+            basin: "Nile Delta",
+            type: "Stratigraphic",
+            target: "Abu Madi Channel SS",
+            depth: 3600,
+            ps: 45,
+            pr: 60,
+            pse: 70,
+            pt: 65,
+            pm: 58,
+            },
+            {
+            name: "Prospect Epsilon",
+            basin: "North Sea",
+            type: "Structural",
+            target: "Brent Sandstone",
+            depth: 3200,
+            ps: 60,
+            pr: 80,
+            pse: 75,
+            pt: 70,
+            pm: 68,
+            },
+            {
+            name: "Prospect Zeta",
+            basin: "Permian Basin",
+            type: "Unconventional",
+            target: "Wolfcamp Shale",
+            depth: 2900,
+            ps: 75,
+            pr: 55,
+            pse: 80,
+            pt: 70,
+            pm: 62,
+            },
+            {
+            name: "Prospect Eta",
+            basin: "Niger Delta",
+            type: "Structural",
+            target: "Agbada Paralic SS",
+            depth: 2200,
+            ps: 65,
+            pr: 72,
+            pse: 68,
+            pt: 58,
+            pm: 70,
+            },
+      ];
+      let currentProspect = "Prospect Alpha";
 
-     function initProspectDropdown() {
+      function initProspectDropdown() {
           const sel = document.getElementById("prospect-select");
           if (!sel) return;
           sel.innerHTML =
           '<option value="">- Select Prospect -</option>' +
           PROSPECTS.map(
-               (p) => `<option value="${p.name}">${p.name} (${p.basin})</option>`,
+            (p) => `<option value="${p.name}">${p.name} (${p.basin})</option>`,
           ).join("");
           sel.value = currentProspect;
           // Load the current prospect's values into sliders
           loadProspect(currentProspect);
-     }
+      }
 
-     // Recently ingested files awaiting governance approval
-     let INGESTED_FILES = [];
+      // Recently ingested files awaiting governance approval
+      let INGESTED_FILES = [];
 
-     const AUDIT_ENTRIES = [
-          {
-          time: "2026-02-23 14:32",
-          user: "VJ",
-          action:
-               "Analogue search - Eocene SS, SE Asia · 5,847 records queried",
-          status: "SUCCESS",
-          type: "Data Access",
-          },
-          {
-          time: "2026-02-23 13:18",
-          user: "SYS-AUTO",
-          action:
-               "Neftex connector sync · 2,341 records ingested · 0 duplicates",
-          status: "SUCCESS",
-          type: "System",
-          },
-          {
-          time: "2026-02-23 11:05",
-          user: "K.Okafor",
-          action: "Basin screening run - SE Asia · 68 basins scored",
-          status: "SUCCESS",
-          type: "Data Access",
-          },
-          {
-          time: "2026-02-23 09:47",
-          user: "SYS-AUTO",
-          action: "IHS connector auth failure - token expired",
-          status: "FAILED",
-          type: "System",
-          },
-          {
-          time: "2026-02-22 16:22",
-          user: "A.Patel",
-          action: "Role assignment: M.Torres → Reviewer granted",
-          status: "MODIFIED",
-          type: "Governance",
-          },
-          {
-          time: "2026-02-22 14:10",
-          user: "M.Torres",
-          action: "Record RES-48820 governance action: Merged with RES-48700",
-          status: "MERGED",
-          type: "Governance",
-          },
-          {
-          time: "2026-02-22 10:33",
-          user: "VJ",
-          action: "GCoS saved - Prospect Alpha: 23.1%",
-          status: "SUCCESS",
-          type: "Data Access",
-          },
-          {
-          time: "2026-02-21 16:05",
-          user: "SYS-AUTO",
-          action: "Economic parameter defaults refreshed from internal model",
-          status: "SUCCESS",
-          type: "System",
-          },
-     ];
+      const AUDIT_ENTRIES = [
+            {
+            time: "2026-02-23 14:32",
+            user: "VJ",
+            action:
+                "Analogue search - Eocene SS, SE Asia · 5,847 records queried",
+            status: "SUCCESS",
+            type: "Data Access",
+            },
+            {
+            time: "2026-02-23 13:18",
+            user: "SYS-AUTO",
+            action:
+                "Neftex connector sync · 2,341 records ingested · 0 duplicates",
+            status: "SUCCESS",
+            type: "System",
+            },
+            {
+            time: "2026-02-23 11:05",
+            user: "K.Okafor",
+            action: "Basin screening run - SE Asia · 68 basins scored",
+            status: "SUCCESS",
+            type: "Data Access",
+            },
+            {
+            time: "2026-02-23 09:47",
+            user: "SYS-AUTO",
+            action: "IHS connector auth failure - token expired",
+            status: "FAILED",
+            type: "System",
+            },
+            {
+            time: "2026-02-22 16:22",
+            user: "A.Patel",
+            action: "Role assignment: M.Torres → Reviewer granted",
+            status: "MODIFIED",
+            type: "Governance",
+            },
+            {
+            time: "2026-02-22 14:10",
+            user: "M.Torres",
+            action: "Record RES-48820 governance action: Merged with RES-48700",
+            status: "MERGED",
+            type: "Governance",
+            },
+            {
+            time: "2026-02-22 10:33",
+            user: "VJ",
+            action: "GCoS saved - Prospect Alpha: 23.1%",
+            status: "SUCCESS",
+            type: "Data Access",
+            },
+            {
+            time: "2026-02-21 16:05",
+            user: "SYS-AUTO",
+            action: "Economic parameter defaults refreshed from internal model",
+            status: "SUCCESS",
+            type: "System",
+            },
+      ];
 
-     const PARAM_DATA = {
-          por: {
-          label: "Porosity (%)",
-          unit: "%",
-          p10: 14.2,
-          p50: 21.5,
-          p90: 29.8,
-          mean: 21.9,
-          shape: "normal",
-          color: "#00C8FF",
-          records: 3241,
-          },
-          perm: {
-          label: "Permeability (mD)",
-          unit: "mD",
-          p10: 45,
-          p50: 340,
-          p90: 1820,
-          mean: 512,
-          shape: "lognormal",
-          color: "#F0A500",
-          records: 2987,
-          },
-          rf: {
-          label: "Recovery Factor (%)",
-          unit: "%",
-          p10: 18.4,
-          p50: 34.2,
-          p90: 51.6,
-          mean: 34.8,
-          shape: "normal",
-          color: "#00E5A0",
-          records: 2145,
-          },
-          ntg: {
-          label: "Net-to-Gross (%)",
-          unit: "%",
-          p10: 35,
-          p50: 62.5,
-          p90: 84,
-          mean: 61.2,
-          shape: "bimodal",
-          color: "#00C8FF",
-          records: 1856,
-          },
-          gor: {
-          label: "GOR (scf/bbl)",
-          unit: "scf/bbl",
-          p10: 320,
-          p50: 840,
-          p90: 2450,
-          mean: 1102,
-          shape: "lognormal",
-          color: "#F0A500",
-          records: 1423,
-          },
-          api: {
-          label: "API Gravity (°API)",
-          unit: "°",
-          p10: 22.4,
-          p50: 33.8,
-          p90: 44.2,
-          mean: 33.5,
-          shape: "normal",
-          color: "#00E5A0",
-          records: 1988,
-          },
-     };
+      const PARAM_DATA = {
+            por: {
+            label: "Porosity (%)",
+            unit: "%",
+            p10: 14.2,
+            p50: 21.5,
+            p90: 29.8,
+            mean: 21.9,
+            shape: "normal",
+            color: "#00C8FF",
+            records: 3241,
+            },
+            perm: {
+            label: "Permeability (mD)",
+            unit: "mD",
+            p10: 45,
+            p50: 340,
+            p90: 1820,
+            mean: 512,
+            shape: "lognormal",
+            color: "#F0A500",
+            records: 2987,
+            },
+            rf: {
+            label: "Recovery Factor (%)",
+            unit: "%",
+            p10: 18.4,
+            p50: 34.2,
+            p90: 51.6,
+            mean: 34.8,
+            shape: "normal",
+            color: "#00E5A0",
+            records: 2145,
+            },
+            ntg: {
+            label: "Net-to-Gross (%)",
+            unit: "%",
+            p10: 35,
+            p50: 62.5,
+            p90: 84,
+            mean: 61.2,
+            shape: "bimodal",
+            color: "#00C8FF",
+            records: 1856,
+            },
+            gor: {
+            label: "GOR (scf/bbl)",
+            unit: "scf/bbl",
+            p10: 320,
+            p50: 840,
+            p90: 2450,
+            mean: 1102,
+            shape: "lognormal",
+            color: "#F0A500",
+            records: 1423,
+            },
+            api: {
+            label: "API Gravity (°API)",
+            unit: "°",
+            p10: 22.4,
+            p50: 33.8,
+            p90: 44.2,
+            mean: 33.5,
+            shape: "normal",
+            color: "#00E5A0",
+            records: 1988,
+            },
+      };
 
-     const CONNECTORS = [
-          {
-          name: "Neftex (Halliburton)",
-          status: "LIVE",
-          color: "var(--green)",
-          last: "2h ago",
-          },
-          {
-          name: "IHS Energy / S&P Global",
-          status: "AUTH ERROR",
-          color: "var(--red)",
-          last: "Failed 4h ago",
-          },
-          {
-          name: "Rystad Energy",
-          status: "NOT CONFIGURED",
-          color: "var(--amber)",
-          last: "—",
-          },
-          {
-          name: "Wood Mackenzie",
-          status: "PENDING",
-          color: "var(--amber)",
-          last: "Not configured",
-          },
-          {
-          name: "C&C Reservoirs",
-          status: "LIVE",
-          color: "var(--green)",
-          last: "12h ago",
-          },
-     ];
+      const CONNECTORS = [
+            {
+            name: "Neftex (Halliburton)",
+            status: "LIVE",
+            color: "var(--green)",
+            last: "2h ago",
+            },
+            {
+            name: "IHS Energy / S&P Global",
+            status: "AUTH ERROR",
+            color: "var(--red)",
+            last: "Failed 4h ago",
+            },
+            {
+            name: "Rystad Energy",
+            status: "NOT CONFIGURED",
+            color: "var(--amber)",
+            last: "—",
+            },
+            {
+            name: "Wood Mackenzie",
+            status: "PENDING",
+            color: "var(--amber)",
+            last: "Not configured",
+            },
+            {
+            name: "C&C Reservoirs",
+            status: "LIVE",
+            color: "var(--green)",
+            last: "12h ago",
+            },
+      ];
 
-     const MAP_BASINS = {
-          zagros: {
-          name: "Zagros Fold Belt",
-          region: "Middle East",
-          score: 92,
-          hc: "Oil",
-          status: "Mature",
-          },
-          northsea: {
-          name: "North Sea",
-          region: "Europe",
-          score: 81,
-          hc: "Oil & Gas",
-          status: "Mature",
-          },
-          permian: {
-          name: "Permian Basin",
-          region: "North America",
-          score: 88,
-          hc: "Oil",
-          status: "Mature",
-          },
-          kutei: {
-          name: "Kutei Basin",
-          region: "SE Asia",
-          score: 74,
-          hc: "Gas",
-          status: "Active",
-          },
-          nile: {
-          name: "Nile Delta",
-          region: "North Africa",
-          score: 68,
-          hc: "Gas",
-          status: "Active",
-          },
-     };
+      const MAP_BASINS = {
+            zagros: {
+            name: "Zagros Fold Belt",
+            region: "Middle East",
+            score: 92,
+            hc: "Oil",
+            status: "Mature",
+            },
+            northsea: {
+            name: "North Sea",
+            region: "Europe",
+            score: 81,
+            hc: "Oil & Gas",
+            status: "Mature",
+            },
+            permian: {
+            name: "Permian Basin",
+            region: "North America",
+            score: 88,
+            hc: "Oil",
+            status: "Mature",
+            },
+            kutei: {
+            name: "Kutei Basin",
+            region: "SE Asia",
+            score: 74,
+            hc: "Gas",
+            status: "Active",
+            },
+            nile: {
+            name: "Nile Delta",
+            region: "North Africa",
+            score: 68,
+            hc: "Gas",
+            status: "Active",
+            },
+      };
 
-     const ACTIVITIES = [
-          {
-          dot: "var(--cyan)",
-          text: "Neftex weekly feed ingested — <strong>2,341 records</strong> updated",
-          time: "2 hours ago · Data Manager",
-          },
-          {
-          dot: "var(--green)",
-          text: "Basin screening completed — <strong>South Atlantic</strong> ranked #3",
-          time: "4 hours ago · K. Okafor",
-          },
-          {
-          dot: "var(--amber)",
-          text: "3 records flagged in governance queue — <strong>Action needed</strong>",
-          time: "Yesterday · System",
-          },
-          {
-          dot: "var(--cyan)",
-          text: "New analogue match: <strong>Malay Basin</strong> → Kutei Basin (87%)",
-          time: "Yesterday · AI Engine",
-          },
-          {
-          dot: "var(--red)",
-          text: "IHS connector sync failed — <strong>Token expired</strong>",
-          time: "2 days ago · Alert",
-          },
-          {
-          dot: "var(--green)",
-          text: "GCoS estimate saved — Prospect Alpha: <strong>23.1%</strong>",
-          time: "2 days ago · VJ",
-          },
-     ];
+      const ACTIVITIES = [
+            {
+            dot: "var(--cyan)",
+            text: "Neftex weekly feed ingested — <strong>2,341 records</strong> updated",
+            time: "2 hours ago · Data Manager",
+            },
+            {
+            dot: "var(--green)",
+            text: "Basin screening completed — <strong>South Atlantic</strong> ranked #3",
+            time: "4 hours ago · K. Okafor",
+            },
+            {
+            dot: "var(--amber)",
+            text: "3 records flagged in governance queue — <strong>Action needed</strong>",
+            time: "Yesterday · System",
+            },
+            {
+            dot: "var(--cyan)",
+            text: "New analogue match: <strong>Malay Basin</strong> → Kutei Basin (87%)",
+            time: "Yesterday · AI Engine",
+            },
+            {
+            dot: "var(--red)",
+            text: "IHS connector sync failed — <strong>Token expired</strong>",
+            time: "2 days ago · Alert",
+            },
+            {
+            dot: "var(--green)",
+            text: "GCoS estimate saved — Prospect Alpha: <strong>23.1%</strong>",
+            time: "2 days ago · VJ",
+            },
+      ];
 
-     let sortState = { col: "score", dir: -1 };
-     let selectedAnalogues = new Set();
-     let riskVals = Object.fromEntries(
-     RISK_ELEMENTS.map((e) => [e.key, e.val]),
-     );
-     let screenVals = {};
-     let filteredBasins = [...BASINS];
-     let searchResults = [...ANALOGUES];
-     let leaderboardData = [];
+      let sortState = { col: "score", dir: -1 };
+      let selectedAnalogues = new Set();
+      let riskVals = Object.fromEntries(
+      RISK_ELEMENTS.map((e) => [e.key, e.val]),
+      );
+      let screenVals = {};
+      let filteredBasins = [...BASINS];
+      let searchResults = [...ANALOGUES];
+      let leaderboardData = [];
 
       // ============================================================
       // INIT
       // ============================================================
-     window.onload = () => {
-          animateCounters();
-          renderActivity();
-          renderTopBasins();
-          renderDQSummary();
-          renderResourceDistChart();
-          refreshPortfolioKPIs();
-          renderBasinTable(BASINS);
-          populateProspectDropdown();
-          renderGCoS();
-          // Handle URL hash for bookmarking / back-button
-          const initHash = location.hash.replace("#", "");
-          if (initHash && document.getElementById("sec-" + initHash)) {
-          const nav = document.querySelector(`.nav[onclick*="'${initHash}'"]`);
-          goTo(initHash, nav);
-          }
-          window.addEventListener("popstate", () => {
+      window.onload = () => {
+        animateCounters();
+        renderActivity();
+        renderTopBasins();
+        renderDQSummary();
+        renderResourceDistChart();
+        refreshPortfolioKPIs();
+        renderBasinTable(BASINS);
+        populateProspectDropdown();
+        renderGCoS();
+            
+        // Handle URL hash for bookmarking / back-button
+        const initHash = location.hash.replace("#", "");
+        
+        if (initHash && document.getElementById("sec-" + initHash)) {
+            // 1. If a hash exists (e.g., #screening), go there
+            const nav = document.querySelector(`.nav[onclick*="'${initHash}'"]`);
+            goTo(initHash, nav);
+        } else {
+            // 2. FALLBACK: If no hash (index.html), default to portfolio
+            // This ensures the sidebar is highlighted on first load
+            const defaultNav = document.querySelector(`.nav[onclick*="'portfolio'"]`);
+            goTo('portfolio', defaultNav);
+        }
+        
+        window.addEventListener("popstate", () => {
           const h = location.hash.replace("#", "");
           if (h && document.getElementById("sec-" + h)) {
-               const nav = document.querySelector(`.nav[onclick*="'${h}'"]`);
-               goTo(h, nav, true);
+              const nav = document.querySelector(`.nav[onclick*="'${h}'"]`);
+              goTo(h, nav, true);
           }
-          });
-          renderTornado();
-          renderVolTornado();
-          renderVolSpider();
-          renderDists();
-          renderGovPipe();
-          renderGovQueue();
-          renderAuditLog(AUDIT_ENTRIES);
-          renderConnectors();
-          renderIngHistory();
-          setupMap();
-          setupCrossplot();
-          // Populate basin profile select
-          const bpSel = document.getElementById("bp-basin-select");
-          if (bpSel)
-          bpSel.innerHTML =
-               '<option value="">Choose a basin to view exploration profile…</option>' +
-               BASINS.map(
-               (b) =>
-                    `<option value="${b.name}">${b.name} — ${b.region}</option>`,
-               ).join("");
+        });
+
+        renderTornado();
+        renderVolTornado();
+        renderVolSpider();
+        renderDists();
+        renderGovPipe();
+        renderGovQueue();
+        renderAuditLog(AUDIT_ENTRIES);
+        renderConnectors();
+        renderIngHistory();
+        setupMap();
+        setupCrossplot();
+        
+        // Populate basin profile select
+        const bpSel = document.getElementById("bp-basin-select");
+        if (bpSel)
+        bpSel.innerHTML =
+          '<option value="">Choose a basin to view exploration profile…</option>' +
+          BASINS.map(
+          (b) =>
+                `<option value="${b.name}">${b.name} — ${b.region}</option>`,
+          ).join("");
+        
           // Init ingestion panel — show overview by default
-          ingTab("overview", document.querySelector("#sec-ingestion .tab"));
-          // Run a default screening so leaderboard is pre-populated
-          setTimeout(() => initDefaultLeaderboard(), 200);
-     };
+        ingTab("overview", document.querySelector("#sec-ingestion .tab"));
+        
+        // Run a default screening so leaderboard is pre-populated
+        setTimeout(() => initDefaultLeaderboard(), 200);
+      };
 
       // ============================================================
       // NAVIGATION
       // ============================================================
-     const SECTION_TITLES = {
-          portfolio: "Portfolio Dashboard",
-          basins: "Basin Catalogue",
-          screening: "Basin Screening",
-          ranking: "Opportunity Ranking",
-          analogues: "Reservoir Analogue Engine",
-          params: "Parameter Library",
-          risk: "Risk & Uncertainty",
-          volumetrics: "Volumetrics Calculator",
-          economics: "Economics Module",
-          portopt: "Portfolio Optimization",
-          sensitivity: "Sensitivities",
-          typecurves: "Type Curves & DCA",
-          benchmark: "Global Benchmarking",
-          playfairway: "Play Fairway Mapping",
-          ingestion: "Data Ingestion",
-          governance: "Governance & Audit",
-          aiconfig: "AI Configuration",
-          petrosystem: "Petrosystem"
-     };
+      const SECTION_TITLES = {
+            portfolio: "Portfolio Dashboard",
+            basins: "Basin Catalogue",
+            screening: "Basin Screening",
+            ranking: "Opportunity Ranking",
+            analogues: "Reservoir Analogue Engine",
+            params: "Parameter Library",
+            risk: "Risk & Uncertainty",
+            volumetrics: "Volumetrics Calculator",
+            economics: "Economics Module",
+            portopt: "Portfolio Optimization",
+            sensitivity: "Sensitivities",
+            typecurves: "Type Curves & DCA",
+            benchmark: "Global Benchmarking",
+            playfairway: "Play Fairway Mapping",
+            ingestion: "Data Ingestion",
+            governance: "Governance & Audit",
+            aiconfig: "AI Configuration",
+            petrosystem: "Petrosystem"
+      };
 
-     const PAGE_NAMES = {
-          portfolio: "Portfolio Dashboard",
-          basins: "Basin Catalogue",
-          screening: "Basin Screening",
-          ranking: "Opportunity Ranking",
-          analogues: "Analogue Engine",
-          params: "Parameter Library",
-          volumetrics: "Volumetrics Calculator",
-          risk: "Risk & Uncertainty",
-          typecurves: "Type Curves & DCA",
-          economics: "Economics Module",
-          portopt: "Portfolio Optimization",
-          sensitivity: "Sensitivities",
-          benchmark: "Global Benchmarking",
-          playfairway: "Play Fairway Mapping",
-          ingestion: "Data Ingestion",
-          governance: "Governance",
-          aiconfig: "AI Configuration",
-          petrosystem: "Petrosystem"
-     };
+      const PAGE_NAMES = {
+            portfolio: "Portfolio Dashboard",
+            basins: "Basin Catalogue",
+            screening: "Basin Screening",
+            ranking: "Opportunity Ranking",
+            analogues: "Analogue Engine",
+            params: "Parameter Library",
+            volumetrics: "Volumetrics Calculator",
+            risk: "Risk & Uncertainty",
+            typecurves: "Type Curves & DCA",
+            economics: "Economics Module",
+            portopt: "Portfolio Optimization",
+            sensitivity: "Sensitivities",
+            benchmark: "Global Benchmarking",
+            playfairway: "Play Fairway Mapping",
+            ingestion: "Data Ingestion",
+            governance: "Governance",
+            aiconfig: "AI Configuration",
+            petrosystem: "Petrosystem"
+      };
 
-     function goTo(id, navEl) {
-          // 1. Reset Play Fairway sub-panels
-          ["heatmap", "crs", "leads"].forEach(t => {
-               const p = document.getElementById("pf-" + t + "-panel");
-               if (p) p.style.display = t === "heatmap" ? "block" : "none";
-          });
+      function goTo(id, navEl) {
+            // 1. Reset Play Fairway sub-panels
+            ["heatmap", "crs", "leads"].forEach(t => {
+                const p = document.getElementById("pf-" + t + "-panel");
+                if (p) p.style.display = t === "heatmap" ? "block" : "none";
+            });
 
-          // 2. Clean up CSS classes from everything
-          document.querySelectorAll(".sec").forEach((s) => s.classList.remove("on"));
-          document.querySelectorAll(".nav").forEach((n) => n.classList.remove("on"));
-          document.querySelectorAll(".nav-group-parent").forEach((p) => p.classList.remove("on"));
+            // 2. Clean up CSS classes from everything
+            document.querySelectorAll(".sec").forEach((s) => s.classList.remove("on"));
+            document.querySelectorAll(".nav").forEach((n) => n.classList.remove("on"));
+            document.querySelectorAll(".nav-group-parent").forEach((p) => p.classList.remove("on"));
 
-          // 3. Activate the new section
-          const targetSec = document.getElementById("sec-" + id);
-          if (targetSec) {
-               targetSec.classList.add("on");
-          }
+            // 3. Activate the new section
+            const targetSec = document.getElementById("sec-" + id);
+            if (targetSec) {
+                targetSec.classList.add("on");
+            }
 
-          // 4. Handle Navigation Highlighting (Current item + Parent)
-          let activeNav = navEl;
-          
-          // If navEl wasn't passed (like on page load or back button), find it by ID
-          if (!activeNav) {
-               activeNav = document.querySelector(`.nav[onclick*="'${id}'"]`);
-          }
+            // 4. Handle Navigation Highlighting (Current item + Parent)
+            let activeNav = navEl;
+            
+            // If navEl wasn't passed (like on page load or back button), find it by ID
+            if (!activeNav) {
+                activeNav = document.querySelector(`.nav[onclick*="'${id}'"]`);
+            }
 
-          if (activeNav) {
-               activeNav.classList.add("on");
-               
-               // Find the flyout parent and highlight it too
-               const parentGroup = activeNav.closest(".nav-group-parent");
-               if (parentGroup) {
-                    parentGroup.classList.add("on");
-               }
-          }
+            if (activeNav) {
+                activeNav.classList.add("on");
+                
+                // Find the flyout parent and highlight it too
+                const parentGroup = activeNav.closest(".nav-group-parent");
+                if (parentGroup) {
+                      parentGroup.classList.add("on");
+                }
+            }
 
-          // 5. Update UI (Title, Breadcrumbs, Browser URL)
-          const pageName = PAGE_NAMES[id] || id;
-          document.title = pageName + " — EDAFY";
-          
-          const bc = document.getElementById("breadcrumb-section");
-          const activeSection = document.getElementById("sec-" + id);
-          
-          if (activeSection) {
-               const tabsContainer = activeSection.querySelector(".tabs");
-               if (tabsContainer) {
-                    const firstTab = tabsContainer.querySelector(".tab");
-                    if (firstTab && bc) {
-                         bc.textContent = firstTab.textContent.trim();
-                    }
-               }
-          }
+            // 5. Update UI (Title, Breadcrumbs, Browser URL)
+            const pageName = PAGE_NAMES[id] || id;
+            document.title = pageName + " — EDAFY";
+            
+            const bc = document.getElementById("breadcrumb-section");
+            const activeSection = document.getElementById("sec-" + id);
+            
+            if (activeSection) {
+                const tabsContainer = activeSection.querySelector(".tabs");
+                if (tabsContainer) {
+                      const firstTab = tabsContainer.querySelector(".tab");
+                      if (firstTab && bc) {
+                          bc.textContent = firstTab.textContent.trim();
+                      }
+                }
+            }
 
-          if (history.pushState) history.pushState(null, null, "#" + id);
-          document.getElementById("tb-title").textContent = SECTION_TITLES[id] || id;
+            if (history.pushState) history.pushState(null, null, "#" + id);
+            document.getElementById("tb-title").textContent = SECTION_TITLES[id] || id;
 
-          // 6. Component Initializers
-          const initDelay = 100;
-          if (id === "portfolio") setTimeout(setupPortfolioMap, initDelay);
-          if (id === "aiconfig") setTimeout(aiRestoreConfig, 50);
-          if (id === "basins") setTimeout(setupMap, initDelay);
-          if (id === "risk") setTimeout(initProspectDropdown, 50);
-          if (id === "ranking") setTimeout(renderRankMatrix, initDelay);
-          if (id === "benchmark") setTimeout(renderBenchmarks, initDelay);
-          if (id === "analogues") setTimeout(initAIA, 150); // Changed from aianalogues to analogues to match your HTML
-          
-          loadBar();
-     }
+            // 6. Component Initializers
+            const initDelay = 100;
+            if (id === "portfolio") setTimeout(setupPortfolioMap, initDelay);
+            if (id === "aiconfig") setTimeout(aiRestoreConfig, 50);
+            if (id === "basins") setTimeout(setupMap, initDelay);
+            if (id === "risk") setTimeout(initProspectDropdown, 50);
+            if (id === "ranking") setTimeout(renderRankMatrix, initDelay);
+            if (id === "benchmark") setTimeout(renderBenchmarks, initDelay);
+            if (id === "analogues") setTimeout(initAIA, 150); // Changed from aianalogues to analogues to match your HTML
+            
+            loadBar();
+      }
 
-     function closeNLP() {
-          document.getElementById("nlp-result").classList.remove("show");
-          document.querySelector(".content").classList.remove("nlp-open");
-     }
+      function closeNLP() {
+            document.getElementById("nlp-result").classList.remove("show");
+            document.querySelector(".content").classList.remove("nlp-open");
+      }
 
-     function loadBar() {
-          const lb = document.getElementById("loadbar");
-          lb.classList.add("show");
-          setTimeout(() => lb.classList.remove("show"), 800);
-     }
+      function loadBar() {
+            const lb = document.getElementById("loadbar");
+            lb.classList.add("show");
+            setTimeout(() => lb.classList.remove("show"), 800);
+      }
 
-     function toggleSidebar() {
-          const sb = document.getElementById("sidebar");
-          const main = document.querySelector(".main");
-          const nlpResult = document.getElementById("nlp-result");
-          const btn = document.getElementById("sb-toggle");
-          if (sb.classList.contains("collapsed")) {
-               sb.classList.remove("collapsed");
-               sb.classList.remove("hover-expanded");
-               sb.dataset.pinned = "1";
-               main.classList.remove("sb-collapsed");
-               if (nlpResult) nlpResult.classList.remove("sb-collapsed");
-               btn.innerHTML = "&#x3E;";
-               document.documentElement.style.setProperty("--sb-width", "240px");
-          } else {
-               sb.classList.add("collapsed");
-               delete sb.dataset.pinned;
-               main.classList.add("sb-collapsed");
-               if (nlpResult) nlpResult.classList.add("sb-collapsed");
-               btn.innerHTML = "&#x203A;";
-               document.documentElement.style.setProperty("--sb-width", "56px");
-          }
-     }
-     (function () {
-          const sb = document.getElementById("sidebar");
-          sb.addEventListener("mouseenter", () => {
-               if (sb.classList.contains("collapsed") && !sb.dataset.pinned)
-               sb.classList.add("hover-expanded");
-          });
-          sb.addEventListener("mouseleave", () => {
-               sb.classList.remove("hover-expanded");
-          });
-     })();
+      function toggleSidebar() {
+            const sb = document.getElementById("sidebar");
+            const main = document.querySelector(".main");
+            const nlpResult = document.getElementById("nlp-result");
+            const btn = document.getElementById("sb-toggle");
+            if (sb.classList.contains("collapsed")) {
+                sb.classList.remove("collapsed");
+                sb.classList.remove("hover-expanded");
+                sb.dataset.pinned = "1";
+                main.classList.remove("sb-collapsed");
+                if (nlpResult) nlpResult.classList.remove("sb-collapsed");
+                btn.innerHTML = "&#x3E;";
+                document.documentElement.style.setProperty("--sb-width", "240px");
+            } else {
+                sb.classList.add("collapsed");
+                delete sb.dataset.pinned;
+                main.classList.add("sb-collapsed");
+                if (nlpResult) nlpResult.classList.add("sb-collapsed");
+                btn.innerHTML = "&#x203A;";
+                document.documentElement.style.setProperty("--sb-width", "56px");
+            }
+      }
+      (function () {
+            const sb = document.getElementById("sidebar");
+            sb.addEventListener("mouseenter", () => {
+                if (sb.classList.contains("collapsed") && !sb.dataset.pinned)
+                sb.classList.add("hover-expanded");
+            });
+            sb.addEventListener("mouseleave", () => {
+                sb.classList.remove("hover-expanded");
+            });
+      })();
 
       // ============================================================
       // TAB SWITCHING — generic
       // ============================================================
-     function switchTab(el, group) {
-          el.closest(".tabs")
-               .querySelectorAll(".tab")
-               .forEach((t) => t.classList.remove("on"));
-          el.classList.add("on");
-     }
+      function switchTab(el, group) {
+        el.closest(".tabs")
+            .querySelectorAll(".tab")
+            .forEach((t) => t.classList.remove("on"));
+        el.classList.add("on");
+      }
 
       // ============================================================
       // RISK TABS
@@ -4723,21 +4736,20 @@ clamp(stabScore*0.25 + cpiScore*0.20 + contScore*0.20 + secScore*0.20 + edbScore
       let _portfolioMap = null;
       let _portfolioMarkers = [];
       let _focusedBasin = null;
-      let _simCrossplotChart = null;
-      let _simHistChart = null;
-      let _simRadarChart = null;
-      let _gcosRadarChart = null;
-      let _mcHistChart = null;
-      let _volSensChart = null;
-      let _tornadoChart = null;
-      let _spiderChart = null;
-      let _bpRadarChart = null;
-      let _pcHoveredRank = null;
-      let _pcLastA = null;
-      let _pcLastT = null;
-      let _pcListenersAdded = false;
-      let _pcMouseX = 0,
-        _pcMouseY = 0;
+      // let _simCrossplotChart = null;
+      // let _simHistChart = null;
+      // let _simRadarChart = null;
+      // let _gcosRadarChart = null;
+      // let _mcHistChart = null;
+      // let _volSensChart = null;
+      // let _tornadoChart = null;
+      // let _spiderChart = null;
+      // let _bpRadarChart = null;
+      // let _pcHoveredRank = null;
+      // let _pcLastA = null;
+      // let _pcLastT = null;
+      // let _pcListenersAdded = false;
+      // let _pcMouseX = 0, _pcMouseY = 0;
 
       function setupPortfolioMap() {
         const el = document.getElementById("portfolio-leaflet-map");
@@ -4793,6 +4805,7 @@ clamp(stabScore*0.25 + cpiScore*0.20 + contScore*0.20 + secScore*0.20 + edbScore
       }
 
       // Basin coordinate lookup (lat/lng) — extended for all basins
+      
       const BASIN_COORDS = {
         "Zagros Fold Belt": [32.0, 47.5],
         "Permian Basin": [31.5, -102.5],

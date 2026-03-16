@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html>
+<head>
+     <meta charset="utf-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+     <title>Basin Map</title>
+
+     <script type="module" src="https://js.arcgis.com/5.0/"></script>
+     <script src="basins_simplified.js"></script>
+     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+     <style>
+          html, body, arcgis-map{
+               height:100%;
+               margin:0;
+          }
+     </style>
+</head>
+
+<body>
+     <arcgis-map basemap="streets" zoom="2">
+          <arcgis-zoom slot="top-left"></arcgis-zoom>
+          <arcgis-popup slot="popup"></arcgis-popup>
+     </arcgis-map>
+
+     <button id="reset-map-btn"
+          style="
+               position: absolute;
+               top: 10px;
+               right: 44px;
+               z-index: 1000;
+               background: rgba(26, 32, 44, 0.82);
+               color: #fff;
+               border: 1px solid rgba(255, 255, 255, 0.18);
+               border-radius: 5px;
+               padding: 4px 10px;
+               font-size: 10px;
+               font-weight: 600;
+               cursor: pointer;
+               font-family: inherit;
+               letter-spacing: 0.4px;
+          ">
+          ⌂ Reset View
+     </button>
+
+     <!-- <script src="script.js"></script> -->
+     <script type="module">
+          const BASINS = [
+               {
+                    name: "Zagros Fold Belt",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:ZagrosFoldBelt:1",
+                    country: "Iran / Iraq",
+                    region: "Middle East",
+                    tectonic: "Fold Belt",
+                    age: "Cambrian–Miocene",
+                    hc: "Oil",
+                    area: 234500,
+                    plays: 18,
+                    score: 92,
+                    status: "Mature",
+               },
+               {
+                    name: "Permian Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:PermianBasin:1",
+                    country: "USA",
+                    region: "North America",
+                    tectonic: "Intracratonic",
+                    age: "Permian",
+                    hc: "Oil",
+                    area: 180000,
+                    plays: 22,
+                    score: 88,
+                    status: "Mature",
+               },
+               {
+                    name: "North Sea",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:NorthSea:1",
+                    country: "UK / Norway",
+                    region: "Europe",
+                    tectonic: "Rift Basin",
+                    age: "Triassic–Paleocene",
+                    hc: "Oil & Gas",
+                    area: 750000,
+                    plays: 24,
+                    score: 81,
+                    status: "Mature",
+               },
+               {
+                    name: "Kutei Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:KuteiBasin:1",
+                    country: "Indonesia",
+                    region: "Southeast Asia",
+                    tectonic: "Foreland",
+                    age: "Eocene–Miocene",
+                    hc: "Gas",
+                    area: 165000,
+                    plays: 12,
+                    score: 74,
+                    status: "Active",
+               },
+               {
+                    name: "Nile Delta",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:NileDelta:1",
+                    country: "Egypt",
+                    region: "North Africa",
+                    tectonic: "Passive Margin",
+                    age: "Oligocene–Recent",
+                    hc: "Gas",
+                    area: 89000,
+                    plays: 8,
+                    score: 68,
+                    status: "Active",
+               },
+               {
+                    name: "Murzuq Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:MurzuqBasin:1",
+                    country: "Libya",
+                    region: "North Africa",
+                    tectonic: "Intracratonic",
+                    age: "Silurian–Devonian",
+                    hc: "Oil",
+                    area: 320000,
+                    plays: 5,
+                    score: 42,
+                    status: "Active",
+               },
+               {
+                    name: "Sergipe-Alagoas",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:SergipeAlagoas:1",
+                    country: "Brazil",
+                    region: "South America",
+                    tectonic: "Passive Margin",
+                    age: "Cretaceous–Recent",
+                    hc: "Oil & Gas",
+                    area: 42000,
+                    plays: 9,
+                    score: 35,
+                    status: "Frontier",
+               },
+               {
+                    name: "Malay Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:MalayBasin:1",
+                    country: "Malaysia",
+                    region: "Southeast Asia",
+                    tectonic: "Rift Basin",
+                    age: "Eocene–Miocene",
+                    hc: "Gas",
+                    area: 85000,
+                    plays: 10,
+                    score: 77,
+                    status: "Mature",
+               },
+               {
+                    name: "Niger Delta",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:NigerDelta:1",
+                    country: "Nigeria",
+                    region: "West Africa",
+                    tectonic: "Passive Margin",
+                    age: "Eocene–Recent",
+                    hc: "Oil & Gas",
+                    area: 300000,
+                    plays: 20,
+                    score: 72,
+                    status: "Mature",
+               },
+               {
+                    name: "South Caspian",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:SouthCaspian:1",
+                    country: "Azerbaijan",
+                    region: "Middle East",
+                    tectonic: "Foreland",
+                    age: "Oligocene–Miocene",
+                    hc: "Oil & Gas",
+                    area: 70000,
+                    plays: 8,
+                    score: 80,
+                    status: "Active",
+               },
+               {
+                    name: "Barents Sea",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:BarentsSea:1",
+                    country: "Norway",
+                    region: "Europe",
+                    tectonic: "Passive Margin",
+                    age: "Triassic–Cretaceous",
+                    hc: "Gas",
+                    area: 1100000,
+                    plays: 15,
+                    score: 58,
+                    status: "Frontier",
+               },
+               {
+                    name: "Browse Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:BrowseBasin:1",
+                    country: "Australia",
+                    region: "Australasia",
+                    tectonic: "Passive Margin",
+                    age: "Jurassic–Cretaceous",
+                    hc: "Gas",
+                    area: 140000,
+                    plays: 7,
+                    score: 63,
+                    status: "Active",
+               },
+               {
+                    name: "East Greenland",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:EastGreenland:1",
+                    country: "Greenland",
+                    region: "Arctic",
+                    tectonic: "Rift Basin",
+                    age: "Jurassic–Cretaceous",
+                    hc: "Oil",
+                    area: 95000,
+                    plays: 3,
+                    score: 28,
+                    status: "Frontier",
+               },
+               {
+                    name: "Tarim Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:TarimBasin:1",
+                    country: "China",
+                    region: "Asia",
+                    tectonic: "Intracratonic",
+                    age: "Cambrian–Triassic",
+                    hc: "Oil & Gas",
+                    area: 560000,
+                    plays: 16,
+                    score: 65,
+                    status: "Active",
+               },
+               {
+                    name: "Neuquén Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:NeuquenBasin:1",
+                    country: "Argentina",
+                    region: "South America",
+                    tectonic: "Foreland",
+                    age: "Triassic–Cretaceous",
+                    hc: "Oil & Gas",
+                    area: 120000,
+                    plays: 11,
+                    score: 70,
+                    status: "Active",
+               },
+          ];
+
+          const BASIN_COORDS = {
+               "Zagros Fold Belt": [32.0, 47.5],
+               "Permian Basin": [31.5, -102.5],
+               "North Sea": [56.5, 3.5],
+               "Kutei Basin": [-1.0, 117.0],
+               "Nile Delta": [31.0, 31.0],
+               "Murzuq Basin": [26.0, 14.0],
+               "Sergipe-Alagoas": [-11.0, -37.0],
+               "Malay Basin": [6.0, 104.0],
+               "Browse Basin": [-16.0, 122.0],
+               "Barents Sea": [74.0, 30.0],
+               "East Greenland": [72.0, -25.0],
+               "Vaca Muerta": [-38.0, -69.0],
+               "Permian Basin (China)": [39.0, 85.0],
+               "Tarim Basin": [39.5, 83.0],
+               "Niger Delta": [4.5, 6.5],
+               "Anadarko Basin": [35.5, -98.5],
+               "Cooper Basin": [-28.0, 140.0],
+               "Williston Basin": [47.0, -103.0],
+               "Rub al Khali": [21.0, 54.0],
+               "Sirte Basin": [29.0, 20.0],
+          };
+
+          // 2. IMPORTS
+          
+          const [GeoJSONLayer, GraphicsLayer, Graphic] = await $arcgis.import([
+               "@arcgis/core/layers/GeoJSONLayer.js",
+               "@arcgis/core/layers/GraphicsLayer.js",
+               "@arcgis/core/Graphic.js"
+          ]);
+
+          // 3. INITIALIZATION
+          const mapEl = document.querySelector("arcgis-map");
+          await mapEl.viewOnReady();
+
+          const markersLayer = new GraphicsLayer();
+          let basinsLayer = null;
+          let highlight = null;
+          let hoveredMarker = null;
+
+          // 4. CORE FUNCTIONS
+          function getBasinCoords(basin) {
+               if (BASIN_COORDS[basin.name]) return BASIN_COORDS[basin.name];
+               const regionFallbacks = {
+                    "Middle East": [28, 45], "North America": [40, -100], "Europe": [52, 15],
+                    "Southeast Asia": [5, 115], "North Africa": [25, 20], "South America": [-15, -55],
+                    "Australia": [-25, 135], "Russia": [60, 80], "West Africa": [5, 5]
+               };
+               return regionFallbacks[basin.region] || [0, 20];
+          }
+
+          function getScoreColor(score) {
+               if (score >= 70) return "#1A7F5A"; // Mature/Green
+               if (score >= 40) return "#C07800"; // Active/Orange
+               return "#C62828";                  // Frontier/Red
+          }
+
+          // Attach to window so HTML buttons can call it
+          window.focusBasinOnMap = async function(name) {
+               if (!basinsLayer) return;
+               
+               const query = basinsLayer.createQuery();
+               query.where = `basin_name = '${name}'`;
+               query.returnGeometry = true;
+
+               const { features } = await basinsLayer.queryFeatures(query);
+               if (features.length > 0) {
+                    const feature = features[0];
+                    mapEl.view.goTo(feature.geometry.extent.expand(1.5));
+                    mapEl.view.popup.open({
+                         features: [feature],
+                         location: feature.geometry.centroid
+                    });
+               }
+          };
+
+          // 5. LAYER SETUP
+          async function setupLayers() {
+               // Polygon Layer (GeoJSON)
+               if (window._basinsData) {
+                    const blob = new Blob([JSON.stringify(window._basinsData)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    
+                    basinsLayer = new GeoJSONLayer({
+                         url: url,
+                         renderer: {
+                              type: "simple",
+                              symbol: {
+                                   type: "simple-fill",
+                                   color: [107, 70, 193, 0.08],
+                                   outline: { color: "#6B46C1", width: 1.5 }
+                              }
+                         },
+                         popupTemplate: {
+                              title: "{basin_name}",
+                              content: `<b>Countries:</b> {country_names}<br><b>Type:</b> {basin_type}<br><b>Area:</b> {basin_sqkm} km²`
+                         }
+                    });
+                    mapEl.map.add(basinsLayer);
+               }
+
+               // Markers Layer
+               mapEl.map.add(markersLayer);
+                    renderMarkers();
+               }
+
+          function renderMarkers() {
+               markersLayer.removeAll();
+               BASINS.forEach(basin => {
+                    const coords = getBasinCoords(basin);
+                    const score = basin.score || 50;
+                    const color = getScoreColor(score);
+                    const size = Math.max(8, Math.min(20, score / 5)) * 1.8;
+
+                    const graphic = new Graphic({
+                         geometry: { type: "point", longitude: coords[1], latitude: coords[0] },
+                         symbol: {
+                              type: "simple-marker",
+                              size: size,
+                              color: color,
+                              outline: { color: "white", width: 4 }
+                         },
+                         attributes: { ...basin, _originalSize: size },
+                         popupTemplate: {
+                              title: "{name}",
+                              content: `
+                                   <div style="font-family:sans-serif; min-width:180px">
+                                        <table style="width:100%; font-size:11px;">
+                                             <tr><td style="color:#8896A5">Country</td><td><b>{country}</b></td></tr>
+                                             <tr><td style="color:#8896A5">Prospectivity</td><td style="color:${color}; font-weight:700">{score}/100</td></tr>
+                                             <tr><td style="color:#8896A5">Status</td><td><b>{status}</b></td></tr>
+                                        </table>
+                                   </div>`
+                         }
+                    });
+                    markersLayer.add(graphic);
+               });
+          }
+
+          // 6. EVENT LISTENERS
+          mapEl.view.on("pointer-move", async (event) => {
+               const hit = await mapEl.view.hitTest(event);
+               
+               const markerRes = hit.results.find(r => r.graphic.layer === markersLayer);
+               const polyRes = hit.results.find(r => r.graphic.layer === basinsLayer);
+
+               // 1. CURSOR CHANGE (Tailwind cursor-pointer equivalent)
+               if (markerRes || polyRes) {
+                    mapEl.view.container.style.cursor = "pointer";
+               } else {
+                    mapEl.view.container.style.cursor = "default";
+               }
+
+               // 2. HANDLE MARKER HOVER (Scaling/Transform Effect)
+               if (hoveredMarker && hoveredMarker !== markerRes?.graphic) {
+                    // Reset old marker size
+                    const oldSymbol = hoveredMarker.symbol.clone();
+                    oldSymbol.size = hoveredMarker.attributes._originalSize;
+                    hoveredMarker.symbol = oldSymbol;
+                    hoveredMarker = null;
+               }
+
+               if (markerRes) {
+                    const marker = markerRes.graphic;
+                    if (hoveredMarker !== marker) {
+                         hoveredMarker = marker;
+                         // Create "Scale" effect (clone to ensure individual update)
+                         const newSymbol = marker.symbol.clone();
+                         newSymbol.size = marker.attributes._originalSize * 1.2; // Transform scale effect
+                         marker.symbol = newSymbol;
+                    }
+               }
+
+               // 3. HANDLE POLYGON HIGHLIGHT
+               const layerView = await mapEl.view.whenLayerView(basinsLayer);
+               if (highlight) { 
+                    highlight.remove(); 
+                    highlight = null; 
+               }
+               
+               if (polyRes && !markerRes) {
+                    highlight = layerView.highlight(polyRes.graphic);
+               }
+          });
+
+          // 7. CLICK TO ZOOM
+          mapEl.view.on("click", async (event) => {
+               const hit = await mapEl.view.hitTest(event);
+               const markerRes = hit.results.find(r => r.graphic.layer === markersLayer);
+               const polyRes = hit.results.find(r => r.graphic.layer === basinsLayer);
+               
+               if (markerRes) {
+                    // --- Logic for Clicking Dots ---
+                    const targetCoords = markerRes.graphic.geometry;
+                    mapEl.view.goTo({
+                         target: targetCoords,
+                         zoom: 6
+                    }, {
+                         duration: 800,
+                         easing: "ease-in-out"
+                    });
+               } 
+               else if (polyRes) {
+                    // --- Logic for Clicking Polygons ---
+                    const targetGraphic = polyRes.graphic;
+                    
+                    // Use the geometry's extent to zoom out/in to fit the whole shape
+                    mapEl.view.goTo({
+                         target: targetGraphic.geometry.extent.expand(1.5),
+                    }, {
+                         duration: 1000,
+                         easing: "ease-in-out"
+                    });
+
+                    // Optional: Open popup for the polygon
+                    mapEl.view.popup.open({
+                         features: [targetGraphic],
+                         location: event.mapPoint
+                    });
+               }
+          });
+
+          // Run Setup
+          setupLayers();
+
+          // Reset Button Logic
+          document.getElementById("reset-map-btn").addEventListener("click", () => {
+               mapEl.view.goTo({ center: [20, 20], zoom: 2 });
+               mapEl.view.popup.close();
+          });
+
+     </script>
+</body>
+</html>

@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Document</title>
+     <!-- <link rel="stylesheet" href="style.css" /> -->
+     <link
+          rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+     />
+     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+     <script src="basins_simplified.js"></script>
+     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+     <style>
+          .map-area {
+          height: 60vh;
+          background: #eef2ff;
+          border-radius: 6px;
+          position: relative;
+          overflow: hidden;
+          cursor: pointer;
+          border: 1px solid #e2e8f0;
+          }
+          .map-area svg {
+          width: 100%;
+          height: 100%;
+          }
+          .leaflet-pane svg {
+          width: auto !important;
+          height: auto !important;
+          }
+          .map-lbl {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          font-size: 8px;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: var(--purple);
+          background: rgba(255, 255, 255, 0.9);
+          padding: 3px 8px;
+          border-radius: 3px;
+          border: 1px solid #e2e8f0;
+          }
+          .map-legend {
+          position: absolute;
+          bottom: 10px;
+          right: 10px;
+          background: rgba(255, 255, 255, 0.95);
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          padding: 7px 11px;
+          font-size: 9px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+          }
+          .map-legend-item {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          color: var(--t2);
+          margin-bottom: 3px;
+          }
+          .map-legend-item:last-child {
+          margin-bottom: 0;
+          }
+          .ldot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          }
+          .map-tooltip {
+          position: absolute;
+          pointer-events: none;
+          background: #fff;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          padding: 8px 12px;
+          font-size: 10px;
+          display: none;
+          z-index: 10;
+          min-width: 160px;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+          }
+          .map-tooltip-name {
+          font-weight: 700;
+          color: var(--t1);
+          margin-bottom: 4px;
+          }
+          .map-tooltip-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          color: var(--t2);
+          margin-top: 2px;
+          }
+          .map-tooltip-val {
+          color: var(--purple);
+          font-weight: 700;
+          }
+     </style>
+</head>
+<body>
+     <div class="map-area" id="world-map" style="position: relative">
+          <div
+               id="leaflet-map"
+               style="width: 100%; height: 100%; border-radius: 8px; z-index: 1"
+          ></div>
+
+          <div
+               id="map-tt"
+               class="map-tooltip"
+               style="
+                    display: none;
+                    position: absolute;
+                    z-index: 9999;
+                    pointer-events: none;
+               "
+          ></div>
+
+          <button
+               onclick="
+                    if (_leafletMap) {
+                    _leafletMap.closePopup();
+                    _leafletMap.flyTo([20, 20], 2, { duration: 0.8 });
+                    }
+               "
+               title="Reset map view"
+               style="
+                    position: absolute;
+                    top: 10px;
+                    right: 44px;
+                    z-index: 1000;
+                    background: rgba(26, 32, 44, 0.82);
+                    color: #fff;
+                    border: 1px solid rgba(255, 255, 255, 0.18);
+                    border-radius: 5px;
+                    padding: 4px 10px;
+                    font-size: 10px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    font-family: inherit;
+                    letter-spacing: 0.4px;
+               "
+               >
+               ⌂ Reset View
+          </button>
+          
+          <div id="map-resize-handle"></div>
+     </div>
+
+     <script>
+
+          const BASINS = [
+               {
+                    name: "Zagros Fold Belt",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:ZagrosFoldBelt:1",
+                    country: "Iran / Iraq",
+                    region: "Middle East",
+                    tectonic: "Fold Belt",
+                    age: "Cambrian–Miocene",
+                    hc: "Oil",
+                    area: 234500,
+                    plays: 18,
+                    score: 92,
+                    status: "Mature",
+               },
+               {
+                    name: "Permian Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:PermianBasin:1",
+                    country: "USA",
+                    region: "North America",
+                    tectonic: "Intracratonic",
+                    age: "Permian",
+                    hc: "Oil",
+                    area: 180000,
+                    plays: 22,
+                    score: 88,
+                    status: "Mature",
+               },
+               {
+                    name: "North Sea",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:NorthSea:1",
+                    country: "UK / Norway",
+                    region: "Europe",
+                    tectonic: "Rift Basin",
+                    age: "Triassic–Paleocene",
+                    hc: "Oil & Gas",
+                    area: 750000,
+                    plays: 24,
+                    score: 81,
+                    status: "Mature",
+               },
+               {
+                    name: "Kutei Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:KuteiBasin:1",
+                    country: "Indonesia",
+                    region: "Southeast Asia",
+                    tectonic: "Foreland",
+                    age: "Eocene–Miocene",
+                    hc: "Gas",
+                    area: 165000,
+                    plays: 12,
+                    score: 74,
+                    status: "Active",
+               },
+               {
+                    name: "Nile Delta",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:NileDelta:1",
+                    country: "Egypt",
+                    region: "North Africa",
+                    tectonic: "Passive Margin",
+                    age: "Oligocene–Recent",
+                    hc: "Gas",
+                    area: 89000,
+                    plays: 8,
+                    score: 68,
+                    status: "Active",
+               },
+               {
+                    name: "Murzuq Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:MurzuqBasin:1",
+                    country: "Libya",
+                    region: "North Africa",
+                    tectonic: "Intracratonic",
+                    age: "Silurian–Devonian",
+                    hc: "Oil",
+                    area: 320000,
+                    plays: 5,
+                    score: 42,
+                    status: "Active",
+               },
+               {
+                    name: "Sergipe-Alagoas",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:SergipeAlagoas:1",
+                    country: "Brazil",
+                    region: "South America",
+                    tectonic: "Passive Margin",
+                    age: "Cretaceous–Recent",
+                    hc: "Oil & Gas",
+                    area: 42000,
+                    plays: 9,
+                    score: 35,
+                    status: "Frontier",
+               },
+               {
+                    name: "Malay Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:MalayBasin:1",
+                    country: "Malaysia",
+                    region: "Southeast Asia",
+                    tectonic: "Rift Basin",
+                    age: "Eocene–Miocene",
+                    hc: "Gas",
+                    area: 85000,
+                    plays: 10,
+                    score: 77,
+                    status: "Mature",
+               },
+               {
+                    name: "Niger Delta",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:NigerDelta:1",
+                    country: "Nigeria",
+                    region: "West Africa",
+                    tectonic: "Passive Margin",
+                    age: "Eocene–Recent",
+                    hc: "Oil & Gas",
+                    area: 300000,
+                    plays: 20,
+                    score: 72,
+                    status: "Mature",
+               },
+               {
+                    name: "South Caspian",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:SouthCaspian:1",
+                    country: "Azerbaijan",
+                    region: "Middle East",
+                    tectonic: "Foreland",
+                    age: "Oligocene–Miocene",
+                    hc: "Oil & Gas",
+                    area: 70000,
+                    plays: 8,
+                    score: 80,
+                    status: "Active",
+               },
+               {
+                    name: "Barents Sea",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:BarentsSea:1",
+                    country: "Norway",
+                    region: "Europe",
+                    tectonic: "Passive Margin",
+                    age: "Triassic–Cretaceous",
+                    hc: "Gas",
+                    area: 1100000,
+                    plays: 15,
+                    score: 58,
+                    status: "Frontier",
+               },
+               {
+                    name: "Browse Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:BrowseBasin:1",
+                    country: "Australia",
+                    region: "Australasia",
+                    tectonic: "Passive Margin",
+                    age: "Jurassic–Cretaceous",
+                    hc: "Gas",
+                    area: 140000,
+                    plays: 7,
+                    score: 63,
+                    status: "Active",
+               },
+               {
+                    name: "East Greenland",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:EastGreenland:1",
+                    country: "Greenland",
+                    region: "Arctic",
+                    tectonic: "Rift Basin",
+                    age: "Jurassic–Cretaceous",
+                    hc: "Oil",
+                    area: 95000,
+                    plays: 3,
+                    score: 28,
+                    status: "Frontier",
+               },
+               {
+                    name: "Tarim Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:TarimBasin:1",
+                    country: "China",
+                    region: "Asia",
+                    tectonic: "Intracratonic",
+                    age: "Cambrian–Triassic",
+                    hc: "Oil & Gas",
+                    area: 560000,
+                    plays: 16,
+                    score: 65,
+                    status: "Active",
+               },
+               {
+                    name: "Neuquén Basin",
+                    osduId: "osdu:master-data--GeoPoliticalEntity:NeuquenBasin:1",
+                    country: "Argentina",
+                    region: "South America",
+                    tectonic: "Foreland",
+                    age: "Triassic–Cretaceous",
+                    hc: "Oil & Gas",
+                    area: 120000,
+                    plays: 11,
+                    score: 70,
+                    status: "Active",
+               },
+          ];
+
+          window.onload = () => {
+               setupMap();
+          };
+
+          let _leafletMap = null;
+          let _leafletMarkers = [];
+          let _portfolioMap = null;
+          let _portfolioMarkers = [];
+          let _focusedBasin = null;
+          let _simCrossplotChart = null;
+          let _simHistChart = null;
+          let _simRadarChart = null;
+          let _gcosRadarChart = null;
+          let _mcHistChart = null;
+          let _volSensChart = null;
+          let _tornadoChart = null;
+          let _spiderChart = null;
+          let _bpRadarChart = null;
+          let _pcHoveredRank = null;
+          let _pcLastA = null;
+          let _pcLastT = null;
+          let _pcListenersAdded = false;
+          let _pcMouseX = 0,
+          _pcMouseY = 0;
+
+     function setupPortfolioMap() {
+          const el = document.getElementById("portfolio-leaflet-map");
+          if (!el) return;
+          if (_portfolioMap) {
+               _portfolioMap.remove();
+               _portfolioMap = null;
+          }
+          _portfolioMap = L.map("portfolio-leaflet-map", {
+               center: [20, 20],
+               zoom: 2,
+               minZoom: 2,
+               maxZoom: 8,
+               zoomControl: true,
+               attributionControl: false,
+          });
+          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+               maxZoom: 19,
+          }).addTo(_portfolioMap);
+          L.control
+               .attribution({ position: "bottomright" })
+               .addTo(_portfolioMap)
+               .setPrefix("© OpenStreetMap | EDAFY");
+          renderPortfolioMapMarkers();
+     }
+
+     function renderPortfolioMapMarkers() {
+          if (!_portfolioMap) return;
+          _portfolioMarkers.forEach((m) => _portfolioMap.removeLayer(m));
+          _portfolioMarkers = [];
+          BASINS.forEach((basin) => {
+               const coords = getBasinCoords(basin);
+               const score = basin.score || 50;
+               const color =
+               score >= 70 ? "#1A7F5A" : score >= 40 ? "#C07800" : "#C62828";
+               const r = Math.max(7, Math.min(18, score / 5.5));
+               const icon = L.divIcon({
+                    className: "",
+                    html: `<div style="width:${r * 2}px;height:${r * 2}px;border-radius:50%;background:${color};border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer;transition:transform .15s" title="${basin.name}: ${score}/100"></div>`,
+                    iconSize: [r * 2, r * 2],
+                    iconAnchor: [r, r],
+               });
+               const m = L.marker(coords, { icon }).addTo(_portfolioMap);
+               const sc =
+                    { Mature: "#1A7F5A", Active: "#0D4C92", Frontier: "#C07800" }[
+                    basin.status
+                    ] || "#8896A5";
+               m.bindPopup(
+                    `<div style="font-family:Segoe UI,sans-serif;min-width:180px"><div style="font-size:12px;font-weight:700;color:#0A2E5C;margin-bottom:5px">${basin.name}</div><table style="width:100%;font-size:10px;border-collapse:collapse"><tr><td style="color:#8896A5">Country</td><td style="font-weight:600">${basin.country}</td></tr><tr><td style="color:#8896A5">HC Phase</td><td style="color:#0D4C92;font-weight:600">${basin.hc}</td></tr><tr><td style="color:#8896A5">Score</td><td style="font-weight:700;color:${color}">${score}/100</td></tr><tr><td style="color:#8896A5">Status</td><td><span style="background:${sc}18;color:${sc};padding:1px 6px;border-radius:8px;font-weight:600;font-size:9px">${basin.status}</span></td></tr></table><div style="margin-top:6px"><button onclick="closeModal();goTo('basins',null)" style="background:#0A2E5C;color:#fff;border:none;padding:3px 8px;border-radius:4px;font-size:9px;cursor:pointer">View Basin</button></div></div>`,
+                    );
+               _portfolioMarkers.push(m);
+          });
+     }
+
+     // Basin coordinate lookup (lat/lng) — extended for all basins
+     const BASIN_COORDS = {
+          "Zagros Fold Belt": [32.0, 47.5],
+          "Permian Basin": [31.5, -102.5],
+          "North Sea": [56.5, 3.5],
+          "Kutei Basin": [-1.0, 117.0],
+          "Nile Delta": [31.0, 31.0],
+          "Murzuq Basin": [26.0, 14.0],
+          "Sergipe-Alagoas": [-11.0, -37.0],
+          "Malay Basin": [6.0, 104.0],
+          "Browse Basin": [-16.0, 122.0],
+          "Barents Sea": [74.0, 30.0],
+          "East Greenland": [72.0, -25.0],
+          "Vaca Muerta": [-38.0, -69.0],
+          "Permian Basin (China)": [39.0, 85.0],
+          "Tarim Basin": [39.5, 83.0],
+          "Niger Delta": [4.5, 6.5],
+          "Anadarko Basin": [35.5, -98.5],
+          "Cooper Basin": [-28.0, 140.0],
+          "Williston Basin": [47.0, -103.0],
+          "Rub al Khali": [21.0, 54.0],
+          "Sirte Basin": [29.0, 20.0],
+     };
+
+     function getBasinCoords(basin) {
+          if (BASIN_COORDS[basin.name]) return BASIN_COORDS[basin.name];
+          // Fallback by region
+          const regionFallbacks = {
+          "Middle East": [28, 45],
+          "North America": [40, -100],
+          Europe: [52, 15],
+          "Southeast Asia": [5, 115],
+          "North Africa": [25, 20],
+          "South America": [-15, -55],
+          Australia: [-25, 135],
+          Russia: [60, 80],
+          "West Africa": [5, 5],
+          };
+          return regionFallbacks[basin.region] || [0, 20];
+     }
+
+     // function focusBasinOnMap(name) {
+     //      if (_focusedBasin === name) return;
+     //      _focusedBasin = name;
+     //      const b = BASINS.find((x) => x.name === name);
+     //      if (!b || !_leafletMap) return;
+     //      const coords = getBasinCoords(b);
+     //      if (!coords) return;
+     //      document
+     //           .getElementById("world-map")
+     //           ?.scrollIntoView({ behavior: "smooth", block: "start" });
+     //      _leafletMap.once("moveend", () => {
+     //           const target = L.latLng(coords[0], coords[1]);
+     //           const marker = _leafletMarkers.find(
+     //           (m) => m.getLatLng().distanceTo(target) < 5000,
+     //           );
+     //           if (marker) marker.openPopup();
+     //      });
+     //      _leafletMap.flyTo(coords, 6, { duration: 1.2 });
+     // }
+
+     function setupMap() {
+          const mapEl = document.getElementById("leaflet-map");
+          if (!mapEl) return;
+
+          // Init Leaflet map
+          if (_leafletMap) {
+               _leafletMap.remove();
+               _leafletMap = null;
+          }
+          _basinLayer = null; // clear orphaned reference from destroyed map
+          _leafletMap = L.map("leaflet-map", {
+               center: [20, 20],
+               zoom: 2,
+               minZoom: 2,
+               maxZoom: 10,
+               zoomControl: true,
+               attributionControl: false,
+          });
+
+          // OpenStreetMap tile layer (free)
+          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+               maxZoom: 19,
+          }).addTo(_leafletMap);
+
+          // Add attribution discretely
+          L.control
+               .attribution({ position: "bottomright" })
+               .addTo(_leafletMap)
+               .setPrefix("© OpenStreetMap | EDAFY");
+
+          renderMapMarkers();
+          loadBasinLayer();
+     }
+
+     function loadBasinLayer() {
+          if (!_leafletMap || !window._basinsData) return;
+
+          // Remove any previous layer instance (e.g. from prior map reinit)
+          if (_basinLayer) {
+               _leafletMap.removeLayer(_basinLayer);
+               _basinLayer = null;
+          }
+
+          _basinLayer = L.geoJSON(window._basinsData, {
+               style: () => ({
+               color: "#6B46C1",
+               weight: 1.5,
+               opacity: 0.8,
+               fillColor: "#6B46C1",
+               fillOpacity: 0.08,
+               }),
+               onEachFeature(feature, layer) {
+                    const p = feature.properties;
+                    const countries = (p.country_names || "").replace(/~/g, ", ");
+                    const area = p.basin_sqkm
+                    ? Math.round(p.basin_sqkm).toLocaleString() + " km²"
+                    : "—";
+                    layer.bindPopup(
+                         `<div style="font-family:Segoe UI,sans-serif;min-width:190px">
+                              <div style="font-size:12px;font-weight:700;color:#2D1B69;margin-bottom:6px">${p.basin_name || "—"}</div>
+                              <table style="width:100%;font-size:10px;border-collapse:collapse">
+                              <tr><td style="color:#8896A5;padding:2px 6px 2px 0">Countries</td><td style="font-weight:600">${countries || "—"}</td></tr>
+                              <tr><td style="color:#8896A5;padding:2px 6px 2px 0">Type</td><td style="font-weight:600">${p.basin_type || "—"}</td></tr>
+                              <tr><td style="color:#8896A5;padding:2px 6px 2px 0">Area</td><td style="font-weight:600">${area}</td></tr>
+                              </table>
+                         </div>`,
+                         {
+                              maxWidth: 250,
+                              className: "edafy-popup",
+                              offset: [0, 50],
+                              autoPan: false,
+                         },
+                    );
+                    layer.on({
+                         mouseover(e) {
+                              e.target.setStyle({ weight: 5, fillOpacity: 0.45, opacity: 1 });
+                              e.target.bringToFront();
+                         },
+                         mouseout(e) {
+                              _basinLayer.resetStyle(e.target);
+                         },
+                         click(e) {
+                              const center = e.target.getBounds().getCenter();
+                              e.target.closePopup();
+                              _leafletMap.once("moveend", () => e.target.openPopup(center));
+                              _leafletMap.flyTo(center, 5, { duration: 0.8 });
+                         },
+                    });
+               },
+          }).addTo(_leafletMap);
+
+          if (_basinLayer.getBounds().isValid()) {
+               _leafletMap.fitBounds(_basinLayer.getBounds(), { padding: [20, 20] });
+          }
+     }
+
+     function renderMapMarkers() {
+          if (!_leafletMap) return;
+          // Remove old markers
+          _leafletMarkers.forEach((m) => _leafletMap.removeLayer(m));
+          _leafletMarkers = [];
+
+          BASINS.forEach((basin) => {
+               const coords = getBasinCoords(basin);
+               const score = basin.score || 50;
+               const color =
+                    score >= 70 ? "#1A7F5A" : score >= 40 ? "#C07800" : "#C62828";
+               const r = Math.max(8, Math.min(20, score / 5));
+
+          // Custom SVG circle marker
+          const svgIcon = L.divIcon({
+               className: "",
+               html: `<div style="width:${r * 2}px;height:${r * 2}px;border-radius:50%;background:${color};border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;opacity:0.9;transition:transform .15s" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'"></div>`,
+               iconSize: [r * 2, r * 2],
+               iconAnchor: [r, r],
+          });
+
+          const marker = L.marker(coords, { icon: svgIcon }).addTo(_leafletMap);
+
+          const statusColor =
+               { Mature: "#1A7F5A", Active: "#0D4C92", Frontier: "#C07800" }[
+                    basin.status
+               ] || "#8896A5";
+               marker.bindPopup(
+               `<div style="font-family:Segoe UI,sans-serif;min-width:200px">
+                    <div style="font-size:13px;font-weight:700;color:#0A2E5C;margin-bottom:6px">${basin.name}</div>
+                    <table style="width:100%;font-size:11px;border-collapse:collapse">
+                         <tr><td style="color:#8896A5;padding:2px 0">Country</td><td style="font-weight:600">${basin.country}</td></tr>
+                         <tr><td style="color:#8896A5;padding:2px 0">Region</td><td style="font-weight:600">${basin.region}</td></tr>
+                         <tr><td style="color:#8896A5;padding:2px 0">HC Phase</td><td style="font-weight:600;color:#0D4C92">${basin.hc}</td></tr>
+                         <tr><td style="color:#8896A5;padding:2px 0">Prospectivity</td><td style="font-weight:700;color:${color}">${score}/100</td></tr>
+                         <tr><td style="color:#8896A5;padding:2px 0">Status</td><td><span style="background:${statusColor}18;color:${statusColor};padding:1px 7px;border-radius:8px;font-weight:600;font-size:10px">${basin.status}</span></td></tr>
+                    </table>
+                    <div style="margin-top:8px;display:flex;gap:5px">
+                         <button onclick="closeModal();goTo('basins',null)" style="flex:1;padding:5px;background:#0D4C92;color:#fff;border:none;border-radius:4px;font-size:10px;cursor:pointer;font-family:inherit">Open Record</button>
+                         <button onclick="closeModal();goTo('analogues',null)" style="flex:1;padding:5px;background:#0D4C9218;color:#0D4C92;border:1px solid #0D4C9244;border-radius:4px;font-size:10px;cursor:pointer;font-family:inherit">Analogues</button>
+                    </div>
+                    </div>`,
+               { maxWidth: 260, className: "edafy-popup" },
+               );
+
+               _leafletMarkers.push(marker);
+          });
+          // Also refresh portfolio map if open
+          renderPortfolioMapMarkers();
+     }
+
+     function openBasinModal(d) {
+          if (!d) return;
+          openModal(`
+               <div class="modal-title">${d.name}</div>
+               <div class="modal-sub">Region: ${d.region} &nbsp;·&nbsp; Status: ${d.status}</div>
+               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+                    <div style="background:var(--bg4);border-radius:5px;padding:11px">
+                    <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Prospectivity Score</div>
+                    <div style="font-size:28px;font-weight:700;color:var(--green)">${d.score}</div>
+                    </div>
+                    <div style="background:var(--bg4);border-radius:5px;padding:11px">
+                    <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">HC Phase</div>
+                    <div style="font-size:16px;font-weight:700;color:var(--cyan)">${d.hc}</div>
+                    </div>
+               </div>
+               <div style="display:flex;gap:8px">
+                    <button class="btn" onclick="closeModal();goTo('analogues',null)">Run Analogue Search →</button>
+                    <button class="btn2" onclick="closeModal();goTo('risk',null)">Risk Assessment →</button>
+               </div>
+          `);
+     }
+
+     </script>
+</body>
+</html>
