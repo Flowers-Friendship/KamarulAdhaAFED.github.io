@@ -9,6 +9,7 @@
     <!-- tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css" />
+    
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
@@ -17,12 +18,10 @@
     <script src="basins_simplified.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    
-    
   </head>
   <body>
   
-    <div class="map-area" id="world-map" style="position: relative">
+    <div class="map-area" style="position: relative">
       <div
         id="leaflet-map"
         style="width: 100%; height: 100%; border-radius: 8px; z-index: 1"
@@ -72,24 +71,25 @@
 
     <!-- SIDEBAR -->
     <nav class="sb" id="sidebar">
-      <!-- <div class="sb-collapse" id="sb-toggle" onclick="toggleSidebar()">‹</div> -->
 
+      <!-- sidebar header -->
       <div class="sb-logo">
-        <div class="sb-brand">
+        <div class="sb-brand cursor-pointer" onclick="goTo('portfolio')">
           <img src="edafy-logo.svg" class="sb-brand-icon" alt="EDAFY" />
           
           <div class="sb-brand-texts">
-            <div class="sb-brand-name">AFED Digital</div>
-            <div class="sb-brand-sub">EDAFY Intelligence</div>
+            <div class="sb-brand-name">EDAFY</div>
+            <!-- <div class="sb-brand-sub">EDAFY Intelligence</div> -->
           </div>
         </div>
         
         <div class="sb-product-wrap">
-          <div class="sb-product">EDAFY</div>
-          <div class="sb-product-sub">Basin Insights</div>
+          <div class="sb-product">Basin Hub & Insights</div>
+          <!-- <div class="sb-product-sub">Basin Insights</div> -->
         </div>
       </div>
 
+      <!-- nav items -->
       <div class="py-2">
         <!-- Strategy -->
         <div class="nav-group-parent group relative w-full rounded-lg px-2">
@@ -423,403 +423,7 @@
         </div>
       </div>
 
-      <!-- Strategy
-      <div class="sb-sec" mouseenter="this.classList.add('hover')">Strategy</div>
-      portfolio
-      <div
-        class="nav on"
-        onclick="goTo('portfolio', this)"
-        data-tip="Portfolio Dashboard">
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <rect x="1" y="1" width="6" height="6" rx="1" />
-          <rect x="9" y="1" width="6" height="6" rx="1" />
-          <rect x="1" y="9" width="6" height="6" rx="1" />
-          <rect x="9" y="9" width="6" height="6" rx="1" />
-        </svg>
-        <span class="nav-label">Portfolio Dashboard</span>
-      </div>
-
-      screening
-      <div
-        class="nav"
-        onclick="goTo('screening', this)"
-        data-tip="Basin Screening"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <rect x="1" y="1" width="14" height="14" rx="2" />
-          <line x1="4" y1="5" x2="12" y2="5" />
-          <line x1="4" y1="8" x2="10" y2="8" />
-          <line x1="4" y1="11" x2="8" y2="11" />
-        </svg>
-        <span class="nav-label">Basin Screening</span>
-      </div>
-
-      ranking
-      <div
-        class="nav"
-        onclick="goTo('ranking', this)"
-        data-tip="Opportunity Ranking"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <path d="M4 14V9M8 14V4M12 14V7" />
-          <line x1="1" y1="14" x2="15" y2="14" />
-          <circle cx="8" cy="2" r="1" fill="currentColor" />
-        </svg>
-        <span class="nav-label">Opportunity Ranking</span>
-      </div> -->
-      
-      <!-- Explore
-      <div class="sb-sec">Explore</div>
-      basins
-      <div
-        class="nav"
-        onclick="goTo('basins', this)"
-        data-tip="Basin Catalogue"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <circle cx="8" cy="8" r="6" />
-          <ellipse cx="8" cy="8" rx="6" ry="3" />
-          <line x1="2" y1="8" x2="14" y2="8" />
-        </svg>
-        <span class="nav-label">Basin Catalogue</span>
-      </div>
-
-      playfairway
-      <div
-        class="nav"
-        onclick="goTo('playfairway', this)"
-        data-tip="Play Fairway"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <rect x="1" y="1" width="14" height="14" rx="2" />
-          <circle cx="5" cy="5" r="2" fill="currentColor" opacity=".3" />
-          <circle cx="10" cy="8" r="3" fill="currentColor" opacity=".2" />
-          <circle cx="6" cy="11" r="2.5" fill="currentColor" opacity=".25" />
-        </svg>
-        <span class="nav-label">Play Fairway</span>
-      </div>
-
-      analogues
-      <div
-        class="nav"
-        onclick="goTo('analogues', this)"
-        data-tip="Analogue Engine"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <circle cx="5" cy="5" r="3" />
-          <circle cx="11" cy="11" r="3" />
-          <line x1="7" y1="7" x2="9" y2="9" stroke-dasharray="2" />
-        </svg>
-        <span class="nav-label">Analogue Engine</span>
-      </div>
-
-      benchmark
-      <div
-        class="nav"
-        onclick="goTo('benchmark', this)"
-        data-tip="Benchmarking"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <rect x="1" y="8" width="3" height="6" />
-          <rect x="6" y="5" width="3" height="9" />
-          <rect x="11" y="2" width="3" height="12" />
-        </svg>
-        <span class="nav-label">Benchmarking</span>
-      </div> -->
-
-      <!-- Quantify
-      <div class="sb-sec">Quantify</div>
-
-      params
-      <div
-        class="nav"
-        onclick="goTo('params', this)"
-        data-tip="Parameter Library"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <polyline points="1,12 4,7 7,10 10,5 13,8 15,3" />
-        </svg>
-        <span class="nav-label">Parameter Library</span>
-      </div>
-
-      volumetrics
-      <div
-        class="nav"
-        onclick="goTo('volumetrics', this)"
-        data-tip="Volumetrics"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <path d="M3 14V6l5-4 5 4v8" />
-          <rect x="6" y="9" width="4" height="5" />
-        </svg>
-        <span class="nav-label">Volumetrics</span>
-      </div>
-
-      risk
-      <div
-        class="nav"
-        onclick="goTo('risk', this)"
-        data-tip="Risk & Uncertainty"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <polygon points="8,2 15,14 1,14" />
-          <line x1="8" y1="7" x2="8" y2="10" />
-          <circle cx="8" cy="12" r=".5" fill="currentColor" />
-        </svg>
-        <span class="nav-label">Risk & Uncertainty</span>
-      </div>
-
-      typecurves
-      <div
-        class="nav"
-        onclick="goTo('typecurves', this)"
-        data-tip="Type Curves"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <polyline points="2,3 4,5 8,4 12,10 15,14" />
-          <line x1="1" y1="14" x2="15" y2="14" />
-          <line x1="2" y1="3" x2="2" y2="14" />
-        </svg>
-        <span class="nav-label">Type Curves</span>
-      </div> -->
-
-      <!-- Decide
-      <div class="sb-sec">Decide</div>
-
-      economics
-      <div class="nav" onclick="goTo('economics', this)" data-tip="Economics">
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <path d="M8 1v14M5 4h6M4 7h8M5 10h6M6 13h4" />
-        </svg>
-        <span class="nav-label">Economics</span>
-      </div>
-
-      portopt
-      <div
-        class="nav"
-        onclick="goTo('portopt', this)"
-        data-tip="Portfolio Optimization"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <circle cx="8" cy="8" r="6" />
-          <path d="M8 2a6 6 0 0 1 0 12" />
-          <path d="M8 5a3 3 0 0 1 0 6" fill="currentColor" opacity=".15" />
-        </svg>
-        <span class="nav-label">Portfolio Optimization</span>
-      </div>
-
-      sensitivity
-      <div
-        class="nav"
-        onclick="goTo('sensitivity', this)"
-        data-tip="Sensitivities"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <line x1="2" y1="4" x2="14" y2="4" />
-          <line x1="2" y1="8" x2="14" y2="8" />
-          <line x1="2" y1="12" x2="14" y2="12" />
-          <circle cx="5" cy="4" r="1.5" fill="currentColor" />
-          <circle cx="10" cy="8" r="1.5" fill="currentColor" />
-          <circle cx="7" cy="12" r="1.5" fill="currentColor" />
-        </svg>
-        <span class="nav-label">Sensitivities</span>
-      </div> -->
-
-      <!-- AI Intelligence
-      <div class="sb-sec">
-        AI Intelligence <span class="ai-intel-badge">LIVE LINKED</span>
-      </div>
-
-      petrosystem
-      <div
-        class="nav"
-        onclick="goTo('petrosystem', this)"
-        data-tip="Petroleum System Engine"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <circle cx="4" cy="4" r="2" />
-          <circle cx="12" cy="4" r="2" />
-          <circle cx="8" cy="12" r="2" />
-          <line x1="6" y1="4" x2="10" y2="4" />
-          <line x1="5" y1="5.7" x2="7" y2="10.4" />
-          <line x1="11" y1="5.7" x2="9" y2="10.4" />
-        </svg>
-        <span class="nav-label">Petroleum System Engine</span>
-      </div>
-
-      bayesplay
-      <div
-        class="nav"
-        onclick="goTo('bayesplay', this)"
-        data-tip="Bayesian Play Probability"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <path d="M2 14 C2 8 6 2 8 2 C10 2 14 8 14 14" />
-          <path d="M4 14 C4 10 6 6 8 6 C10 6 12 10 12 14" opacity=".5" />
-          <line x1="8" y1="2" x2="8" y2="14" />
-          <circle cx="8" cy="8" r="1.5" fill="currentColor" opacity=".4" />
-        </svg>
-        <span class="nav-label">Bayesian Play Probability</span>
-      </div>
-
-      aianalogues
-      <div
-        class="nav"
-        onclick="goTo('aianalogues', this)"
-        data-tip="AI Analogue Discovery"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <circle cx="3" cy="8" r="2" />
-          <circle cx="13" cy="4" r="2" />
-          <circle cx="13" cy="12" r="2" />
-          <circle cx="8" cy="8" r="2.5" />
-          <line x1="5" y1="8" x2="5.5" y2="8" />
-          <line x1="10.5" y1="8" x2="11.1" y2="6" />
-          <line x1="10.5" y1="8" x2="11.1" y2="10" />
-        </svg>
-        <span class="nav-label">AI Analogue Discovery</span>
-      </div> -->
-
-      <!-- Data & Governance
-      <div class="sb-sec">Data & Governance</div>
-
-      ingestion
-      <div
-        class="nav"
-        onclick="goTo('ingestion', this)"
-        data-tip="Data Ingestion"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <path d="M8 1v10M4 7l4 4 4-4" />
-          <rect x="1" y="12" width="14" height="3" rx="1" />
-        </svg>
-        <span class="nav-label">Data Ingestion</span>
-      </div>
-
-      governance
-      <div class="nav" onclick="goTo('governance', this)" data-tip="Governance">
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <path d="M8 1l7 3v4c0 4-7 7-7 7S1 12 1 8V4l7-3z" />
-        </svg>
-        <span class="nav-label">Governance & Audit</span>
-      </div>
-
-      aiconfig
-      <div
-        class="nav"
-        onclick="goTo('aiconfig', this)"
-        data-tip="AI Configuration"
-        id="nav-aiconfig"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <circle cx="8" cy="8" r="2.5" />
-          <path
-            d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"
-          />
-        </svg>
-        <span class="nav-label">AI Configuration</span>
-      </div> -->
-
+      <!-- Sidebar footer -->
       <div class="sb-btm">
         <div style="display: flex; align-items: center; gap: 8px">
           <div class="avatar">VJ</div>
@@ -841,7 +445,7 @@
       </div>
     </nav>
 
-    <!-- Toggle button OUTSIDE -->
+    <!-- Toggle button sidebar -->
     <button id="sb-toggle" onclick="toggleSidebar()" class="sb-toggle-btn">
       &#x203A;
     </button>
