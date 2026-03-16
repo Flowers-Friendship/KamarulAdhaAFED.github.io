@@ -79,13 +79,11 @@
           
           <div class="sb-brand-texts">
             <div class="sb-brand-name">EDAFY</div>
-            <!-- <div class="sb-brand-sub">EDAFY Intelligence</div> -->
           </div>
         </div>
         
         <div class="sb-product-wrap">
           <div class="sb-product">Basin Hub & Insights</div>
-          <!-- <div class="sb-product-sub">Basin Insights</div> -->
         </div>
       </div>
 
@@ -96,7 +94,7 @@
           <div class="flex items-center justify-between p-2 transition-all cursor-pointer text-white/70 
               hover:bg-[#4c3a7a] hover:text-white
               group-[.on]:bg-[#3b2a63] group-[.on]:text-white group-[.on]:ring-1 group-[.on]:ring-white/10
-              group-hover:ring-1 group-hover:ring-white/20 rounded-md">
+              group-hover:ring-1 group-hover:ring-white/20 rounded-md" onclick="goTo('portfolio')">
             <div class="flex items-center w-full">
               <svg
                 class="w-5 h-5 shrink-0 text-indigo-300 group-[.on]:text-white"
@@ -154,7 +152,7 @@
           <div class="flex items-center justify-between p-2 transition-all cursor-pointer text-white/70 
               hover:bg-[#4c3a7a] hover:text-white
               group-[.on]:bg-[#3b2a63] group-[.on]:text-white group-[.on]:ring-1 group-[.on]:ring-white/10
-              group-hover:ring-1 group-hover:ring-white/20 rounded-md">
+              group-hover:ring-1 group-hover:ring-white/20 rounded-md" onclick="goTo('basins')">
             <div class="flex items-center w-full">
               <svg class="w-5 h-5 shrink-0 text-indigo-300 group-[.on]:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
@@ -209,7 +207,7 @@
           <div class="flex items-center justify-between p-2 transition-all cursor-pointer text-white/70 
               hover:bg-[#4c3a7a] hover:text-white
               group-[.on]:bg-[#3b2a63] group-[.on]:text-white group-[.on]:ring-1 group-[.on]:ring-white/10
-              group-hover:ring-1 group-hover:ring-white/20 rounded-md">
+              group-hover:ring-1 group-hover:ring-white/20 rounded-md" onclick="goTo('params')">
             <div class="flex items-center w-full">
               <svg class="w-5 h-5 shrink-0 text-indigo-300 group-[.on]:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
@@ -267,7 +265,7 @@
           <div class="flex items-center justify-between p-2 transition-all cursor-pointer text-white/70 
               hover:bg-[#4c3a7a] hover:text-white
               group-[.on]:bg-[#3b2a63] group-[.on]:text-white group-[.on]:ring-1 group-[.on]:ring-white/10
-              group-hover:ring-1 group-hover:ring-white/20 rounded-md">
+              group-hover:ring-1 group-hover:ring-white/20 rounded-md" onclick="goTo('economics', this)">
             <div class="flex items-center w-full">
               <svg class="w-5 h-5 shrink-0 text-indigo-300 group-[.on]:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M16 3h5v5"></path>
@@ -321,7 +319,7 @@
           <div class="flex items-center justify-between p-2 transition-all cursor-pointer text-white/70 
               hover:bg-[#4c3a7a] hover:text-white
               group-[.on]:bg-[#3b2a63] group-[.on]:text-white group-[.on]:ring-1 group-[.on]:ring-white/10
-              group-hover:ring-1 group-hover:ring-white/20 rounded-md">
+              group-hover:ring-1 group-hover:ring-white/20 rounded-md" onclick="goTo('petrosystem')" >
             <div class="flex items-center w-full">
               <svg class="w-5 h-5 shrink-0 text-indigo-300 group-[.on]:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 2a10 10 0 1 0 10 10H12V2z"></path>
@@ -378,7 +376,7 @@
           <div class="flex items-center justify-between p-2 transition-all cursor-pointer text-white/70 
               hover:bg-[#4c3a7a] hover:text-white
               group-[.on]:bg-[#3b2a63] group-[.on]:text-white group-[.on]:ring-1 group-[.on]:ring-white/10
-              group-hover:ring-1 group-hover:ring-white/20 rounded-md">
+              group-hover:ring-1 group-hover:ring-white/20 rounded-md" onclick="goTo('ingestion')">
             <div class="flex items-center w-full">
               <svg class="w-5 h-5 shrink-0 text-indigo-300 group-[.on]:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
@@ -1720,171 +1718,236 @@
 
         <!-- ==================== OPPORTUNITY RANKING ==================== -->
         <section class="sec" id="sec-ranking">
-          <div class="tabs">
-            <div class="tab on" onclick="switchRankTab('matrix', this)">
-              Ranking Matrix
-            </div>
-            <div class="tab" onclick="switchRankTab('bubble', this)">
-              Bubble Chart
-            </div>
-            <div class="tab" onclick="switchRankTab('shortlist', this)">
+          <div class="aiqb">
+            <span class="aiqb-lbl">
+              Ranking AI
+            </span>
+            
+            <button class="aiqb-btn" onclick="aiRnk1()">
+              Commentary
+            </button>
+            
+            <button class="aiqb-btn" onclick="aiRnk2()">
               Shortlist
-            </div>
+            </button>
+            
+            <button class="aiqb-btn" onclick="_eAsk('Which basins should be on the priority investment shortlist?')">
+              eMonk
+            </button>
+            
+            <input class="aiqb-inp" id="ai-inp-ai-rb-ranking" placeholder="Ask eMonk…" onkeydown="if(event.key==='Enter')_sAIInp('ai-inp-ai-rb-ranking','ai-rb-ranking','Ranking AI')">
+            
+            <button class="aiqb-btn" onclick="_sAIInp('ai-inp-ai-rb-ranking','ai-rb-ranking','Ranking AI')">
+              Ask ↩
+            </button>
           </div>
+          
+          <div class="airb" id="ai-rb-ranking"></div>
 
-          <div id="rank-matrix-panel">
-            <div class="aiqb">
-              <span class="aiqb-lbl">
-                Ranking AI
-              </span>
-              
-              <button class="aiqb-btn" onclick="aiRnk1()">
-                Commentary
-              </button>
-              
-              <button class="aiqb-btn" onclick="aiRnk2()">
-                Shortlist
-              </button>
-              
-              <button class="aiqb-btn" onclick="_eAsk('Which basins should be on the priority investment shortlist?')">
-                eMonk
-              </button>
-              
-              <input class="aiqb-inp" id="ai-inp-ai-rb-ranking" placeholder="Ask eMonk…" onkeydown="if(event.key==='Enter')_sAIInp('ai-inp-ai-rb-ranking','ai-rb-ranking','Ranking AI')">
-              
-              <button class="aiqb-btn" onclick="_sAIInp('ai-inp-ai-rb-ranking','ai-rb-ranking','Ranking AI')">
-                Ask &#x21A9;
-              </button>
-            </div>
-            <div class="airb" id="ai-rb-ranking"></div>
+          <!-- KPI row -->
+          <div
+            style="
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 10px;
+              margin-bottom: 14px;
+            "
+            id="rank-kpis"
+          ></div>
 
-            <div
-              style="
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 10px;
-                margin-bottom: 14px;
-              "
-              id="rank-kpis"
-            ></div>
-            <div class="card">
-              <div class="ch">
-                <span class="ct">Opportunity Ranking Matrix</span>
-                <div style="display: flex; gap: 6px">
-                  <select
-                    class="fc"
-                    id="rank-xaxis"
-                    style="width: 140px; padding: 6px"
-                    onchange="renderRankMatrix()"
-                  >
-                    <option value="score">Prospectivity</option>
-                    <option value="area">Acreage</option>
-                    <option value="plays">Play Count</option>
-                  </select>
-                  <select
-                    class="fc"
-                    id="rank-yaxis"
-                    style="width: 140px; padding: 6px"
-                    onchange="renderRankMatrix()"
-                  >
-                    <option value="gcos">GCoS</option>
-                    <option value="resources" selected>Resources</option>
-                    <option value="commercial">Commercial</option>
-                  </select>
-                  <button
-                    class="btn2"
-                    onclick="toast('Ranking exported', 'success')"
-                  >
-                    Export
-                  </button>
+          <!-- Row 1: two-column grid -->
+          <div class="grid grid-cols-[1fr_450px] gap-[14px] items-stretch">
+            <!-- Col 1: Ranking Matrix -->
+            <div id="rank-matrix-panel">
+              <div class="card card-tall flex-1 flex flex-col">
+                <div class="ch" style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:0">
+                  <span class="ct" style="white-space:nowrap;flex-shrink:0">Opportunity Ranking Matrix</span>
+                  <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:nowrap">
+                    <select
+                      class="fc"
+                      id="rank-xaxis"
+                      style="width:160px;padding:4px 6px;font-size:11px"
+                      onchange="renderRankMatrix()"
+                    >
+                      <optgroup label="— Core Metrics —">
+                        <option value="score">Prospectivity Score</option>
+                        <option value="gcos">GCoS (%)</option>
+                        <option value="resources">Estimated Resources (MMboe)</option>
+                        <option value="commercial">Commercial Score</option>
+                        <option value="area">Acreage (km²)</option>
+                        <option value="plays">Play Count</option>
+                      </optgroup>
+                      <optgroup label="— Resources —">
+                        <option value="totalDiscovered">Total Discovered Recoverable (MMboe)</option>
+                        <option value="yetToFind">Total Yet-To-Find (MMboe)</option>
+                        <option value="avgFieldSize">Average Field Size (MMboe)</option>
+                        <option value="resourceDensity">Resource Density (MMboe/10k km²)</option>
+                      </optgroup>
+                      <optgroup label="— Play & Risk —">
+                        <option value="playVariability">Play Variability</option>
+                        <option value="sourceRockRichness">Source Rock Richness</option>
+                        <option value="maxBasinFill">Maximum Basin Fill (%)</option>
+                      </optgroup>
+                      <optgroup label="— Well Statistics —">
+                        <option value="explorationWells">Exploration Wells</option>
+                        <option value="successfulWells">Successful Wells</option>
+                        <option value="fieldDiscoveries">Field Discoveries</option>
+                        <option value="fieldDensity">Field Density (per 10k km²)</option>
+                        <option value="wildcatWellDensity">Wildcat Well Density</option>
+                        <option value="discoverySuccessRatio">Discovery Success Ratio (%)</option>
+                        <option value="wellSuccessRatio">Well Success Ratio (%)</option>
+                      </optgroup>
+                    </select>
+                    <select
+                      class="fc"
+                      id="rank-yaxis"
+                      style="width:160px;padding:4px 6px;font-size:11px"
+                      onchange="renderRankMatrix()"
+                    >
+                      <optgroup label="— Core Metrics —">
+                        <option value="gcos">GCoS (%)</option>
+                        <option value="resources" selected>Estimated Resources (MMboe)</option>
+                        <option value="score">Prospectivity Score</option>
+                        <option value="commercial">Commercial Score</option>
+                        <option value="area">Acreage (km²)</option>
+                        <option value="plays">Play Count</option>
+                      </optgroup>
+                      <optgroup label="— Resources —">
+                        <option value="totalDiscovered">Total Discovered Recoverable (MMboe)</option>
+                        <option value="yetToFind">Total Yet-To-Find (MMboe)</option>
+                        <option value="avgFieldSize">Average Field Size (MMboe)</option>
+                        <option value="resourceDensity">Resource Density (MMboe/10k km²)</option>
+                      </optgroup>
+                      <optgroup label="— Play & Risk —">
+                        <option value="playVariability">Play Variability</option>
+                        <option value="sourceRockRichness">Source Rock Richness</option>
+                        <option value="maxBasinFill">Maximum Basin Fill (%)</option>
+                      </optgroup>
+                      <optgroup label="— Well Statistics —">
+                        <option value="explorationWells">Exploration Wells</option>
+                        <option value="successfulWells">Successful Wells</option>
+                        <option value="fieldDiscoveries">Field Discoveries</option>
+                        <option value="fieldDensity">Field Density (per 10k km²)</option>
+                        <option value="wildcatWellDensity">Wildcat Well Density</option>
+                        <option value="discoverySuccessRatio">Discovery Success Ratio (%)</option>
+                        <option value="wellSuccessRatio">Well Success Ratio (%)</option>
+                      </optgroup>
+                    </select>
+                    <button
+                      class="btn2"
+                      onclick="toast('Ranking exported', 'success')"
+                    >
+                      Export
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div
-                class="cb"
-                style="
-                  padding: 14px 16px;
-                  position: relative;
-                  height: 500px;
-                  width: 100%;
-                  box-sizing: border-box;
-                  display: block;
-                "
-              >
-                <canvas
-                  id="rank-matrix-canvas"
-                  style="
-                    box-sizing: border-box;
-                    display: block;
-                    height: 500px;
-                    width: 100%;
-                  "
-                ></canvas>
-              </div>
-            </div>
-          </div>
 
-          <div id="rank-bubble-panel" style="display: none">
-            <div class="card">
-              <div class="ch">
-                <span class="ct">Risk vs. Reward Bubble Chart</span
-                ><span style="font-size: 10px; color: var(--t3)"
-                  >Size = Estimated Resources · Color = Tier</span
-                >
-              </div>
-              <div
-                class="cb"
-                style="
-                  padding: 14px 16px;
-                  position: relative;
-                  height: 500px;
-                  width: 100%;
-                  box-sizing: border-box;
-                  display: block;
-                "
-              >
-                <canvas
-                  id="rank-bubble-canvas"
-                  style="
-                    box-sizing: border-box;
-                    display: block;
-                    height: 500px;
-                    width: 100%;
-                  "
-                ></canvas>
-              </div>
-            </div>
-          </div>
-
-          <div id="rank-shortlist-panel" style="display: none">
-            <div class="card">
-              <div class="ch">
-                <span class="ct">Shortlisted Opportunities</span>
-                <div style="display: flex; gap: 6px">
-                  <button class="btn" onclick="autoShortlist()">
-                    Auto-Shortlist Top 10</button
-                  ><button
-                    class="btn2"
-                    onclick="toast('Shortlist exported', 'success')"
-                  >
-                    Export
-                  </button>
+                <!-- Axis range filter sliders -->
+                <div id="rank-filter-panel" style="
+                  padding:10px 16px 12px;
+                  background:var(--bg3);
+                  border-top:1px solid var(--b1);
+                  display:grid;
+                  grid-template-columns:1fr 1fr;
+                  gap:10px 24px;
+                ">
+                  <div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+                      <span style="font-size:9px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px">X Axis Filter</span>
+                      <span id="rank-x-range-label" style="font-size:9px;color:var(--brand);font-weight:700">—</span>
+                    </div>
+                    <div style="position:relative;height:18px;margin:4px 0 2px">
+                      <div id="rank-x-track" style="position:absolute;top:7px;left:0;right:0;height:4px;background:var(--b1);border-radius:2px;"></div>
+                      <div id="rank-x-fill" style="position:absolute;top:7px;height:4px;background:var(--brand);border-radius:2px;left:0%;width:100%"></div>
+                      <input type="range" id="rank-x-min" class="rank-slider" min="0" max="1000" value="0"   oninput="onRankSlider('x')" style="position:absolute;top:0;left:0;right:0;width:100%">
+                      <input type="range" id="rank-x-max" class="rank-slider" min="0" max="1000" value="1000" oninput="onRankSlider('x')" style="position:absolute;top:0;left:0;right:0;width:100%">
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--t3)">
+                      <span id="rank-x-lo">Min</span><span id="rank-x-hi">Max</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+                      <span style="font-size:9px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px">Y Axis Filter</span>
+                      <span id="rank-y-range-label" style="font-size:9px;color:var(--brand);font-weight:700">—</span>
+                    </div>
+                    <div style="position:relative;height:18px;margin:4px 0 2px">
+                      <div id="rank-y-track" style="position:absolute;top:7px;left:0;right:0;height:4px;background:var(--b1);border-radius:2px;"></div>
+                      <div id="rank-y-fill" style="position:absolute;top:7px;height:4px;background:var(--cyan);border-radius:2px;left:0%;width:100%"></div>
+                      <input type="range" id="rank-y-min" class="rank-slider" min="0" max="1000" value="0"   oninput="onRankSlider('y')" style="position:absolute;top:0;left:0;right:0;width:100%">
+                      <input type="range" id="rank-y-max" class="rank-slider" min="0" max="1000" value="1000" oninput="onRankSlider('y')" style="position:absolute;top:0;left:0;right:0;width:100%">
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--t3)">
+                      <span id="rank-y-lo">Min</span><span id="rank-y-hi">Max</span>
+                    </div>
+                  </div>
+                  <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px">
+                    <span id="rank-filter-count" style="font-size:9px;color:var(--t3)">Showing all basins</span>
+                    <button onclick="resetRankFilters()" class="btn2" style="font-size:9px;padding:2px 10px;margin-left:auto">Reset Filters</button>
+                  </div>
                 </div>
-              </div>
-              <div class="cb" id="rank-shortlist-body">
+
                 <div
+                  class="cb"
                   style="
-                    text-align: center;
-                    padding: 28px;
-                    color: var(--t3);
-                    font-size: 11px;
+                    padding: 14px 16px;
+                    position: relative;
+                    height: 500px;
+                    width: 100%;
+                    box-sizing: border-box;
+                    display: block;
                   "
                 >
-                  Run Basin Screening first, then click Auto-Shortlist or
-                  manually add basins from the Ranking Matrix.
+                  <canvas
+                    id="rank-matrix-canvas"
+                    style="
+                      box-sizing: border-box;
+                      display: block;
+                      height: 500px;
+                      width: 100%;
+                    "
+                  ></canvas>
                 </div>
               </div>
             </div>
-          </div>
+
+            <!-- Col 2: Shortlisted Opportunities -->
+            <div id="rank-shortlist-panel">
+              <div class="card">
+                <div class="ch">
+                  <span class="ct">Shortlisted Opportunities</span>
+                  <div style="display: flex; gap: 6px">
+                    <button class="btn" onclick="autoShortlist()">
+                      Auto-Shortlist Top 10</button
+                    ><button
+                      class="btn2"
+                      onclick="toast('Shortlist exported', 'success')"
+                    >
+                      Export
+                    </button>
+                  </div>
+                </div>
+
+                <div class="" id="rank-shortlist-body" style="overflow-x: auto; padding-bottom: 4px;">
+                </div>
+
+                <div id="rank-shortlist-footer" class="cb" style="display:none; gap:8px; justify-content:space-between; align-items:center">
+                    <span style="font-size:10px; color:var(--t2)">
+                        <span id="stat-count">0</span> opportunities · 
+                        Total resources: <span id="stat-resources">0</span> MMboe
+                    </span>
+                    
+                    <div style="display:flex; gap:6px">
+                        <button class="btn2" onclick="toast('Shortlist exported to CSV','success')">Export CSV</button>
+                        <button class="btn" onclick="pushShortlistToEcon()">Push to Economics →</button>
+                    </div>
+                </div>
+
+                <!-- add here for button -->
+              </div>
+            </div>
+
+          </div><!-- /two-column grid -->
         </section>
 
         <section class="sec" id="sec-basins">

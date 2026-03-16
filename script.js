@@ -1505,7 +1505,7 @@
           if (id === "aiconfig") setTimeout(aiRestoreConfig, 50);
           if (id === "basins") setTimeout(setupMap, initDelay);
           if (id === "risk") setTimeout(initProspectDropdown, 50);
-          if (id === "ranking") setTimeout(renderRankMatrix, initDelay);
+          if (id === "ranking") setTimeout(function(){ renderRankMatrix(); renderRankShortlist(); }, 100);
           if (id === "benchmark") setTimeout(renderBenchmarks, initDelay);
           if (id === "analogues") setTimeout(initAIA, 150); // Changed from aianalogues to analogues to match your HTML
           
@@ -29043,26 +29043,8 @@ ${stepsHtml}
       let rankShortlist = [];
 
       function switchRankTab(tab, el) {
-        ["matrix", "bubble", "shortlist"].forEach((t) => {
-          const p = document.getElementById("rank-" + t + "-panel");
-          if (p) p.style.display = t === tab ? "block" : "none";
-        });
-
-        el.parentElement
-          .querySelectorAll(".tab")
-          .forEach((t) => t.classList.remove("on"));
-
-        el.classList.add("on");
-
-        // ✅ Update breadcrumb
-        const bc = document.getElementById("breadcrumb-section");
-        if (bc) {
-          bc.textContent = el.textContent.trim();
-        }
-
-        if (tab === "matrix") renderRankMatrix();
-        if (tab === "bubble") renderRankBubble();
-        if (tab === "shortlist") renderRankShortlist();
+        // Both panels now always visible side-by-side — no tab switching needed
+        // Keep function alive so any existing callers don't throw
       }
 
       function getRankData() {
@@ -29141,263 +29123,939 @@ ${stepsHtml}
 
       let _rankChartInstance = null;
 
+      // ── Rank slider state ─────────────────────────────────────────────────
+      // Stores the actual data-range for each axis so we can normalise sliders
+      var _rankAxisMeta = { x: { min:0, max:1, vals:[] }, y: { min:0, max:1, vals:[] } };
+
+      // Inject dual-handle slider CSS once
+      (function injectRankSliderCSS() {
+        if (document.getElementById('rank-slider-css')) return;
+        var s = document.createElement('style');
+        s.id = 'rank-slider-css';
+        s.textContent = [
+          '.rank-slider{',
+            '-webkit-appearance:none;appearance:none;',
+            'pointer-events:none;background:transparent;',
+            'height:18px;width:100%;margin:0;padding:0;',
+          '}',
+          '.rank-slider::-webkit-slider-thumb{',
+            '-webkit-appearance:none;appearance:none;',
+            'pointer-events:all;',
+            'width:14px;height:14px;border-radius:50%;',
+            'background:var(--brand);border:2px solid #fff;',
+            'cursor:ew-resize;box-shadow:0 1px 4px rgba(0,0,0,.3);',
+            'position:relative;z-index:1;',
+          '}',
+          '.rank-slider::-moz-range-thumb{',
+            'pointer-events:all;',
+            'width:14px;height:14px;border-radius:50%;',
+            'background:var(--brand);border:2px solid #fff;',
+            'cursor:ew-resize;box-shadow:0 1px 4px rgba(0,0,0,.3);',
+          '}',
+          '#rank-y-min::-webkit-slider-thumb,#rank-y-max::-webkit-slider-thumb{background:var(--cyan);}',
+          '#rank-y-min::-moz-range-thumb,#rank-y-max::-moz-range-thumb{background:var(--cyan);}',
+        ].join('');
+        document.head.appendChild(s);
+      })();
+
+      // Called when slider moves — update fill bar + labels, then re-render
+      function onRankSlider(axis) {
+        var minEl = document.getElementById('rank-' + axis + '-min');
+        var maxEl = document.getElementById('rank-' + axis + '-max');
+        if (!minEl || !maxEl) return;
+
+        var lo = parseInt(minEl.value), hi = parseInt(maxEl.value);
+        // Enforce min <= max with a gap
+        if (lo > hi - 20) {
+          if (document.activeElement === minEl) lo = hi - 20;
+          else hi = lo + 20;
+          minEl.value = lo; maxEl.value = hi;
+        }
+
+        // Update fill bar
+        var fillEl = document.getElementById('rank-' + axis + '-fill');
+        if (fillEl) {
+          var plo = lo / 10, phi = hi / 10;
+          fillEl.style.left  = plo + '%';
+          fillEl.style.width = (phi - plo) + '%';
+        }
+
+        // Update labels with actual data values
+        var meta = _rankAxisMeta[axis];
+        var span = meta.max - meta.min || 1;
+        var vlo = meta.min + (lo / 1000) * span;
+        var vhi = meta.min + (hi / 1000) * span;
+        var fmt = function(v) { return v >= 1000 ? Math.round(v).toLocaleString() : (Math.round(v * 10) / 10).toString(); };
+        var loEl = document.getElementById('rank-' + axis + '-lo');
+        var hiEl = document.getElementById('rank-' + axis + '-hi');
+        var rlEl = document.getElementById('rank-' + axis + '-range-label');
+        if (loEl) loEl.textContent = fmt(vlo);
+        if (hiEl) hiEl.textContent = fmt(vhi);
+        if (rlEl) rlEl.textContent = fmt(vlo) + ' – ' + fmt(vhi);
+
+        // ── Move crosshair to midpoint of the selected filter range ──────
+        // This gives visual feedback that the quadrant divider moves with the slider
+        var vmid = (vlo + vhi) / 2;
+        if (_rankCrosshair) {
+          if (axis === 'x') _rankCrosshair.x = vmid;
+          else              _rankCrosshair.y = vmid;
+
+          // Live-update crosshair on chart without full re-render (instant, no flicker)
+          if (_rankChartInstance) {
+            _rankChartInstance.options.plugins.quadrantPlugin.xMid = _rankCrosshair.x;
+            _rankChartInstance.options.plugins.quadrantPlugin.yMid = _rankCrosshair.y;
+          }
+        }
+
+        renderRankMatrix();
+      }
+
+      function resetRankFilters() {
+        ['x','y'].forEach(function(ax) {
+          var mn = document.getElementById('rank-' + ax + '-min');
+          var mx = document.getElementById('rank-' + ax + '-max');
+          if (mn) mn.value = 0;
+          if (mx) mx.value = 1000;
+          var fill = document.getElementById('rank-' + ax + '-fill');
+          if (fill) { fill.style.left = '0%'; fill.style.width = '100%'; }
+        });
+        renderRankMatrix();
+      }
+
+      // Sync sliders to a new axis (called when axis select changes)
+      function _initRankSliders(allData, xKey, yKey) {
+        var allX = allData.map(function(d){ return d[xKey]; });
+        var allY = allData.map(function(d){ return d[yKey]; });
+        _rankAxisMeta.x = { min: Math.min.apply(null,allX), max: Math.max.apply(null,allX) };
+        _rankAxisMeta.y = { min: Math.min.apply(null,allY), max: Math.max.apply(null,allY) };
+
+        // Reset sliders to full range whenever axis changes — guard every getElementById
+        var xSelEl = document.getElementById('rank-xaxis');
+        var ySelEl = document.getElementById('rank-yaxis');
+        var prevX  = xSelEl ? xSelEl._prevKey : null;
+        var prevY  = ySelEl ? ySelEl._prevKey : null;
+
+        var xMinEl  = document.getElementById('rank-x-min');
+        var xMaxEl  = document.getElementById('rank-x-max');
+        var xFillEl = document.getElementById('rank-x-fill');
+        var yMinEl  = document.getElementById('rank-y-min');
+        var yMaxEl  = document.getElementById('rank-y-max');
+        var yFillEl = document.getElementById('rank-y-fill');
+
+        if (prevX !== xKey) {
+          if (xMinEl)  xMinEl.value  = 0;
+          if (xMaxEl)  xMaxEl.value  = 1000;
+          if (xFillEl) { xFillEl.style.left = '0%'; xFillEl.style.width = '100%'; }
+          if (xSelEl)  xSelEl._prevKey = xKey;
+        }
+        if (prevY !== yKey) {
+          if (yMinEl)  yMinEl.value  = 0;
+          if (yMaxEl)  yMaxEl.value  = 1000;
+          if (yFillEl) { yFillEl.style.left = '0%'; yFillEl.style.width = '100%'; }
+          if (ySelEl)  ySelEl._prevKey = yKey;
+        }
+
+        // Update labels — guard every element
+        var fmt = function(v) { return v >= 1000 ? Math.round(v).toLocaleString() : (Math.round(v*10)/10).toString(); };
+        ['x','y'].forEach(function(ax) {
+          var meta  = _rankAxisMeta[ax];
+          var mnEl  = document.getElementById('rank-' + ax + '-min');
+          var mxEl  = document.getElementById('rank-' + ax + '-max');
+          if (!mnEl || !mxEl) return;
+          var lo    = meta.min + (parseInt(mnEl.value) / 1000) * (meta.max - meta.min);
+          var hi    = meta.min + (parseInt(mxEl.value) / 1000) * (meta.max - meta.min);
+          var loEl  = document.getElementById('rank-' + ax + '-lo');
+          var hiEl  = document.getElementById('rank-' + ax + '-hi');
+          var rlEl  = document.getElementById('rank-' + ax + '-range-label');
+          if (loEl) loEl.textContent = fmt(lo);
+          if (hiEl) hiEl.textContent = fmt(hi);
+          if (rlEl) rlEl.textContent = fmt(lo) + ' – ' + fmt(hi);
+        });
+      }
+
       function renderRankMatrix() {
-        const data = getRankData();
-        renderRankKPIs(data);
+        const allData = getRankData();
 
         const xKey = document.getElementById("rank-xaxis")?.value || "score";
-        const yKey =
-          document.getElementById("rank-yaxis")?.value || "resources";
+        const yKey = document.getElementById("rank-yaxis")?.value || "resources";
+
+        // ── Init sliders on first load / axis change ─────────────────────
+        _initRankSliders(allData, xKey, yKey);
+
+        // ── Read slider filter values (null-safe — sliders may not be in DOM yet) ──
+        const xMinSlider = parseInt(document.getElementById("rank-x-min")?.value ?? "0")   || 0;
+        const xMaxSlider = parseInt(document.getElementById("rank-x-max")?.value ?? "1000") || 1000;
+        const yMinSlider = parseInt(document.getElementById("rank-y-min")?.value ?? "0")   || 0;
+        const yMaxSlider = parseInt(document.getElementById("rank-y-max")?.value ?? "1000") || 1000;
+
+        const xSpan = _rankAxisMeta.x.max - _rankAxisMeta.x.min || 1;
+        const ySpan = _rankAxisMeta.y.max - _rankAxisMeta.y.min || 1;
+        const xLoVal = _rankAxisMeta.x.min + (xMinSlider / 1000) * xSpan;
+        const xHiVal = _rankAxisMeta.x.min + (xMaxSlider / 1000) * xSpan;
+        const yLoVal = _rankAxisMeta.y.min + (yMinSlider / 1000) * ySpan;
+        const yHiVal = _rankAxisMeta.y.min + (yMaxSlider / 1000) * ySpan;
+
+        // Apply filter
+        const data = allData.filter(d =>
+          d[xKey] >= xLoVal && d[xKey] <= xHiVal &&
+          d[yKey] >= yLoVal && d[yKey] <= yHiVal
+        );
+
+        // Update count badge
+        const countEl = document.getElementById("rank-filter-count");
+        if (countEl) {
+          const isFiltered = xMinSlider > 0 || xMaxSlider < 1000 || yMinSlider > 0 || yMaxSlider < 1000;
+          countEl.textContent = isFiltered
+            ? `Showing ${data.length} of ${allData.length} basins (filtered)`
+            : `Showing all ${allData.length} basins`;
+          countEl.style.color = isFiltered ? "var(--brand)" : "var(--t3)";
+        }
+
+        renderRankKPIs(data);
 
         const xLabels = {
-          score: "Prospectivity Score",
-          area: "Acreage (km²)",
-          plays: "Play Count",
+          score:                "Prospectivity Score",
+          gcos:                 "GCoS (%)",
+          resources:            "Estimated Resources (MMboe)",
+          commercial:           "Commercial Score",
+          area:                 "Acreage (km²)",
+          plays:                "Play Count",
+          totalDiscovered:      "Total Discovered Recoverable (MMboe)",
+          yetToFind:            "Total Yet-To-Find (MMboe)",
+          avgFieldSize:         "Average Field Size (MMboe)",
+          playVariability:      "Play Variability (0–100)",
+          explorationWells:     "Exploration Wells (count)",
+          successfulWells:      "Successful Wells (count)",
+          fieldDiscoveries:     "Field Discoveries (count)",
+          fieldDensity:         "Field Density (per 10k km²)",
+          sourceRockRichness:   "Source Rock Richness (0–100)",
+          maxBasinFill:         "Maximum Basin Fill (%)",
+          wildcatWellDensity:   "Wildcat Well Density (per 10k km²)",
+          discoverySuccessRatio:"Discovery Success Ratio (%)",
+          resourceDensity:      "Resource Density (MMboe per 10k km²)",
+          wellSuccessRatio:     "Well Success Ratio (%)",
         };
         const yLabels = {
-          gcos: "GCoS (%)",
-          resources: "Estimated Resources (MMboe)",
-          commercial: "Commercial Score",
+          gcos:                 "GCoS (%)",
+          resources:            "Estimated Resources (MMboe)",
+          score:                "Prospectivity Score",
+          commercial:           "Commercial Score",
+          area:                 "Acreage (km²)",
+          plays:                "Play Count",
+          totalDiscovered:      "Total Discovered Recoverable (MMboe)",
+          yetToFind:            "Total Yet-To-Find (MMboe)",
+          avgFieldSize:         "Average Field Size (MMboe)",
+          playVariability:      "Play Variability (0–100)",
+          explorationWells:     "Exploration Wells (count)",
+          successfulWells:      "Successful Wells (count)",
+          fieldDiscoveries:     "Field Discoveries (count)",
+          fieldDensity:         "Field Density (per 10k km²)",
+          sourceRockRichness:   "Source Rock Richness (0–100)",
+          maxBasinFill:         "Maximum Basin Fill (%)",
+          wildcatWellDensity:   "Wildcat Well Density (per 10k km²)",
+          discoverySuccessRatio:"Discovery Success Ratio (%)",
+          resourceDensity:      "Resource Density (MMboe per 10k km²)",
+          wellSuccessRatio:     "Well Success Ratio (%)",
         };
 
-        const maxRes = Math.max(...data.map((d) => d.resources));
+        if (!data.length) {
+          if (_rankChartInstance) { _rankChartInstance.destroy(); _rankChartInstance = null; }
+          const canvas = document.getElementById("rank-matrix-canvas");
+          if (canvas) {
+            const ctx2 = canvas.getContext("2d");
+            ctx2.clearRect(0,0,canvas.width,canvas.height);
+            ctx2.fillStyle = "rgba(148,163,184,.5)";
+            ctx2.font = '13px "Segoe UI",system-ui';
+            ctx2.textAlign = "center";
+            ctx2.fillText("No basins match the current filter range", canvas.width/2, canvas.height/2);
+          }
+          return;
+        }
 
-        // Group by tier for separate datasets (legend entries)
-        const tiers = [
-          { label: "Tier 1", color: "#00875A", data: [] },
-          { label: "Tier 2", color: "#0088CC", data: [] },
-          { label: "Tier 3", color: "#C07800", data: [] },
-          { label: "Tier 4", color: "#D93025", data: [] },
-        ];
-        data.forEach((d) => {
-          const t = tiers.find((t) => t.label === d.tier) || tiers[3];
-          t.data.push({
-            x: d[xKey],
-            y: d[yKey],
-            r: 5 + (d.resources / maxRes) * 18,
-            _d: d,
+        const maxRes = Math.max(...data.map(d => d.resources));
+        const allX   = data.map(d => d[xKey]);
+        const allY   = data.map(d => d[yKey]);
+        const xPad   = (Math.max(...allX) - Math.min(...allX)) * 0.12 || 2;
+        const yPad   = (Math.max(...allY) - Math.min(...allY)) * 0.12 || 2;
+        const xMin   = Math.min(...allX) - xPad;
+        const xMax   = Math.max(...allX) + xPad;
+        const yMin   = Math.min(...allY) - yPad;
+        const yMax   = Math.max(...allY) + yPad;
+
+        // ── Crosshair midpoint — slider-driven, stored so dragging updates sliders ──
+        // Initialise at midpoint of slider range if not set for this axis combo
+        const axisKey = xKey + "__" + yKey;
+        if (!_rankCrosshair || _rankCrosshair._axisKey !== axisKey) {
+          _rankCrosshair = {
+            x: (xMin + xMax) / 2,
+            y: (yMin + yMax) / 2,
+            _axisKey: axisKey
+          };
+        }
+        const xMid = _rankCrosshair.x;
+        const yMid = _rankCrosshair.y;
+
+        // ── Tier grouping ──────────────────────────────────────────────────
+        const TIER_COLORS = {
+          "Tier 1": { fill: "#00875A", border: "#00875A" },
+          "Tier 2": { fill: "#0088CC", border: "#0088CC" },
+          "Tier 3": { fill: "#C07800", border: "#C07800" },
+          "Tier 4": { fill: "#D93025", border: "#D93025" },
+        };
+        const tierMap = { "Tier 1":[], "Tier 2":[], "Tier 3":[], "Tier 4":[] };
+        data.forEach(d => {
+          (tierMap[d.tier] || tierMap["Tier 4"]).push({
+            x: d[xKey], y: d[yKey],
+            r: 7 + (d.resources / maxRes) * 16,
+            _d: d
           });
         });
-
-        const datasets = tiers
-          .filter((t) => t.data.length > 0)
-          .map((t) => ({
-            label: t.label,
-            data: t.data,
-            backgroundColor: t.color + "55",
-            borderColor: t.color,
+        const datasets = Object.entries(tierMap)
+          .filter(([,pts]) => pts.length)
+          .map(([tier, pts]) => ({
+            label: tier,
+            data: pts,
+            backgroundColor: TIER_COLORS[tier].fill + "55",
+            borderColor:     TIER_COLORS[tier].border,
             borderWidth: 2,
-            hoverBackgroundColor: t.color + "99",
+            hoverBackgroundColor: TIER_COLORS[tier].fill + "CC",
             hoverBorderWidth: 3,
+            hoverBorderColor: "#fff",
           }));
-
-        // Axis ranges with 10% padding
-        const allX = data.map((d) => d[xKey]);
-        const allY = data.map((d) => d[yKey]);
-        const xMin = Math.min(...allX) * 0.88,
-          xMax = Math.max(...allX) * 1.1;
-        const yMin = Math.min(...allY) * 0.88,
-          yMax = Math.max(...allY) * 1.1;
-        const xMid = (xMin + xMax) / 2,
-          yMid = (yMin + yMax) / 2;
 
         const canvas = document.getElementById("rank-matrix-canvas");
         if (!canvas) return;
 
-        // Destroy previous instance
-        if (_rankChartInstance) {
-          _rankChartInstance.destroy();
-          _rankChartInstance = null;
+        // ── Light-theme colours — matches app card/panel palette ─────────
+        const CLR = (function() {
+          const C = window.edafyChartColors ? window.edafyChartColors() : {};
+          const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+          return {
+            bg:            dark ? '#161b26'              : '#ffffff',
+            chartArea:     dark ? '#161b26'              : '#f8fafc',
+            gridLine:      C.grid || 'rgba(226,232,240,0.8)',
+            axisText:      C.tickBold || '#475569',
+            tickText:      C.tick     || '#94A3B8',
+            label:         C.tickBold || '#1E293B',
+            crosshair:     'rgba(13,148,136,0.5)',
+            crosshairDrag: '#0D9488',
+            quadHV:        '#00875A',
+            quadDev:       '#C07800',
+            quadWatch:     '#0088CC',
+            quadLow:       '#D93025',
+            tooltipBg:     C.tooltipBg || 'rgba(15,23,42,0.94)',
+          };
+        })();
+
+        // ── quadrant plugin (crosshair + labels + quadrant shading) ────────
+        const quadrantPlugin = {
+          id: "quadrantPlugin",
+          beforeDraw(chart) {
+            const { ctx, chartArea:{left,top,right,bottom}, scales:{x,y} } = chart;
+            const cfg = chart.options.plugins.quadrantPlugin;
+            if (!cfg) return;
+
+            // Fill chart plot area with theme-aware background
+            ctx.save();
+            ctx.fillStyle = window.edafyCanvasBgColor ? window.edafyCanvasBgColor() : "#f8fafc";
+            ctx.fillRect(left, top, right-left, bottom-top);
+            ctx.restore();
+
+            // Clamp crosshair to axis range
+            const mxV = Math.max(x.min, Math.min(x.max, cfg.xMid));
+            const myV = Math.max(y.min, Math.min(y.max, cfg.yMid));
+            const mx  = x.getPixelForValue(mxV);
+            const my  = y.getPixelForValue(myV);
+
+            // Quadrant fills — stronger tint on light bg
+            const quads = [
+              { x1:mx,   y1:top,    x2:right,  y2:my,     col:CLR.quadHV,    alpha:"1A" },
+              { x1:left, y1:top,    x2:mx,     y2:my,     col:CLR.quadDev,   alpha:"14" },
+              { x1:mx,   y1:my,     x2:right,  y2:bottom, col:CLR.quadWatch, alpha:"14" },
+              { x1:left, y1:my,     x2:mx,     y2:bottom, col:CLR.quadLow,   alpha:"12" },
+            ];
+            quads.forEach(q => {
+              ctx.save();
+              ctx.fillStyle = q.col + q.alpha;
+              ctx.fillRect(q.x1, q.y1, q.x2-q.x1, q.y2-q.y1);
+              ctx.restore();
+            });
+
+            // Crosshair dashed lines
+            ctx.save();
+            ctx.strokeStyle = CLR.crosshair;
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([6, 4]);
+            // Vertical
+            ctx.beginPath(); ctx.moveTo(mx, top); ctx.lineTo(mx, bottom); ctx.stroke();
+            // Horizontal
+            ctx.beginPath(); ctx.moveTo(left, my); ctx.lineTo(right, my); ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Crosshair handle circles
+            ctx.fillStyle = CLR.crosshairDrag;
+            ctx.beginPath(); ctx.arc(mx, top+2, 4, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(left+2, my, 4, 0, Math.PI*2); ctx.fill();
+            // Centre intersection dot
+            ctx.beginPath(); ctx.arc(mx, my, 5, 0, Math.PI*2);
+            ctx.fillStyle = CLR.crosshairDrag + "CC"; ctx.fill();
+            ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
+            ctx.restore();
+
+            // Quadrant labels
+            const qLabels = [
+              { text:"HIGH VALUE",   px:mx+10,    py:top+16,      col:CLR.quadHV    },
+              { text:"DEVELOP",      px:left+8,   py:top+16,      col:CLR.quadDev   },
+              { text:"WATCH",        px:mx+10,    py:bottom-8,    col:CLR.quadWatch },
+              { text:"LOW PRIORITY", px:left+8,   py:bottom-8,    col:CLR.quadLow   },
+            ];
+            ctx.save();
+            qLabels.forEach(l => {
+              ctx.font = 'bold 9px "Segoe UI",system-ui,sans-serif';
+              ctx.fillStyle = l.col + "CC";
+              ctx.fillText(l.text, l.px, l.py);
+            });
+            ctx.restore();
+          },
+
+          afterDraw(chart) {
+            const { ctx, scales:{x,y} } = chart;
+            // Basin name labels above each bubble
+            chart.data.datasets.forEach((ds, di) => {
+              ds.data.forEach((pt, pi) => {
+                const meta = chart.getDatasetMeta(di);
+                const el   = meta.data[pi];
+                if (!el || !pt._d) return;
+                const radius = el.options?.radius || 8;
+                const px = el.x, py = el.y - radius - 5;
+                ctx.save();
+                // Subtle shadow for readability on dark bg
+                ctx.shadowColor = "rgba(0,0,0,0.8)";
+                ctx.shadowBlur = 3;
+                ctx.fillStyle  = CLR.label;
+                ctx.font       = '8.5px "Segoe UI",system-ui,sans-serif';
+                ctx.textAlign  = "center";
+                ctx.fillText(pt._d.name.substring(0, 18), px, py);
+                ctx.restore();
+              });
+            });
+          }
+        };
+
+        // ── Label plugin (axis value at crosshair) ────────────────────────
+        const crosshairLabelPlugin = {
+          id: "crosshairLabel",
+          afterDraw(chart) {
+            const { ctx, chartArea:{left,top,right,bottom}, scales:{x,y} } = chart;
+            const cfg = chart.options.plugins.quadrantPlugin;
+            if (!cfg) return;
+            const mxV = Math.max(x.min, Math.min(x.max, cfg.xMid));
+            const myV = Math.max(y.min, Math.min(y.max, cfg.yMid));
+            const mx  = x.getPixelForValue(mxV);
+            const my  = y.getPixelForValue(myV);
+
+            const fmt = v => v >= 1000 ? Math.round(v).toLocaleString() : (Math.round(v*10)/10).toString();
+
+            ctx.save();
+            ctx.font = '9px "Segoe UI",system-ui,sans-serif';
+            ctx.textAlign = "center";
+
+            // X crosshair value label on axis
+            ctx.fillStyle = CLR.crosshairDrag;
+            ctx.fillRect(mx-22, bottom+3, 44, 15);
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText(fmt(mxV), mx, bottom+13);
+
+            // Y crosshair value label on axis
+            ctx.fillStyle = CLR.crosshairDrag;
+            ctx.textAlign = "right";
+            ctx.fillRect(left-46, my-7, 44, 15);
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText(fmt(myV), left-4, my+4);
+
+            ctx.restore();
+          }
+        };
+
+        // ── Create or update chart ────────────────────────────────────────
+        if (_rankChartInstance && _rankChartInstance._axisKey === axisKey) {
+          // LIVE UPDATE — no destroy, smooth transition
+          _rankChartInstance.data.datasets = datasets;
+          _rankChartInstance.options.scales.x.min = xMin;
+          _rankChartInstance.options.scales.x.max = xMax;
+          _rankChartInstance.options.scales.y.min = yMin;
+          _rankChartInstance.options.scales.y.max = yMax;
+          _rankChartInstance.options.plugins.quadrantPlugin.xMid = xMid;
+          _rankChartInstance.options.plugins.quadrantPlugin.yMid = yMid;
+          _rankChartInstance.update("active");
+        } else {
+          // FULL CREATE (axis switched or first load)
+          if (_rankChartInstance) { _rankChartInstance.destroy(); _rankChartInstance = null; }
+
+          _rankChartInstance = new Chart(canvas, {
+            type: "bubble",
+            data: { datasets },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: { duration: 600, easing: "easeOutQuart" },
+              layout: { padding: { top:12, right:24, bottom:24, left:16 } },
+              scales: {
+                x: {
+                  min: xMin, max: xMax,
+                  title: { display:true, text:xLabels[xKey]||xKey, color:CLR.axisText, font:{size:11,weight:"600"} },
+                  grid:  { color:CLR.gridLine, lineWidth:0.8 },
+                  ticks: { color:CLR.tickText, font:{size:10}, maxTicksLimit:8 },
+                  border:{ color:"rgba(203,213,225,0.8)" },
+                },
+                y: {
+                  min: yMin, max: yMax,
+                  title: { display:true, text:yLabels[yKey]||yKey, color:CLR.axisText, font:{size:11,weight:"600"} },
+                  grid:  { color:CLR.gridLine, lineWidth:0.8 },
+                  ticks: { color:CLR.tickText, font:{size:10}, maxTicksLimit:8 },
+                  border:{ color:"rgba(203,213,225,0.8)" },
+                },
+              },
+              plugins: {
+                legend: {
+                  display: true, position:"top", align:"end",
+                  labels: { boxWidth:10, boxHeight:10, borderRadius:5, padding:14,
+                    color:window.edafyChartColors ? window.edafyChartColors().tickBold : "#475569", font:{size:11} }
+                },
+                tooltip: {
+                  callbacks: {
+                    title: () => "",
+                    label: ctx => {
+                      const d = ctx.raw._d;
+                      const fmt = v => v >= 1000 ? Math.round(v).toLocaleString() : (Math.round(v*10)/10).toString();
+                      return [
+                        "  " + d.name,
+                        "  " + d.country + " · " + d.hc + " · " + d.tier,
+                        "  ──────────────────",
+                        "  " + (xLabels[xKey]||xKey).split("(")[0].trim() + ": " + fmt(d[xKey]),
+                        "  " + (yLabels[yKey]||yKey).split("(")[0].trim() + ": " + fmt(d[yKey]),
+                        "  GCoS: " + d.gcos.toFixed(1) + "%",
+                        "  Resources: " + Math.round(d.resources).toLocaleString() + " MMboe",
+                        "  Score: " + Math.round(d.score),
+                        "  ⊕ Click to add to shortlist",
+                      ];
+                    },
+                  },
+                  backgroundColor:CLR.tooltipBg,
+                  titleColor:"#E2E8F0",
+                  bodyColor:"#94A3B8",
+                  borderColor:"rgba(13,148,136,0.35)",
+                  borderWidth:1,
+                  padding:14, cornerRadius:10, displayColors:false,
+                  bodyFont:{size:11}, caretSize:6,
+                },
+                quadrantPlugin: { xMid, yMid },
+              },
+              onClick: (evt, elements) => {
+                if (!elements.length) return;
+                const pt = _rankChartInstance.data.datasets[elements[0].datasetIndex].data[elements[0].index];
+                const d = pt._d;
+                if (!rankShortlist.find(s => s.name === d.name)) {
+                  rankShortlist.push(d);
+                  toast("✓ " + d.name + " added to shortlist", "success");
+                  renderRankShortlist();
+                } else {
+                  toast(d.name + " already in shortlist", "info");
+                }
+              },
+            },
+            plugins: [quadrantPlugin, crosshairLabelPlugin],
+          });
+          _rankChartInstance._axisKey = axisKey;
+
+          // ── Draggable crosshair ─────────────────────────────────────────
+          _attachRankCrosshairDrag(canvas, xLabels[xKey], yLabels[yKey]);
         }
 
-        _rankChartInstance = new Chart(canvas, {
-          type: "bubble",
-          data: { datasets },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: { duration: 800, easing: "easeOutQuart" },
-            layout: { padding: { top: 10, right: 20, bottom: 10, left: 10 } },
-            scales: {
-              x: {
-                min: xMin,
-                max: xMax,
-                title: {
-                  display: true,
-                  text: xLabels[xKey] || xKey,
-                  color: "#64748B",
-                  font: { size: 11 },
-                },
-                grid: { color: "rgba(226,232,240,.7)", lineWidth: 0.8 },
-                ticks: { color: "#94A3B8", font: { size: 10 } },
-              },
-              y: {
-                min: yMin,
-                max: yMax,
-                title: {
-                  display: true,
-                  text: yLabels[yKey] || yKey,
-                  color: "#64748B",
-                  font: { size: 11 },
-                },
-                grid: { color: "rgba(226,232,240,.7)", lineWidth: 0.8 },
-                ticks: { color: "#94A3B8", font: { size: 10 } },
-              },
-            },
-            plugins: {
-              legend: {
-                display: true,
-                position: "top",
-                align: "end",
-                labels: {
-                  boxWidth: 12,
-                  boxHeight: 12,
-                  borderRadius: 6,
-                  padding: 14,
-                  color: "#4A5568",
-                  font: { size: 11 },
-                },
-              },
-              tooltip: {
-                callbacks: {
-                  label: (ctx) => {
-                    const d = ctx.raw._d;
-                    return [
-                      `${d.name}`,
-                      `${d.country} · ${d.hc} · ${d.tier}`,
-                      `${xLabels[xKey]}: ${d[xKey].toFixed(1)}`,
-                      `${yLabels[yKey]}: ${d[yKey].toFixed(1)}`,
-                      `GCoS: ${d.gcos.toFixed(1)}%`,
-                      `Resources: ${Math.round(d.resources).toLocaleString()} MMboe`,
-                      `Click to shortlist`,
-                    ];
-                  },
-                },
-                backgroundColor: "rgba(15,23,42,.92)",
-                titleColor: "#fff",
-                bodyColor: "#94A3B8",
-                borderColor: "rgba(255,255,255,.08)",
-                borderWidth: 1,
-                padding: 12,
-                cornerRadius: 8,
-                displayColors: false,
-              },
-
-              // Quadrant background annotation via afterDraw plugin
-              quadrantPlugin: {
-                xMid,
-                yMid,
-                labels: [
-                  {
-                    text: "HIGH VALUE",
-                    x: "right",
-                    y: "top",
-                    color: "#00875A",
-                  },
-                  { text: "DEVELOP", x: "left", y: "top", color: "#C07800" },
-                  { text: "WATCH", x: "right", y: "bottom", color: "#0088CC" },
-                  {
-                    text: "LOW PRIORITY",
-                    x: "left",
-                    y: "bottom",
-                    color: "#D93025",
-                  },
-                ],
-              },
-            },
-            onClick: (evt, elements) => {
-              if (!elements.length) return;
-              const el = elements[0];
-              const pt =
-                _rankChartInstance.data.datasets[el.datasetIndex].data[
-                  el.index
-                ];
-              const d = pt._d;
-              if (!rankShortlist.find((s) => s.name === d.name)) {
-                rankShortlist.push(d);
-                toast("Added " + d.name + " to shortlist", "success");
-              } else {
-                toast(d.name + " already shortlisted", "info");
-              }
-            },
-          },
-          plugins: [
-            {
-              id: "quadrantPlugin",
-              beforeDraw(chart) {
-                const {
-                  ctx,
-                  chartArea: { left, top, right, bottom },
-                  scales: { x, y },
-                } = chart;
-                const cfg = chart.options.plugins.quadrantPlugin;
-                if (!cfg) return;
-                const mx = x.getPixelForValue(cfg.xMid);
-                const my = y.getPixelForValue(cfg.yMid);
-                const quads = [
-                  { x1: mx, y1: top, x2: right, y2: my, color: "#00875A" },
-                  { x1: left, y1: top, x2: mx, y2: my, color: "#C07800" },
-                  { x1: mx, y1: my, x2: right, y2: bottom, color: "#0088CC" },
-                  { x1: left, y1: my, x2: mx, y2: bottom, color: "#D93025" },
-                ];
-                quads.forEach((q) => {
-                  ctx.save();
-                  ctx.fillStyle = q.color + "0D";
-                  ctx.fillRect(q.x1, q.y1, q.x2 - q.x1, q.y2 - q.y1);
-                  ctx.restore();
-                });
-                // Divider lines
-                ctx.save();
-                ctx.strokeStyle = "rgba(100,116,139,.25)";
-                ctx.lineWidth = 1;
-                ctx.setLineDash([5, 4]);
-                ctx.beginPath();
-                ctx.moveTo(mx, top);
-                ctx.lineTo(mx, bottom);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(left, my);
-                ctx.lineTo(right, my);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                // Quadrant labels
-                cfg.labels.forEach((lbl) => {
-                  const px = lbl.x === "right" ? mx + 8 : left + 8;
-                  const py = lbl.y === "top" ? top + 16 : bottom - 8;
-                  ctx.fillStyle = lbl.color;
-                  ctx.font = 'bold 9px "Segoe UI",system-ui,sans-serif';
-                  ctx.fillText(lbl.text, px, py);
-                });
-                ctx.restore();
-              },
-              afterDraw(chart) {
-                // Draw basin name labels on each bubble
-                const {
-                  ctx,
-                  scales: { x, y },
-                } = chart;
-                chart.data.datasets.forEach((ds, di) => {
-                  ds.data.forEach((pt, pi) => {
-                    const meta = chart.getDatasetMeta(di);
-                    const el = meta.data[pi];
-                    if (!el || !pt._d) return;
-                    const px = el.x,
-                      py = el.y - el.options.radius - 5;
-                    ctx.save();
-                    ctx.fillStyle = "#1E293B";
-                    ctx.font = '8px "Segoe UI",system-ui,sans-serif';
-                    ctx.textAlign = "center";
-                    ctx.fillText(pt._d.name.substring(0, 16), px, py);
-                    ctx.restore();
-                  });
-                });
-              },
-            },
-          ],
-        });
-
-        // Height is set via CSS on the container
+        // Canvas background — light theme
+        canvas.style.background    = CLR.bg;
+        canvas.style.borderRadius  = "8px";
+        canvas.style.border        = "1px solid #e8ecf5";
+        canvas.style.boxShadow     = "0 1px 4px rgba(0,0,0,0.06)";
       }
+
+      var _rankCrosshair = null;
+      var _rankCrosshairDragging = false;
+      var _rankDragTimer = null;
+
+      function _attachRankCrosshairDrag(canvas) {
+        // Remove previous listeners by cloning — but keep chart reference
+        canvas._rankDragActive = true;
+
+        function getChartCoords(evt) {
+          if (!_rankChartInstance) return null;
+          const rect = canvas.getBoundingClientRect();
+          const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+          const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+          const px = clientX - rect.left;
+          const py = clientY - rect.top;
+          const xs = _rankChartInstance.scales.x;
+          const ys = _rankChartInstance.scales.y;
+          // Only drag within chart area
+          const ca = _rankChartInstance.chartArea;
+          if (px < ca.left || px > ca.right || py < ca.top || py > ca.bottom) return null;
+          return {
+            x: xs.getValueForPixel(px),
+            y: ys.getValueForPixel(py),
+          };
+        }
+
+        function onDown(evt) {
+          const coords = getChartCoords(evt);
+          if (!coords) return;
+          _rankCrosshairDragging = true;
+          canvas.style.cursor = "crosshair";
+        }
+        function onMove(evt) {
+          if (!_rankCrosshairDragging || !_rankChartInstance) return;
+          evt.preventDefault();
+          const coords = getChartCoords(evt);
+          if (!coords) return;
+
+          // Update stored crosshair position
+          _rankCrosshair.x = coords.x;
+          _rankCrosshair.y = coords.y;
+
+          // 1. Move the visual crosshair instantly (no animation)
+          _rankChartInstance.options.plugins.quadrantPlugin.xMid = coords.x;
+          _rankChartInstance.options.plugins.quadrantPlugin.yMid = coords.y;
+          _rankChartInstance.update("none");
+
+          // 2. Sync slider thumbs, fill bars and labels to the new crosshair position
+          _syncSlidersFromCrosshair(coords.x, coords.y);
+
+          // 3. Re-render with updated filter — debounced so dragging stays smooth
+          clearTimeout(_rankDragTimer);
+          _rankDragTimer = setTimeout(function() {
+            renderRankMatrix();
+          }, 60);
+        }
+        function onUp() {
+          _rankCrosshairDragging = false;
+          if (canvas) canvas.style.cursor = "default";
+        }
+
+        canvas.addEventListener("mousedown",  onDown,  {passive:true});
+        canvas.addEventListener("mousemove",  onMove);
+        canvas.addEventListener("mouseup",    onUp,    {passive:true});
+        canvas.addEventListener("mouseleave", onUp,    {passive:true});
+        canvas.addEventListener("touchstart", onDown,  {passive:true});
+        canvas.addEventListener("touchmove",  onMove,  {passive:false});
+        canvas.addEventListener("touchend",   onUp,    {passive:true});
+      }
+
+      function _syncSlidersFromCrosshair(xVal, yVal) {
+        const xMeta = _rankAxisMeta.x, yMeta = _rankAxisMeta.y;
+        const fmt = v => v >= 1000 ? Math.round(v).toLocaleString() : (Math.round(v * 10) / 10).toString();
+
+        ['x', 'y'].forEach(function(ax) {
+          const val  = ax === 'x' ? xVal  : yVal;
+          const meta = ax === 'x' ? xMeta : yMeta;
+          const span = meta.max - meta.min || 1;
+
+          const minEl  = document.getElementById('rank-' + ax + '-min');
+          const maxEl  = document.getElementById('rank-' + ax + '-max');
+          const fillEl = document.getElementById('rank-' + ax + '-fill');
+          const loEl   = document.getElementById('rank-' + ax + '-lo');
+          const hiEl   = document.getElementById('rank-' + ax + '-hi');
+          const rlEl   = document.getElementById('rank-' + ax + '-range-label');
+          if (!minEl || !maxEl) return;
+
+          // Current window half-width in slider units (0-1000)
+          const curLo  = parseInt(minEl.value);
+          const curHi  = parseInt(maxEl.value);
+          const halfW  = (curHi - curLo) / 2;
+
+          // New crosshair position in slider units
+          const newMid = Math.max(0, Math.min(1000, Math.round(((val - meta.min) / span) * 1000)));
+
+          // New lo/hi — keep window width, clamp to [0, 1000]
+          let newLo = Math.round(newMid - halfW);
+          let newHi = Math.round(newMid + halfW);
+          if (newLo < 0)    { newHi = Math.min(1000, newHi - newLo); newLo = 0; }
+          if (newHi > 1000) { newLo = Math.max(0, newLo - (newHi - 1000)); newHi = 1000; }
+
+          // Push values to slider thumbs
+          minEl.value = newLo;
+          maxEl.value = newHi;
+
+          // Update fill bar
+          if (fillEl) {
+            fillEl.style.left  = (newLo / 10) + '%';
+            fillEl.style.width = ((newHi - newLo) / 10) + '%';
+          }
+
+          // Update data-value labels
+          const vLo = meta.min + (newLo / 1000) * span;
+          const vHi = meta.min + (newHi / 1000) * span;
+          if (loEl) loEl.textContent = fmt(vLo);
+          if (hiEl) hiEl.textContent = fmt(vHi);
+          if (rlEl) rlEl.textContent = fmt(vLo) + ' – ' + fmt(vHi);
+        });
+      }
+
+      // function renderRankMatrix() {
+      //   const data = getRankData();
+      //   renderRankKPIs(data);
+
+      //   const xKey = document.getElementById("rank-xaxis")?.value || "score";
+      //   const yKey =
+      //     document.getElementById("rank-yaxis")?.value || "resources";
+
+      //   const xLabels = {
+      //     score: "Prospectivity Score",
+      //     area: "Acreage (km²)",
+      //     plays: "Play Count",
+      //   };
+      //   const yLabels = {
+      //     gcos: "GCoS (%)",
+      //     resources: "Estimated Resources (MMboe)",
+      //     commercial: "Commercial Score",
+      //   };
+
+      //   const maxRes = Math.max(...data.map((d) => d.resources));
+
+      //   // Group by tier for separate datasets (legend entries)
+      //   const tiers = [
+      //     { label: "Tier 1", color: "#00875A", data: [] },
+      //     { label: "Tier 2", color: "#0088CC", data: [] },
+      //     { label: "Tier 3", color: "#C07800", data: [] },
+      //     { label: "Tier 4", color: "#D93025", data: [] },
+      //   ];
+      //   data.forEach((d) => {
+      //     const t = tiers.find((t) => t.label === d.tier) || tiers[3];
+      //     t.data.push({
+      //       x: d[xKey],
+      //       y: d[yKey],
+      //       r: 5 + (d.resources / maxRes) * 18,
+      //       _d: d,
+      //     });
+      //   });
+
+      //   const datasets = tiers
+      //     .filter((t) => t.data.length > 0)
+      //     .map((t) => ({
+      //       label: t.label,
+      //       data: t.data,
+      //       backgroundColor: t.color + "55",
+      //       borderColor: t.color,
+      //       borderWidth: 2,
+      //       hoverBackgroundColor: t.color + "99",
+      //       hoverBorderWidth: 3,
+      //     }));
+
+      //   // Axis ranges with 10% padding
+      //   const allX = data.map((d) => d[xKey]);
+      //   const allY = data.map((d) => d[yKey]);
+      //   const xMin = Math.min(...allX) * 0.88,
+      //     xMax = Math.max(...allX) * 1.1;
+      //   const yMin = Math.min(...allY) * 0.88,
+      //     yMax = Math.max(...allY) * 1.1;
+      //   const xMid = (xMin + xMax) / 2,
+      //     yMid = (yMin + yMax) / 2;
+
+      //   const canvas = document.getElementById("rank-matrix-canvas");
+      //   if (!canvas) return;
+
+      //   // Destroy previous instance
+      //   if (_rankChartInstance) {
+      //     _rankChartInstance.destroy();
+      //     _rankChartInstance = null;
+      //   }
+
+      //   _rankChartInstance = new Chart(canvas, {
+      //     type: "bubble",
+      //     data: { datasets },
+      //     options: {
+      //       responsive: true,
+      //       maintainAspectRatio: false,
+      //       animation: { duration: 800, easing: "easeOutQuart" },
+      //       layout: { padding: { top: 10, right: 20, bottom: 10, left: 10 } },
+      //       scales: {
+      //         x: {
+      //           min: xMin,
+      //           max: xMax,
+      //           title: {
+      //             display: true,
+      //             text: xLabels[xKey] || xKey,
+      //             color: "#64748B",
+      //             font: { size: 11 },
+      //           },
+      //           grid: { color: "rgba(226,232,240,.7)", lineWidth: 0.8 },
+      //           ticks: { color: "#94A3B8", font: { size: 10 } },
+      //         },
+      //         y: {
+      //           min: yMin,
+      //           max: yMax,
+      //           title: {
+      //             display: true,
+      //             text: yLabels[yKey] || yKey,
+      //             color: "#64748B",
+      //             font: { size: 11 },
+      //           },
+      //           grid: { color: "rgba(226,232,240,.7)", lineWidth: 0.8 },
+      //           ticks: { color: "#94A3B8", font: { size: 10 } },
+      //         },
+      //       },
+      //       plugins: {
+      //         legend: {
+      //           display: true,
+      //           position: "top",
+      //           align: "end",
+      //           labels: {
+      //             boxWidth: 12,
+      //             boxHeight: 12,
+      //             borderRadius: 6,
+      //             padding: 14,
+      //             color: "#4A5568",
+      //             font: { size: 11 },
+      //           },
+      //         },
+      //         tooltip: {
+      //           callbacks: {
+      //             label: (ctx) => {
+      //               const d = ctx.raw._d;
+      //               return [
+      //                 `${d.name}`,
+      //                 `${d.country} · ${d.hc} · ${d.tier}`,
+      //                 `${xLabels[xKey]}: ${d[xKey].toFixed(1)}`,
+      //                 `${yLabels[yKey]}: ${d[yKey].toFixed(1)}`,
+      //                 `GCoS: ${d.gcos.toFixed(1)}%`,
+      //                 `Resources: ${Math.round(d.resources).toLocaleString()} MMboe`,
+      //                 `Click to shortlist`,
+      //               ];
+      //             },
+      //           },
+      //           backgroundColor: "rgba(15,23,42,.92)",
+      //           titleColor: "#fff",
+      //           bodyColor: "#94A3B8",
+      //           borderColor: "rgba(255,255,255,.08)",
+      //           borderWidth: 1,
+      //           padding: 12,
+      //           cornerRadius: 8,
+      //           displayColors: false,
+      //         },
+
+      //         // Quadrant background annotation via afterDraw plugin
+      //         quadrantPlugin: {
+      //           xMid,
+      //           yMid,
+      //           labels: [
+      //             {
+      //               text: "HIGH VALUE",
+      //               x: "right",
+      //               y: "top",
+      //               color: "#00875A",
+      //             },
+      //             { text: "DEVELOP", x: "left", y: "top", color: "#C07800" },
+      //             { text: "WATCH", x: "right", y: "bottom", color: "#0088CC" },
+      //             {
+      //               text: "LOW PRIORITY",
+      //               x: "left",
+      //               y: "bottom",
+      //               color: "#D93025",
+      //             },
+      //           ],
+      //         },
+      //       },
+      //       onClick: (evt, elements) => {
+      //         if (!elements.length) return;
+      //         const el = elements[0];
+      //         const pt =
+      //           _rankChartInstance.data.datasets[el.datasetIndex].data[
+      //             el.index
+      //           ];
+      //         const d = pt._d;
+      //         if (!rankShortlist.find((s) => s.name === d.name)) {
+      //           rankShortlist.push(d);
+      //           toast("Added " + d.name + " to shortlist", "success");
+      //         } else {
+      //           toast(d.name + " already shortlisted", "info");
+      //         }
+      //       },
+      //     },
+      //     plugins: [
+      //       {
+      //         id: "quadrantPlugin",
+      //         beforeDraw(chart) {
+      //           const {
+      //             ctx,
+      //             chartArea: { left, top, right, bottom },
+      //             scales: { x, y },
+      //           } = chart;
+      //           const cfg = chart.options.plugins.quadrantPlugin;
+      //           if (!cfg) return;
+      //           const mx = x.getPixelForValue(cfg.xMid);
+      //           const my = y.getPixelForValue(cfg.yMid);
+      //           const quads = [
+      //             { x1: mx, y1: top, x2: right, y2: my, color: "#00875A" },
+      //             { x1: left, y1: top, x2: mx, y2: my, color: "#C07800" },
+      //             { x1: mx, y1: my, x2: right, y2: bottom, color: "#0088CC" },
+      //             { x1: left, y1: my, x2: mx, y2: bottom, color: "#D93025" },
+      //           ];
+      //           quads.forEach((q) => {
+      //             ctx.save();
+      //             ctx.fillStyle = q.color + "0D";
+      //             ctx.fillRect(q.x1, q.y1, q.x2 - q.x1, q.y2 - q.y1);
+      //             ctx.restore();
+      //           });
+      //           // Divider lines
+      //           ctx.save();
+      //           ctx.strokeStyle = "rgba(100,116,139,.25)";
+      //           ctx.lineWidth = 1;
+      //           ctx.setLineDash([5, 4]);
+      //           ctx.beginPath();
+      //           ctx.moveTo(mx, top);
+      //           ctx.lineTo(mx, bottom);
+      //           ctx.stroke();
+      //           ctx.beginPath();
+      //           ctx.moveTo(left, my);
+      //           ctx.lineTo(right, my);
+      //           ctx.stroke();
+      //           ctx.setLineDash([]);
+      //           // Quadrant labels
+      //           cfg.labels.forEach((lbl) => {
+      //             const px = lbl.x === "right" ? mx + 8 : left + 8;
+      //             const py = lbl.y === "top" ? top + 16 : bottom - 8;
+      //             ctx.fillStyle = lbl.color;
+      //             ctx.font = 'bold 9px "Segoe UI",system-ui,sans-serif';
+      //             ctx.fillText(lbl.text, px, py);
+      //           });
+      //           ctx.restore();
+      //         },
+      //         afterDraw(chart) {
+      //           // Draw basin name labels on each bubble
+      //           const {
+      //             ctx,
+      //             scales: { x, y },
+      //           } = chart;
+      //           chart.data.datasets.forEach((ds, di) => {
+      //             ds.data.forEach((pt, pi) => {
+      //               const meta = chart.getDatasetMeta(di);
+      //               const el = meta.data[pi];
+      //               if (!el || !pt._d) return;
+      //               const px = el.x,
+      //                 py = el.y - el.options.radius - 5;
+      //               ctx.save();
+      //               ctx.fillStyle = "#1E293B";
+      //               ctx.font = '8px "Segoe UI",system-ui,sans-serif';
+      //               ctx.textAlign = "center";
+      //               ctx.fillText(pt._d.name.substring(0, 16), px, py);
+      //               ctx.restore();
+      //             });
+      //           });
+      //         },
+      //       },
+      //     ],
+      //   });
+
+      //   // Height is set via CSS on the container
+      // }
 
       let _bubbleChartInstance = null;
 
@@ -29573,62 +30231,54 @@ ${stepsHtml}
 
       function renderRankShortlist() {
         const body = document.getElementById("rank-shortlist-body");
-        if (!body) return;
+        const footer = document.getElementById("rank-shortlist-footer");
+        if (!body || !footer) return;
+
         if (!rankShortlist.length) {
-          body.innerHTML =
-            '<div style="text-align:center;padding:28px;color:var(--t3);font-size:11px">No opportunities shortlisted yet. Click Auto-Shortlist or add from the Ranking Matrix.</div>';
-          return;
+            body.innerHTML = '<div style="text-align:center;padding:28px;color:var(--t3);font-size:11px">No opportunities shortlisted yet. Click Auto-Shortlist or add from the Ranking Matrix.</div>';
+            footer.style.display = "none";
+            return;
         }
-        body.innerHTML =
-          "<table><thead><tr><th>#</th><th>Opportunity</th><th>Country</th><th>Score</th><th>GCoS</th><th>Resources</th><th>Tier</th><th>HC Phase</th><th>Action</th></tr></thead><tbody>" +
-          rankShortlist
-            .map(
-              (d, i) =>
-                '<tr><td style="font-weight:700;color:var(--purple)">' +
-                (i + 1) +
-                "</td>" +
-                '<td style="font-weight:600">' +
-                d.name +
-                "</td>" +
-                "<td>" +
-                d.country +
-                "</td>" +
-                '<td style="font-weight:700">' +
-                d.score.toFixed(0) +
-                "</td>" +
-                '<td style="color:var(--cyan);font-weight:600">' +
-                d.gcos.toFixed(1) +
-                "%</td>" +
-                '<td style="font-weight:700;color:var(--gold)">' +
-                d.resources.toLocaleString() +
-                " MMboe</td>" +
-                '<td><span class="tl ' +
-                (d.tier === "Tier 1"
-                  ? "tl-g"
-                  : d.tier === "Tier 2"
-                    ? "tl-c"
-                    : d.tier === "Tier 3"
-                      ? "tl-a"
-                      : "tl-r") +
-                '">' +
-                d.tier +
-                "</span></td>" +
-                "<td>" +
-                d.hc +
-                "</td>" +
-                '<td><button class="btn2 danger" style="font-size:8px;padding:3px 8px" onclick="removeFromShortlist(' +
-                i +
-                ')">Remove</button></td></tr>',
-            )
-            .join("") +
-          "</tbody></table>" +
-          '<div style="margin-top:12px;display:flex;gap:8px;justify-content:space-between;align-items:center">' +
-          '<span style="font-size:10px;color:var(--t2)">' +
-          rankShortlist.length +
-          " opportunities · Total resources: " +
-          rankShortlist.reduce((s, d) => s + d.resources, 0).toLocaleString() +
-          " MMboe</span>" +
-          '<div style="display:flex;gap:6px"><button class="btn2" onclick="toast(\'Shortlist exported to CSV\',\'success\')">Export CSV</button><button class="btn" onclick="pushShortlistToEcon()">Push to Economics →</button></div></div>';
+
+        // Show the footer since we have data
+        footer.style.display = "flex";
+
+        // Inject ONLY the table
+        body.innerHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th><th>Opportunity</th><th>Country</th>
+                        <th>Score</th><th>GCoS</th><th>Resources</th>
+                        <th>Tier</th><th>HC Phase</th><th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rankShortlist.map((d, i) => `
+                        <tr>
+                            <td style="font-weight:700;color:var(--purple)">${i + 1}</td>
+                            <td style="font-weight:600">${d.name}</td>
+                            <td>${d.country}</td>
+                            <td style="font-weight:700">${d.score.toFixed(0)}</td>
+                            <td style="color:var(--cyan);font-weight:600">${d.gcos.toFixed(1)}%</td>
+                            <td style="font-weight:700;color:var(--gold)">${d.resources.toLocaleString()} MMboe</td>
+                            <td>
+                                <span style="white-space:nowrap" class="tl ${d.tier === 'Tier 1' ? 'tl-g' : d.tier === 'Tier 2' ? 'tl-c' : d.tier === 'Tier 3' ? 'tl-a' : 'tl-r'}">
+                                    ${d.tier}
+                                </span>
+                            </td>
+                            <td>${d.hc}</td>
+                            <td><button class="btn2 danger" style="font-size:8px;padding:3px 8px" onclick="removeFromShortlist(${i})">Remove</button></td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>`;
+
+        // Update the numbers in the HTML
+        document.getElementById("stat-count").innerText = rankShortlist.length;
+        document.getElementById("stat-resources").innerText = rankShortlist
+            .reduce((s, d) => s + d.resources, 0)
+            .toLocaleString();
       }
 
       function autoShortlist() {
