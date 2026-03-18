@@ -1,0 +1,124 @@
+# docker-compose.yml
+services:
+
+  # ── Infrastructure ────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres_basin
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d mydb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: secret
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    configs:
+      - source: pgadmin_servers
+        target: /pgadmin4/servers.json
+
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    container_name: meilisearch
+    restart: always
+    ports:
+      - "7700:7700"
+    environment:
+      MEILI_MASTER_KEY: "masterkey"
+      MEILI_ENV: "development"
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:7700/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Application ───────────────────────────────────────────────
+
+  mcp_server:
+    build: .
+    container_name: mcp_server
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: alpha
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      MEILI_URL: http://meilisearch:7700
+      MEILI_API_KEY: masterkey
+      MEILI_INDEX: basins-alpha
+    command: ["python", "mcp_server.py"]
+
+  app:
+    build: .
+    container_name: basin_app
+    restart: always
+    depends_on:
+      - mcp_server
+    ports:
+      - "8080:8080"
+    environment:
+      MCP_SSE_URL: http://mcp_server:8000/sse
+      LLM_URL: https://<url>.com/v1/chat/completions
+      LLM_KEY: sk-api_key
+      LLM_MODEL: qwen/qwen3.5-35b-a3b
+      # LLM_MODEL: qwen/qwen3.5-9b
+      MAX_ITERATIONS: 10
+    command: ["python", "main.py"]
+
+# ── Configs & Volumes ─────────────────────────────────────────
+
+configs:
+  pgadmin_servers:
+    content: |
+      {
+        "Servers": {
+          "1": {
+            "Name": "Local Postgres",
+            "Group": "Servers",
+            "Host": "postgres",
+            "Port": 5432,
+            "MaintenanceDB": "mydb",
+            "Username": "admin",
+            "SSLMode": "prefer"
+          }
+        }
+      }
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  meilisearch_data:

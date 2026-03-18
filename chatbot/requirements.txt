@@ -1,0 +1,7 @@
+fastapi[all]
+fastmcp
+mcp
+sse-starlette
+psycopg2-binary
+meilisearch
+requests
