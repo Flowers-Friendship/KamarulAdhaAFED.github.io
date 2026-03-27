@@ -1,4 +1,505 @@
 
+// ============================================================
+// AUTH LAYER
+// JWT token is stored in sessionStorage (cleared on tab/browser close).
+// apiFetch() injects Authorization: Bearer <token> on every request.
+// On 401: token cleared, login page shown, request retried after sign-in.
+// On 403: permission-denied toast (no redirect).
+// ============================================================
+
+const _ELP_TOKEN_KEY = "edafy_jwt";
+const _ELP_USER_KEY  = "edafy_user";
+
+function elpGetToken()        { return sessionStorage.getItem(_ELP_TOKEN_KEY); }
+function elpSetToken(t)       { sessionStorage.setItem(_ELP_TOKEN_KEY, t); }
+function elpClearToken()      { sessionStorage.removeItem(_ELP_TOKEN_KEY); sessionStorage.removeItem(_ELP_USER_KEY); }
+
+function elpGetUser()  {
+  try { return JSON.parse(sessionStorage.getItem(_ELP_USER_KEY) || "null"); }
+  catch { return null; }
+}
+function elpSetUser(u) { sessionStorage.setItem(_ELP_USER_KEY, JSON.stringify(u)); }
+
+// ── Current-user helpers ──────────────────────────────────
+// Always read from session so we never hardcode "VJ" in data.
+function _currentUser() {
+  const u = elpGetUser();
+  if (!u) return { username: "user", initials: "?", displayName: "User" };
+  const name = u.full_name || u.name || u.username || "user";
+  const parts = name.trim().split(/\s+/);
+  const initials = parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : name.slice(0, 2).toUpperCase();
+  return { username: u.username || name, initials, displayName: name };
+}
+// Shorthand used throughout
+function _userTag()      { return _currentUser().initials; }
+function _userDisplay()  { return _currentUser().displayName; }
+
+// Show/hide the login page overlay
+function elpShow() {
+  const lp = document.getElementById("edafy-login-page");
+  if (lp) lp.classList.remove("hidden");
+  setTimeout(() => document.getElementById("elp-user")?.focus(), 80);
+}
+function elpHide() {
+  const lp = document.getElementById("edafy-login-page");
+  if (lp) lp.classList.add("hidden");
+  // Update sidebar user block from session
+  const u = elpGetUser();
+  const cu = _currentUser();
+  const avatarEl = document.getElementById("sb-user-avatar");
+  const nameEl   = document.getElementById("sb-user-name");
+  const roleEl   = document.getElementById("sb-user-role");
+  if (avatarEl) avatarEl.textContent = cu.initials;
+  if (nameEl)   nameEl.textContent   = cu.displayName;
+  if (roleEl && u?.role) roleEl.textContent = u.role;
+  // Update settings user management table
+  const sn = document.getElementById("settings-user-name");
+  const sr = document.getElementById("settings-user-role");
+  if (sn) sn.textContent = cu.displayName;
+  if (sr && u?.role) sr.textContent = u.role;
+}
+
+// Called by the Sign In button
+async function elpDoLogin() {
+  const username = document.getElementById("elp-user")?.value.trim();
+  const password = document.getElementById("elp-pass")?.value;
+  const errEl    = document.getElementById("elp-error");
+  const btn      = document.getElementById("elp-submit");
+  errEl.style.display = "none";
+
+  if (!username || !password) {
+    errEl.textContent = "Please enter your username and password.";
+    errEl.style.display = "block"; return;
+  }
+
+  btn.textContent = "Signing in…"; btn.disabled = true;
+  try {
+    const body = new URLSearchParams({ username, password });
+    const res = await fetch(EDAFY_API_BASE + "/api/auth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.detail || "Incorrect username or password");
+    }
+    const data = await res.json();
+    elpSetToken(data.access_token);
+
+    // Fetch user profile
+    try {
+      const me = await fetch(EDAFY_API_BASE + "/api/auth/me", {
+        headers: { Authorization: "Bearer " + data.access_token }
+      });
+      if (me.ok) {
+        const user = await me.json();
+        elpSetUser(user);
+        elpRenderUserBadge(user);
+      }
+    } catch {}
+
+    elpHide();
+    _backendOnline = true;
+    _renderApiStatus(true);
+    await _elpBootstrapData();   // load live data now that we're authenticated
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = "block";
+    btn.textContent = "Sign In"; btn.disabled = false;
+  }
+}
+
+// Enter key on password field
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("elp-pass")?.addEventListener("keydown", e => {
+    if (e.key === "Enter") elpDoLogin();
+  });
+  document.getElementById("elp-user")?.addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("elp-pass")?.focus();
+  });
+});
+
+// Continue offline (no backend)
+function elpGoOffline() {
+  elpHide();
+  _backendOnline = false;
+  _renderApiStatus(false);
+}
+
+// Sign out — clear token, show login page
+function elpSignOut() {
+  elpClearToken();
+  _backendOnline = false;
+  _renderApiStatus(false);
+  // Clear password field for security
+  const passEl = document.getElementById("elp-pass");
+  if (passEl) passEl.value = "";
+  elpShow();
+  toast("Signed out successfully", "info");
+}
+
+// Render the logged-in user pill in the sidebar
+function elpRenderUserBadge(user) {
+  const bar = document.getElementById("api-status-bar");
+  if (!bar) return;
+  let pill = document.getElementById("elp-user-pill");
+  if (!pill) {
+    pill = document.createElement("div");
+    pill.id = "elp-user-pill";
+    pill.style.cssText = "margin-top:8px;padding:6px 10px;display:flex;align-items:center;gap:8px;background:rgba(107,70,193,0.06);border:1px solid rgba(107,70,193,0.12);border-radius:7px;cursor:default";
+    bar.parentNode.insertBefore(pill, bar.nextSibling);
+  }
+  const roleColors = {
+    admin: "#ff9f43", lead_geologist: "#2fb87a",
+    data_steward: "#00aaff", basin_analyst: "#a29bfe",
+    reservoir_engineer: "#74b9ff", viewer: "#8896a5"
+  };
+  const col = roleColors[user.role] || "#8896a5";
+  pill.innerHTML = `
+    <div style="width:24px;height:24px;border-radius:50%;background:rgba(107,70,193,0.12);
+                border:1px solid rgba(0,200,130,0.25);display:flex;align-items:center;
+                justify-content:center;font-size:10px;font-weight:700;color:#2fb87a;flex-shrink:0">
+      ${(user.full_name || user.username || "U").charAt(0).toUpperCase()}
+    </div>
+    <div style="overflow:hidden;flex:1;min-width:0">
+      <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.8);
+                  white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+        ${user.full_name || user.username}
+      </div>
+      <div style="font-size:10px;color:${col};letter-spacing:0.3px;text-transform:capitalize">
+        ${(user.role||"").replace(/_/g," ")}
+      </div>
+    </div>
+    <button onclick="elpSignOut()" title="Sign out"
+            style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
+                    color:rgba(255,255,255,0.35);border-radius:5px;padding:3px 7px;
+                    font-size:10px;cursor:pointer;font-family:inherit;flex-shrink:0">
+      ↩
+    </button>`;
+}
+
+// Check backend health before showing login — update the status badge
+async function elpCheckBackend() {
+  const badge = document.getElementById("elp-role-badge-text");
+  // Populate login-page stats from real data arrays
+  const basinStatEl = document.getElementById("elp-stat-basins");
+  if (basinStatEl) {
+    const n = (typeof BASINS !== "undefined" && BASINS.length) ? BASINS.length : 0;
+    basinStatEl.textContent = n > 0 ? n + "+" : "—";
+  }
+  const connStatEl = document.getElementById("elp-stat-connectors");
+  if (connStatEl && typeof CONNECTOR_STATE !== "undefined") {
+    connStatEl.textContent = CONNECTOR_STATE.length || 5;
+  }
+  try {
+    const res = await fetch(EDAFY_API_BASE + "/health", { signal: AbortSignal.timeout(4000) });
+    if (badge) badge.textContent = res.ok ? "Backend online — sign in to continue" : "Backend unreachable";
+  } catch {
+    if (badge) badge.textContent = "Backend offline — sign in or continue offline";
+  }
+}
+
+//  auth-aware apiFetch 
+async function apiFetch(path, opts = {}) {
+  const url     = EDAFY_API_BASE + path;
+  const token   = elpGetToken();
+  const headers = { "Content-Type": "application/json", ...opts.headers };
+  if (token) headers["Authorization"] = "Bearer " + token;
+
+  const res = await fetch(url, { ...opts, headers });
+
+  if (res.status === 401) {
+    elpClearToken();
+    // Return a Promise that resolves after the user signs in and retries
+    return new Promise((resolve, reject) => {
+      elpShow();
+      // Override elpDoLogin success to also resolve this promise
+      const _origHide = elpHide;
+      // eslint-disable-next-line no-shadow
+      elpHide = function () {
+        elpHide = _origHide;  // restore
+        _origHide();
+        const tok = elpGetToken();
+        if (!tok) { reject(new Error("Not authenticated")); return; }
+        const retryHeaders = { "Content-Type": "application/json" };
+        retryHeaders["Authorization"] = "Bearer " + tok;
+        fetch(url, { ...opts, headers: retryHeaders })
+          .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || `HTTP ${r.status}`))))
+          .then(resolve).catch(reject);
+      };
+    });
+  }
+
+  if (res.status === 403) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error("Permission denied: " + (e.detail || "insufficient role"));
+  }
+
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ============================================================
+// BACKEND API LAYER
+// Connects this app to the EDAFY FastAPI backend.
+// Set EDAFY_API_BASE to your backend URL.
+// When backend is unreachable, the app falls back to the
+// hard-coded seed data below (offline mode).
+// ============================================================
+
+const EDAFY_API_BASE = (
+  window.EDAFY_API_BASE ||
+  localStorage.getItem("edafy_api_base") ||
+  "http://localhost:8000"
+);
+
+//  Flag: did we successfully connect to the backend? 
+let _backendOnline = false;
+
+//  Generic fetch helper 
+// apiFetch defined in AUTH LAYER above
+
+//  Field normalisers: backend → frontend shape 
+//
+// The frontend uses short field names (b.hc, b.area, b.plays)
+// while the backend uses full OSDU-aligned names.
+// These functions translate transparently so all existing
+// render, filter, and sort code works without modification.
+
+function normaliseBasin(b) {
+  return {
+    id:       b.id,
+    osduId:   b.osdu_id || "",
+    name:     b.name,
+    country:  b.country || "",
+    region:   b.region  || "",
+    tectonic: b.tectonic || "",
+    age:      b.age_range || "",
+    hc:       b.hc_phase || "",
+    area:     parseFloat(b.area_km2) || 0,
+    plays:    b.play_count || 0,
+    score:    parseFloat(b.score) || 0,
+    status:   b.status || "",
+    // Extra fields from data JSONB
+    ...(b.data || {}),
+    // Keep raw backend fields too for API round-trips
+    _raw: b,
+  };
+}
+
+function normaliseAnalogue(a) {
+  return {
+    id:    a.id,
+    rank:  a.rank || 0,
+    name:  a.name,
+    basin: a.basin_name || "",
+    age:   a.age || "",
+    lith:  a.lithology || "",
+    dep:   a.dep_env || "",
+    depth: parseFloat(a.depth_m) || 0,
+    hc:    a.hc_phase || "",
+    drive: a.drive_mechanism || "",
+    por:   parseFloat(a.porosity_pct) || 0,
+    perm:  parseFloat(a.permeability_md) || 0,
+    rf:    parseFloat(a.recovery_factor_pct) || 0,
+    ntg:   parseFloat(a.ntg_pct) || 0,
+    gor:   parseFloat(a.gor_scf_bbl) || 0,
+    api:   parseFloat(a.api_gravity) || 0,
+    sim:   parseFloat(a.similarity_score) || 0,
+    temp:  parseFloat(a.reservoir_temp_c) || 0,
+    pres_res: parseFloat(a.reservoir_pressure_bar) || 0,
+    sw:    parseFloat(a.water_saturation) || 0,
+    bo:    parseFloat(a.bo_rb_stb) || 0,
+    visc:  parseFloat(a.viscosity_cp) || 0,
+    gross_pay: parseFloat(a.gross_pay_m) || 0,
+    net_pay:   parseFloat(a.net_pay_m) || 0,
+    // Sub-objects (already JSONB on backend)
+    geo:       a.geopressure  || null,
+    geochem:   a.geochem      || null,
+    mineral:   a.mineralogy   || null,
+    diagenesis:a.diagenesis   || null,
+    fluid:     a.fluid_pvt    || null,
+    _raw: a,
+  };
+}
+
+function normaliseProspect(p) {
+  return {
+    id:     p.id,
+    name:   p.name,
+    basin:  p.basin_name || "",
+    type:   p.prospect_type || "",
+    target: p.target_formation || "",
+    depth:  parseFloat(p.depth_m) || 0,
+    ps:     parseFloat(p.p_source) || 0,
+    pr:     parseFloat(p.p_reservoir) || 0,
+    pse:    parseFloat(p.p_seal) || 0,
+    pt:     parseFloat(p.p_trap) || 0,
+    pm:     parseFloat(p.p_migration) || 0,
+    _raw:   p,
+  };
+}
+
+function normaliseIngestedFile(f) {
+  return {
+    id:          f.id,
+    name:        f.filename,
+    records:     f.record_count || 0,
+    datasetType: f.dataset_type || "",
+    source:      f.source || "",
+    age:         _relativeAge(f.created_at),
+    status:      f.status,
+    loadedNames: [],
+    _raw:        f,
+  };
+}
+
+function normaliseGovItem(g) {
+  return {
+    id:       g.id,
+    dataset:  g.dataset || g.flag?.split("—")[0] || "Record",
+    flag:     g.flag,
+    flagType: g.flag_type || "warn",
+    source:   g.source || "",
+    age:      _relativeAge(g.created_at),
+    _raw:     g,
+  };
+}
+
+function normaliseAuditEntry(a) {
+  return {
+    time:   a.created_at?.replace("T", " ").slice(0, 16) || "",
+    user:   a.user_id || "SYS",
+    action: a.action,
+    status: a.status,
+    type:   a.event_type || "System",
+  };
+}
+
+function normaliseDedupItem(d) {
+  return {
+    id:       d.id,
+    dataset:  d.incoming_record_id || "",
+    type:     d.duplicate_type || "near-duplicate",
+    sim:      parseFloat(d.similarity_score) || 0,
+    matched:  d.matched_record_id || "",
+    source:   d.source || "",
+    time:     _relativeAge(d.created_at),
+    fields:   d.matching_fields || "",
+    _raw:     d,
+  };
+}
+
+function normaliseConnector(c) {
+  const statusColor = {
+    "connected":      "var(--green)",
+    "error":          "var(--red)",
+    "pending":        "var(--amber)",
+    "not_configured": "var(--t3)",
+  };
+  return {
+    key:          c.key,
+    name:         c.name,
+    status:       c.status,
+    freq:         c.freq || "Weekly",
+    lastSync:     c.last_sync_at ? _relativeAge(c.last_sync_at) : "Never",
+    records:      c.total_records || 0,
+    color:        statusColor[c.status] || "var(--t3)",
+    schedEnabled: c.sched_enabled || false,
+    apiKey:       "",
+    _raw:         c,
+    // Keep static metadata (vendor, type, authType, etc.) from seed below
+    ..._CONNECTOR_META[c.key],
+  };
+}
+
+// Static connector metadata (not stored in backend — display only)
+const _CONNECTOR_META = {
+  ihs: {
+    vendor: "S&P Global Commodity Insights", logo: "IHS",
+    type: "REST API + SFTP", authType: "OAuth 2.0 (Client Credentials)",
+    dataTypes: "Basin Monitor, Well Data, Production, Formations, Analogues, Reserves",
+    apiBaseUrl: "https://api.ihsenergy.com/v3/",
+    note: "<strong>IHS Energy / S&P Global</strong> provides REST API v3 access (OAuth 2.0 client credentials) and SFTP bulk export for licensed datasets.",
+    setupSteps: [
+      "1. Log in to IHS Connect (https://ihsconnect.com) as an admin user",
+      "2. Navigate to API Management → Create Application → select 'Basin & Plays API'",
+      "3. Copy Client ID and Client Secret — paste below",
+      "4. (Optional) Request SFTP credentials for bulk CSV exports from your account manager",
+      "5. Select datasets: Basin Monitor, Petroleum Systems, Well Header, Formation Tops, Production",
+      "6. Test the connection — EDAFY will fetch a token and validate schema compatibility",
+      "7. Set sync frequency and review records in Governance → Ingested Files before publishing",
+    ],
+  },
+  neftex: {
+    vendor: "Neftex / Halliburton", logo: "NX",
+    type: "SFTP Bulk Export", authType: "SSH Key (RSA-2048)",
+    dataTypes: "Stratigraphy, Source Rock, Basin Summary, Petroleum Systems",
+    apiBaseUrl: "sftp://data.neftex.com",
+    note: "<strong>Neftex (Halliburton)</strong> delivers data via SFTP bulk CSV/XLSX export. Datasets include regional stratigraphy columns, source rock geochemistry, and basin assessments.",
+    setupSteps: [
+      "1. Contact your Neftex/Halliburton account manager to enable SFTP access",
+      "2. Upload your public SSH key (RSA-2048) to the Neftex data portal",
+      "3. Enter the SFTP hostname, username, and path to your licensed datasets below",
+      "4. Verify that the EDAFY server can reach data.neftex.com on port 22",
+      "5. Run a test sync to confirm datasets are accessible",
+    ],
+  },
+  cc: {
+    vendor: "C&C Reservoirs", logo: "C&C",
+    type: "SFTP + REST API", authType: "Bearer Token",
+    dataTypes: "Reservoir Analogues, Formation Data, Production, PVT",
+    apiBaseUrl: "https://api.ccreservoirs.com/v2/",
+    note: "<strong>C&C Reservoirs</strong> provides global reservoir analogue data via REST API v2 and SFTP export. Includes porosity, permeability, PVT, and production data for thousands of intervals.",
+    setupSteps: [
+      "1. Log in to C&C Reservoirs Online (https://ccreservoirs.com) as an admin",
+      "2. Navigate to API Settings → Generate Bearer Token",
+      "3. Paste the token below — it expires annually",
+      "4. (Optional) Request SFTP access for bulk downloads",
+    ],
+  },
+  rystad: {
+    vendor: "Rystad Energy", logo: "RE",
+    type: "REST API (UCube)", authType: "Bearer Token",
+    dataTypes: "Asset-level reserves, production forecasts, economics",
+    apiBaseUrl: "https://api.rystadenergy.com/ucube/v1",
+    note: "<strong>Rystad Energy</strong> UCube provides upstream asset economics, reserves, and production forecasts via REST API.",
+    setupSteps: [
+      "1. Obtain an API key from your Rystad Energy account manager",
+      "2. Paste the Bearer Token below",
+      "3. Select datasets: UCube asset data, production, reserves",
+    ],
+  },
+  woodmac: {
+    vendor: "Wood Mackenzie", logo: "WM",
+    type: "REST API (Lens)", authType: "OAuth 2.0 JWT Bearer",
+    dataTypes: "Basin assessments, play analysis, upstream assets",
+    apiBaseUrl: "https://api.woodmac.com/lens/v2",
+    note: "<strong>Wood Mackenzie</strong> Lens API provides basin and upstream asset data via OAuth 2.0 JWT Bearer authentication.",
+    setupSteps: [
+      "1. Log in to Wood Mackenzie Lens (https://lens.woodmac.com)",
+      "2. Navigate to API & Integrations → Create OAuth Application",
+      "3. Copy Client ID and Client Secret below",
+    ],
+  },
+};
+
+//  Relative time helper 
+function _relativeAge(iso) {
+  if (!iso) return "";
+  const diff = (Date.now() - new Date(iso)) / 1000;
+  if (diff < 60)    return "just now";
+  if (diff < 3600)  return `${Math.round(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.round(diff/3600)}h ago`;
+  return `${Math.round(diff/86400)}d ago`;
+}
+
 //  API data-load functions 
 async function apiLoadBasins() {
   try {
@@ -3448,19 +3949,8 @@ window.onload = async () => {
     renderBasinTable(BASINS);
     populateProspectDropdown();
     renderGCoS();
-    renderTornado();
-    renderVolTornado();
-    renderVolSpider();
-    renderDists();
-    renderGovPipe();
-    renderGovQueue();
-    renderAuditLog(AUDIT_ENTRIES);
-    renderConnectors();
-    renderIngHistory();
-    setupMap();
-    setupCrossplot();
     _refreshGovQueue();
-    loadBasins();
+    setupMap();
   } catch(e) {
     console.warn('[EDAFY] Initial render error (non-fatal):', e);
   }
@@ -3604,45 +4094,49 @@ setTimeout(function() {
 // NAVIGATION
 // ============================================================
 const SECTION_TITLES = {
-    portfolio: "Portfolio Dashboard",
-    basins: "Basin Catalogue",
-    screening: "Basin Screening",
-    ranking: "Opportunity Ranking",
-    analogues: "Reservoir Analogue Engine",
-    params: "Parameter Library",
-    risk: "Risk & Uncertainty",
-    volumetrics: "Volumetrics Calculator",
-    economics: "Economics Module",
-    portopt: "Portfolio Optimization",
-    sensitivity: "Sensitivities",
-    typecurves: "Type Curves & DCA",
-    benchmark: "Global Benchmarking",
-    playfairway: "Play Fairway Mapping",
-    ingestion: "Data Ingestion",
-    governance: "Governance & Audit",
-    aiconfig: "AI Configuration",
-    petrosystem: "Petrosystem"
+  portfolio: "Portfolio Dashboard",
+  basins: "Basin Catalogue",
+  screening: "Basin Screening",
+  ranking: "Opportunity Ranking",
+  analogues: "Reservoir Analogue Engine",
+  params: "Parameter Library",
+  risk: "Risk & Uncertainty",
+  volumetrics: "Volumetrics Calculator",
+  economics: "Economics Module",
+  portopt: "Portfolio Optimization",
+  sensitivity: "Sensitivities",
+  typecurves: "Type Curves & DCA",
+  benchmark: "Global Benchmarking",
+  playfairway: "Play Fairway Mapping",
+  ingestion: "Data Ingestion",
+  governance: "Governance & Audit",
+  aiconfig: "AI Configuration",
+  hierarchy: "Exploration Hierarchy Explorer",
+  knowledgegraph: "Exploration Knowledge Graph",
+  hub: "Exploration Intelligence Hub",
 };
 
 const PAGE_NAMES = {
-    portfolio: "Portfolio Dashboard",
-    basins: "Basin Catalogue",
-    screening: "Basin Screening",
-    ranking: "Opportunity Ranking",
-    analogues: "Analogue Engine",
-    params: "Parameter Library",
-    volumetrics: "Volumetrics Calculator",
-    risk: "Risk & Uncertainty",
-    typecurves: "Type Curves & DCA",
-    economics: "Economics Module",
-    portopt: "Portfolio Optimization",
-    sensitivity: "Sensitivities",
-    benchmark: "Global Benchmarking",
-    playfairway: "Play Fairway Mapping",
-    ingestion: "Data Ingestion",
-    governance: "Governance",
-    aiconfig: "AI Configuration",
-    petrosystem: "Petrosystem"
+  portfolio: "Portfolio Dashboard",
+  basins: "Basin Catalogue",
+  screening: "Basin Screening",
+  ranking: "Opportunity Ranking",
+  analogues: "Analogue Engine",
+  params: "Parameter Library",
+  volumetrics: "Volumetrics Calculator",
+  risk: "Risk & Uncertainty",
+  typecurves: "Type Curves & DCA",
+  economics: "Economics Module",
+  portopt: "Portfolio Optimization",
+  sensitivity: "Sensitivities",
+  benchmark: "Global Benchmarking",
+  playfairway: "Play Fairway Mapping",
+  ingestion: "Data Ingestion",
+  governance: "Governance",
+  aiconfig: "AI Configuration",
+  hierarchy: "Exploration Hierarchy",
+  knowledgegraph: "Knowledge Graph",
+  hub: "Exploration Intelligence Hub",
 };
 
 function goTo(id, navEl) {
@@ -3689,13 +4183,21 @@ function goTo(id, navEl) {
     const activeSection = document.getElementById("sec-" + id);
     
     if (activeSection) {
-          const tabsContainer = activeSection.querySelector(".tabs");
-          if (tabsContainer) {
-              const firstTab = tabsContainer.querySelector(".tab");
-              if (firstTab && bc) {
-                    bc.textContent = firstTab.textContent.trim();
-              }
-          }
+      const tabsContainer = activeSection.querySelector(".tabs");
+
+      if (tabsContainer) {
+        let firstTab;
+
+        if (activeSection.id === "sec-hub") {
+          firstTab = tabsContainer.querySelector(".hub-tab");
+        } else {
+          firstTab = tabsContainer.querySelector(".tab");
+        }
+
+        if (firstTab && bc) {
+          bc.textContent = firstTab.textContent.trim();
+        }
+      }
     }
 
     if (history.pushState) history.pushState(null, null, "#" + id);
@@ -3726,7 +4228,7 @@ function goTo(id, navEl) {
     if (id === "hierarchy") setTimeout(function() {
       if (typeof hierPopulateBasinSelect === "function") hierPopulateBasinSelect();
     }, 120);
-    if (id === "params") setTimeout(pfBasinInit, 80);
+    if (id === "params") setTimeout(renderDists(), 80);
     if (id === "knowledgegraph") setTimeout(function() {
       if (typeof kgPopulateEntities === "function") kgPopulateEntities();
       if (typeof updateKGStats === "function") updateKGStats();
@@ -7132,6 +7634,7 @@ function setGlobalBasin(name, opts) {
 
   // Update context bar
   _renderGlobalBasinBar(name);
+  adjustMainLayout();
 
   // Propagate to all selectors (with small stagger so DOM is ready)
   _BASIN_SELECTORS.forEach(({ id, fn }, i) => {
@@ -7148,20 +7651,62 @@ function setGlobalBasin(name, opts) {
   if (!opts.silent) toast("Basin context → " + name, "info");
 }
 
+function adjustMainLayout() {
+  const bar = document.getElementById("_global-basin-bar");
+  const main = document.querySelector(".main");
+  const map = document.querySelector(".map-area");
+  const sidebar = document.querySelector(".sb");
+  const fab = document.getElementById("emonk-fab"); // your floating button
+
+  if (bar && main && map && sidebar) {
+    const barHeight = bar.offsetHeight;
+
+    // Map fixed
+    const mapHeight = window.innerHeight * 0.3; // 30vh in px
+    map.style.height = "30vh";
+
+    // Remaining space
+    const remainingHeight = window.innerHeight - mapHeight - barHeight;
+
+    // Main fills remaining space
+    main.style.height = `calc(100vh - 30vh - ${barHeight}px)`;
+    main.style.overflow = "hidden";
+
+    // Sidebar stops above the bar
+    sidebar.style.height = `calc(100vh - ${barHeight}px)`;
+
+    // Move FAB above the bar
+    if (fab) {
+      fab.style.bottom = 28 + barHeight + "px"; // 28px = base spacing
+    }
+  }
+}
+
+window.addEventListener("resize", adjustMainLayout);
+
 // ── Context bar ────────────────────────────────────────────────────────
 function _renderGlobalBasinBar(name) {
   let bar = document.getElementById("_global-basin-bar");
   if (!bar) {
+    // Create bar if it doesn’t exist
     bar = document.createElement("div");
     bar.id = "_global-basin-bar";
     bar.style.cssText = [
       "position:fixed;bottom:0;left:0;right:0;z-index:9997",
       "background:var(--bg1,#0A1628);border-top:1px solid rgba(0,200,130,.25)",
-      "display:flex;align-items:center;gap:10px;padding:6px 16px",
+      "display:flex;align-items:center;gap:10px;padding:12px 16px",
       "font-size:11px;font-family:inherit;transition:transform .2s ease",
       "box-shadow:0 -2px 12px rgba(0,0,0,.35)"
     ].join(";");
     document.body.appendChild(bar);
+  } else {
+    // ✅ Make sure it is visible again
+    bar.style.display = "flex";
+    bar.style.transform = "";
+
+    setTimeout(() => {
+      adjustMainLayout(); // ✅ correct height now
+    }, 0); // reset translateY
   }
 
   const b = (window.BASINS || []).find(x => x.name === name) || {};
@@ -7180,8 +7725,20 @@ function _renderGlobalBasinBar(name) {
       <option value="">— select —</option>
       ${(window.BASINS||[]).map(bx => `<option value="${bx.name}" ${bx.name===name?"selected":""}>${bx.name}</option>`).join("")}
     </select>
-    <button onclick="document.getElementById('_global-basin-bar').style.transform='translateY(100%)';setTimeout(()=>document.getElementById('_global-basin-bar').style.transform='',4000)" style="font-size:10px;padding:2px 8px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.4);border-radius:4px;cursor:pointer;font-family:inherit" title="Dismiss for 4s">✕</button>
+    <button onclick="
+      const bar=document.getElementById('_global-basin-bar');
+      bar.style.transform='translateY(100%)';
+      setTimeout(()=>{
+        bar.style.display='none';
+        adjustMainLayout();
+      }, 200)
+    " style="font-size:10px;padding:2px 8px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.4);border-radius:4px;cursor:pointer;font-family:inherit" title="Dismiss for 4s">
+      ✕
+    </button>
   `;
+
+  // ✅ recalc main/sidebar layout
+  adjustMainLayout();
 }
 
 function setupMap() {
@@ -13606,6 +14163,63 @@ function renderCrossplot() {
 // ============================================================
 // PARAMETER LIBRARY
 // ============================================================
+
+// Populate pf-basin, pf-lith, pf-drive from live data and pre-select global basin
+function pfBasinInit() {
+  const basins   = window.BASINS    || (typeof BASINS    !== "undefined" ? BASINS    : []);
+  const analogues= window.ANALOGUES || (typeof ANALOGUES !== "undefined" ? ANALOGUES : []);
+
+  // ── Basin dropdown ───────────────────────────────────────────
+  const basinSel = document.getElementById("pf-basin");
+  if (basinSel && basinSel.options.length <= 1 && basins.length > 0) {
+    basins.forEach(b => {
+      const opt = document.createElement("option");
+      opt.value = b.name;
+      opt.textContent = b.name + (b.country ? " — " + b.country : "");
+      basinSel.appendChild(opt);
+    });
+  }
+  if (basinSel && window._globalBasin) basinSel.value = window._globalBasin;
+
+  // ── Lithology dropdown — derive unique values from ANALOGUES + BASINS ──
+  const lithSel = document.getElementById("pf-lith");
+  if (lithSel && lithSel.options.length <= 1) {
+    const lithSet = new Set();
+    // From ANALOGUES
+    analogues.forEach(a => { if (a.lith && a.lith !== "Unknown") lithSet.add(a.lith); });
+    // From BASINS (some have lith field)
+    basins.forEach(b => { if (b.lith && b.lith !== "Unknown") lithSet.add(b.lith); });
+    // Hardcoded full list from STRAT_DATA and ingested records as fallback
+    [
+      "Sandstone","Carbonate","Chalk","Shale","Evaporite",
+      "Sandstone / Carbonate","Sandstone / Shale","Sandstone / Siltstone",
+      "Shale / Carbonate","Shale / Lacustrine","Shale / Limestone",
+      "Shale / Marl","Carbonate / Shale","Igneous / Metamorphic"
+    ].forEach(v => lithSet.add(v));
+    Array.from(lithSet).sort().forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      lithSel.appendChild(opt);
+    });
+  }
+
+  // ── Drive mechanism dropdown — derive from ANALOGUES ────────
+  const driveSel = document.getElementById("pf-drive");
+  if (driveSel && driveSel.options.length <= 1) {
+    const driveSet = new Set();
+    analogues.forEach(a => { if (a.drive && a.drive !== "Unknown") driveSet.add(a.drive); });
+    // Full list from data
+    ["Water Drive","Solution Gas","Gas Cap","Combination",
+      "Depletion Drive","Gravity Drainage","Compaction Drive"
+    ].forEach(v => driveSet.add(v));
+    Array.from(driveSet).sort().forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      driveSel.appendChild(opt);
+    });
+  }
+}
+
 function renderDists() {
   const html = Object.entries(PARAM_DATA)
     .map(([key, d]) => {
@@ -14787,14 +15401,14 @@ function saveGCoS() {
     Object.values(riskVals).reduce((a, b) => (a * b) / 100, 100) / 100;
   AUDIT_ENTRIES.unshift({
     time: now(),
-    user: "VJ",
+    user: _userTag(),
     action: `GCoS saved — ${currentProspect}: ${(gcos * 100).toFixed(1)}%`,
     status: "SUCCESS",
     type: "Data Access",
   });
   renderAuditLog(AUDIT_ENTRIES);
   toast(`GCoS saved: ${(gcos * 100).toFixed(1)}%`, "success");
-  // ── BRIDGE: Risk GCoS saved → propagate to Volumetrics, Bayes, PSE ──
+  //  BRIDGE: Risk GCoS saved → propagate to Volumetrics, Bayes, PSE 
   if (window.EDAFY_bridge)
     setTimeout(() => EDAFY_bridge.propagateFromRisk(gcos), 150);
 }
@@ -16996,10 +17610,10 @@ function commitIngestion() {
         ? [...BASINS].slice(-accepted).map((b) => b.name)
         : [...ANALOGUES].slice(-accepted).map((a) => a.name),
   });
-  renderGovQueue();
+  _refreshGovQueue();
   AUDIT_ENTRIES.unshift({
     time: now(),
-    user: "VJ",
+    user: _userTag(),
     action: `Upload queued for governance: ${fileName} · ${accepted} ${dataType} records · ${quarantined} dupes · ${failed} failed`,
     status: failed > 0 ? "PARTIAL" : "PENDING",
     type: "Governance",
@@ -18623,7 +19237,7 @@ function commitTypedIngestion() {
   renderGovQueue();
   AUDIT_ENTRIES.unshift({
     time: now(),
-    user: "VJ",
+    user: _userTag(),
     action: `${ING_META[key].label} upload queued: ${fileName} · ${accepted} records pending governance review`,
     status: "PENDING",
     type: "Governance",
@@ -20978,7 +21592,7 @@ function processXLSXTemplate(wb, fileName) {
   renderGovQueue();
   AUDIT_ENTRIES.unshift({
     time: now(),
-    user: "VJ",
+    user: _userTag(),
     action: `XLSX Template uploaded: ${fileName} · ${totalRec} records · ${summary}`,
     status: "SUCCESS",
     type: "Data Ingestion",
@@ -21579,7 +22193,7 @@ function commitUnifiedIngestion() {
   renderGovQueue();
   AUDIT_ENTRIES.unshift({
     time: now(),
-    user: "VJ",
+    user: _userTag(),
     action: `Unified upload queued: ${fileName} · ${totalNew} new + ${totalUpdated} updated · ${typesSummary}`,
     status: "PENDING",
     type: "Governance",
@@ -21605,7 +22219,7 @@ function commitUnifiedIngestion() {
     datasetType: detectedDatasets
       .map((d) => UNIFIED_SCHEMA[d]?.label || d)
       .join(", "),
-    source: "VJ",
+    user: _userTag(),
     age: "Just now",
     status: "pending",
     loadedNames: resultRows.map((r) => r.name).filter(Boolean),
@@ -23936,7 +24550,42 @@ function initStratTab() {
   });
 }
 
+// Pre-loads strat data when a basin row is clicked (non-blocking)
+function _preloadStratForBasin(name) {
+  _lastSelectedBasin = name;
+  // If Strat tab is already visible, update it immediately
+  const stratPanel = document.getElementById('basin-strat-panel');
+  if (stratPanel && stratPanel.style.display !== 'none') {
+    initStratTab();
+  }
+}
+
 let _stratSelected = null;
+let _lastSelectedBasin = null; 
+
+// Public helper: switch to Strat tab for a given basin name
+function goToStratTab(basinName) {
+  // Switch tab (find the strat tab button and activate it)
+  const tabs = document.querySelectorAll('#basin-browse-panel')?.length
+    ? document.querySelectorAll('.tabs .tab')
+    : [];
+  // Use switchBasinTab directly — find the strat tab el
+  const stratTabEl = Array.from(document.querySelectorAll('.tab')).find(
+    t => t.getAttribute('onclick') && t.getAttribute('onclick').includes("'strat'")
+  );
+  if (stratTabEl) {
+    switchBasinTab('strat', stratTabEl);
+  }
+  // Populate select if not done yet
+  initStratTab();
+  // Set the select value and render
+  const sel = document.getElementById('strat-basin-select');
+  if (sel && basinName) {
+    sel.value = basinName;
+    renderStratColumn(basinName);
+  }
+}
+
 function renderStratColumn(basinName) {
   if (!basinName) return;
   _stratSelected = basinName;
@@ -23961,11 +24610,10 @@ function renderStratColumn(basinName) {
 
   // Header row
   let html = `
-    <div style="" id="strat-column-wrap-th">
-      <div></div><div>Formation</div><div>Age</div><div>Lithology</div>
-      <div>${mode === "depth" ? "Top Depth" : "Thick.(m)"}</div><div>HC Role</div>
-    </div>
-  `;
+  <div style="display:grid;grid-template-columns:24px 140px 80px 90px 70px 1fr;gap:0;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;padding:6px 8px;border-bottom:2px solid var(--b1);background:#F8FAFF;position:sticky;top:0;z-index:2">
+    <div></div><div>Formation</div><div>Age</div><div>Lithology</div>
+    <div>${mode === "depth" ? "Top Depth" : "Thick.(m)"}</div><div>HC Role</div>
+  </div>`;
 
   let cumDepth = 500;
   fms.forEach((f, i) => {
@@ -23987,19 +24635,19 @@ function renderStratColumn(basinName) {
             : "#EFF8E8";
 
     const hcBadge = f.source
-      ? `<span style="background:#D1FAE5;color:#065F46;font-size:10px;padding:1px 6px;border-radius:3px">Source</span>`
+      ? `<span style="background:#D1FAE5;color:#065F46;font-size:8px;padding:1px 6px;border-radius:3px">Source</span>`
       : f.hc.includes("Primary")
-        ? `<span style="background:#DBEAFE;color:#1E40AF;font-size:10px;padding:1px 6px;border-radius:3px">Primary Res.</span>`
+        ? `<span style="background:#DBEAFE;color:#1E40AF;font-size:8px;padding:1px 6px;border-radius:3px">Primary Res.</span>`
         : f.hc.includes("Reservoir")
-          ? `<span style="background:#EDE9FE;color:#4C1D95;font-size:10px;padding:1px 6px;border-radius:3px">Reservoir</span>`
+          ? `<span style="background:#EDE9FE;color:#4C1D95;font-size:8px;padding:1px 6px;border-radius:3px">Reservoir</span>`
           : f.hc.includes("Seal")
-            ? `<span style="background:#F3F4F6;color:#374151;font-size:10px;padding:1px 6px;border-radius:3px">Seal</span>`
+            ? `<span style="background:#F3F4F6;color:#374151;font-size:8px;padding:1px 6px;border-radius:3px">Seal</span>`
             : f.hc.includes("Source")
-              ? `<span style="background:#D1FAE5;color:#065F46;font-size:10px;padding:1px 6px;border-radius:3px">Source</span>`
-              : `<span style="font-size:10px;color:var(--t3)">${f.hc}</span>`;
+              ? `<span style="background:#D1FAE5;color:#065F46;font-size:8px;padding:1px 6px;border-radius:3px">Source</span>`
+              : `<span style="font-size:8px;color:var(--t3)">${f.hc}</span>`;
 
     const toc = f.toc
-      ? `<span style="font-size:10px;color:#065F46;margin-left:4px">TOC ${f.toc}%</span>`
+      ? `<span style="font-size:8px;color:#065F46;margin-left:4px">TOC ${f.toc}%</span>`
       : "";
     const dispVal =
       mode === "depth"
@@ -24011,10 +24659,10 @@ function renderStratColumn(basinName) {
     html += `
       <div class="strat-row" data-idx="${i}" onclick="showStratDetail(${i},'${basinName}')"
         style="display:grid;grid-template-columns:24px 140px 80px 90px 70px 1fr;gap:0;align-items:center;border-bottom:1px solid #F0F2F8;cursor:pointer;transition:background .15s;min-height:${barH}px">
-        <div style="background:${col};width:4px;height:${barH - 4}px;margin:2px 3px;border-radius:2px;border:1px solid ${col}88"></div>
+        <div style="background:${col};width:18px;height:${barH - 4}px;margin:2px 3px;border-radius:2px;border:1px solid ${col}88"></div>
         <div style="padding:4px 6px">
-          <div style="font-size:12px;font-weight:600;color:var(--t1);line-height:1.3">${f.fm}</div>
-          <div style="font-size:10px;color:var(--t3)">${f.lith}</div>
+          <div style="font-size:10px;font-weight:600;color:var(--t1);line-height:1.3">${f.fm}</div>
+          <div style="font-size:8px;color:var(--t3)">${f.lith}</div>
         </div>
         <div style="font-size:10px;color:var(--t2);padding:0 6px;line-height:1.3">${f.age}</div>
         <div style="padding:0 6px">
@@ -24022,19 +24670,15 @@ function renderStratColumn(basinName) {
             <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${lithColor(f.lith)};flex-shrink:0"></span>
             ${f.lith.split("/")[0].trim()}
           </div>
-          <div style="font-size:10px;color:var(--t3)">${f.era}</div>
+          <div style="font-size:8px;color:var(--t3)">${f.era}</div>
         </div>
         <div style="font-size:10px;font-weight:600;color:var(--purple);padding:0 6px">${dispVal}</div>
         <div style="padding:0 6px">${hcBadge}${toc}</div>
-      </div>
-    `;
+      </div>`;
 
     if (f.seal_qual) {
-      html += `
-      <div style="background:rgba(0,135,90,.04);border-left:3px solid #1A7F5A;padding:3px 8px 3px 28px;font-size:10px;color:#065F46">
-        Seal: ${f.seal} — Quality: ${f.seal_qual}
-      </div>
-    `;
+      html += `<div style="background:rgba(0,135,90,.04);border-left:3px solid #1A7F5A;padding:3px 8px 3px 28px;font-size:8px;color:#065F46">
+    Seal: ${f.seal} — Quality: ${f.seal_qual}</div>`;
     }
     cumDepth += thick;
   });
@@ -24050,7 +24694,7 @@ function renderStratColumn(basinName) {
 
   // Legend
   const liths = [...new Set(fms.map((f) => f.lith))];
-  document.getElementById("strat-legend").innerHTML = `
+        document.getElementById("strat-legend").innerHTML = `
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
       ${liths
         .map(
@@ -24063,17 +24707,16 @@ function renderStratColumn(basinName) {
         .join("")}
     </div>
     <div style="font-size:10px;color:var(--t3);line-height:1.6">
-      <div><span style="background:#D1FAE5;color:#065F46;padding:1px 5px;border-radius:3px;margin-right:4px">Source</span>Source rock (with TOC)</div>
-      <div style="margin-top:3px"><span style="background:#DBEAFE;color:#1E40AF;padding:1px 5px;border-radius:3px;margin-right:4px">Primary Res.</span>Main reservoir interval</div>
-      <div style="margin-top:3px"><span style="background:#F3F4F6;color:#374151;padding:1px 5px;border-radius:3px;margin-right:4px">Seal</span>Cap rock / regional seal</div>
+      <div><span style="background:rgba(5,150,105,.18);color:#34d399;padding:1px 5px;border-radius:3px;margin-right:4px">Source</span>Source rock (with TOC)</div>
+      <div style="margin-top:3px"><span style="background:rgba(29,78,216,.18);color:#93c5fd;padding:1px 5px;border-radius:3px;margin-right:4px">Primary Res.</span>Main reservoir interval</div>
+      <div style="margin-top:3px"><span style="background:var(--bg4);color:var(--t2);padding:1px 5px;border-radius:3px;margin-right:4px">Seal</span>Cap rock / regional seal</div>
     </div>
-    <div id="strat-legend-card">
+    <div style="margin-top:10px;padding:8px;background:var(--bg4);border-radius:6px;font-size:10px;color:var(--purple)">
       Total column thickness: <strong>${totalThick.toLocaleString()} m</strong><br>
       Formations: <strong>${fms.length}</strong> · Source rocks: <strong>${fms.filter((f) => f.source).length}</strong>
-    </div>
-  `;
+    </div>`;
 
-  showStratDetail(0, basinName);
+    showStratDetail(0, basinName);
 }
 
 function showStratDetail(idx, basinName) {
@@ -24094,7 +24737,6 @@ function showStratDetail(idx, basinName) {
         <div style="font-size:10px;color:var(--t3)">${f.era} · ${f.age}</div>
       </div>
     </div>
-
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
       ${[
         ["Lithology", f.lith],
@@ -24109,18 +24751,14 @@ function showStratDetail(idx, basinName) {
             k,
             v,
           ]) => `<div style="background:var(--bg4);border-radius:5px;padding:6px 8px">
-        <div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px">${k}</div>
+        <div style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px">${k}</div>
         <div style="font-size:10px;font-weight:600;color:var(--t1);margin-top:1px">${v}</div>
       </div>`,
         )
         .join("")}
     </div>
-    
-    <div style="background:${f.source ? "var(--bg-green)" : "var(--bg-blue)"};border:1px solid ${f.source ? "var(--bg-green)" : "var(--b-blue)"};border-radius:5px;padding:8px;font-size:10px;color:var(--t2);line-height:1.5">${f.notes}</div>
-    ${f.source ? `
-      <div style="margin-top:8px;background:var(--bg-yellow);border:1px solid var(--b-yellow);border-radius:5px;padding:7px 9px;font-size:10px;color:var(--brown)">Source Rock — estimated maturity window ${f.toc >= 3 ? "oil–gas" : "early oil"}</div>
-    ` : ""}
-  `;
+    <div style="background:${f.source ? "rgba(5,150,105,.08)" : "var(--bg4)"};border:1px solid ${f.source ? "rgba(5,150,105,.3)" : "var(--b1)"};border-radius:5px;padding:8px;font-size:10px;color:var(--t2);line-height:1.5">${f.notes}</div>
+  ${f.source ? `<div style="margin-top:8px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:5px;padding:7px 9px;font-size:10px;color:#78350F"> Source Rock — estimated maturity window ${f.toc >= 3 ? "oil–gas" : "early oil"}</div>` : ""}`;
 }
 
 // exportStratPDF is defined earlier with full PDF generation logic
@@ -24414,28 +25052,6 @@ function runExport(fmt) {
 // ══════════════════════════════════════════════════════════════
 // SENSITIVITIES ENGINE — fully live, 4 tabs, DB-connected
 // ══════════════════════════════════════════════════════════════
-
-function loadBasins() {
-    // 1. Select the target element
-    const selectElement = document.getElementById('basin-select');
-    
-    // 2. Check if data exists, otherwise use empty array
-    const data = (typeof BASINS !== 'undefined' ? BASINS : []);
-
-    // 3. Map data to HTML option strings
-    const htmlContent = data.map(b => {
-        return `<option value="${b.name}">${b.name}</option>`;
-    }).join('');
-
-    // 4. Inject into the DOM
-    if (selectElement) {
-        selectElement.innerHTML = htmlContent;
-    } else {
-        console.error("Target div/select not found!");
-    }
-}
-
-loadBasins();
 
 // ── Master parameter store ────────────────────────────────────
 let SENS_PARAMS = [
@@ -25508,14 +26124,14 @@ ${paramCols
   )
   .join("")}
 <!-- Results row -->
-<tr style="background:#F8FAFC;border-top:2px solid #E2E8F0;font-weight:700">
+<tr style="font-weight:700">
   <td style="padding:8px 10px;color:var(--t2)">STOIIP (MMbbl)</td>
   ${SENS_SCENARIOS.map((s) => {
     const r = _scenarioResult(s);
     return `<td style="padding:8px 12px;text-align:center;font-size:12px;font-weight:800;color:${s.color}">${r.stoiip.toLocaleString()}</td>`;
   }).join("")}
 </tr>
-<tr style="background:#F8FAFC;font-weight:700">
+<tr style="font-weight:700">
   <td style="padding:8px 10px;color:var(--t2)">EUR (MMbbl)</td>
   ${SENS_SCENARIOS.map((s) => {
     const r = _scenarioResult(s);
@@ -26232,7 +26848,7 @@ function dedupAction(id, action) {
   toast(msgs[action], action === "reject" ? "error" : "success");
   AUDIT_ENTRIES.unshift({
     time: now(),
-    user: "VJ",
+    user: _userTag(),
     action: `Dedup: ${action.toUpperCase()} — ${id} (${r.sim}% match with ${r.matched})`,
     status: action.toUpperCase(),
     type: "Governance",
@@ -26347,7 +26963,7 @@ function renderGovFilesPanel() {
       <span style="font-size:12px;font-weight:700;color:var(--t1)">${f.name}</span>
       <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:${statusCol}15;color:${statusCol}">${statusLbl}</span>
     </div>
-    <div style="font-size:10px;color:var(--t3);margin-bottom:8px">${f.records} records · ${f.datasetType} · Uploaded ${f.age} · By ${f.source || "VJ"}</div>
+    <div style="font-size:10px;color:var(--t3);margin-bottom:8px">${f.records} records · ${f.datasetType} · Uploaded ${f.age} · By ${f.source || _userTag()}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px" id="fmeta-${f.id}"></div>
   </div>
   <div style="flex-shrink:0">
@@ -26465,7 +27081,7 @@ function fileGovAction(id, action) {
     );
     AUDIT_ENTRIES.unshift({
       time: now(),
-      user: "VJ",
+      user: _userTag(),
       action: `File accepted: ${f.name} · ${f.records} ${f.datasetType} records published`,
       status: "ACCEPTED",
       type: "Governance",
@@ -26479,7 +27095,7 @@ function fileGovAction(id, action) {
     );
     AUDIT_ENTRIES.unshift({
       time: now(),
-      user: "VJ",
+      user: _userTag(),
       action: `File rejected: ${f.name} · ${f.records} records removed`,
       status: "REJECTED",
       type: "Governance",
@@ -26522,7 +27138,7 @@ function govAction(id, action) {
     renderGovQueue();
     AUDIT_ENTRIES.unshift({
       time: now(),
-      user: "VJ",
+      user: _userTag(),
       action: `Governance: ${action.toUpperCase()} — ${id}`,
       status: action.toUpperCase(),
       type: "Governance",
@@ -35041,7 +35657,7 @@ let chatMessages = [
     time: "10:32 AM",
   },
   {
-    user: "VJ",
+    user: _userTag(),
     msg: "Agreed, the Miocene deltaic analogues support a high reservoir score",
     time: "10:45 AM",
   },
@@ -35092,7 +35708,7 @@ function sendCollabMsg() {
   const el = document.getElementById("collab-msg");
   if (!el?.value.trim()) return;
   chatMessages.push({
-    user: "VJ",
+    user: _userTag(),
     msg: el.value,
     time: new Date().toLocaleTimeString([], {
       hour: "2-digit",
@@ -38724,14 +39340,14 @@ setTimeout(() => {
       date,
       action,
       detail,
-      user: "VJ",
+      user: _userTag(),
     });
     // Also push to global audit
     if (typeof AUDIT_ENTRIES !== "undefined") {
       const node = pse_nodes.find((x) => x.id === nodeId);
       AUDIT_ENTRIES.unshift({
         time: ts,
-        user: "VJ",
+        user: _userTag(),
         action: `[PSE] ${node?.label || nodeId}: ${action} — ${detail}`,
         status: "SUCCESS",
         type: "Knowledge Graph",
@@ -50816,13 +51432,13 @@ function _emonkAppendMsg(role, text, actions, source, query) {
   const div = document.createElement("div");
   div.className = "emonk-msg " + role;
   div.innerHTML = `
-<div class="emonk-msg-avatar">${isUser ? "VJ" : "🧘"}</div>
-<div style="min-width:0;flex:1">
-${queryHTML}
-<div class="emonk-bubble">${text}</div>
-${actionsHTML}
-${sourceHTML}
-</div>`;
+    <div class="emonk-msg-avatar">${isUser ? _userTag() : ""}</div>
+    <div style="min-width:0;flex:1">
+    ${queryHTML}
+    <div class="emonk-bubble">${text}</div>
+    ${actionsHTML}
+    ${sourceHTML}
+    </div>`;
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
 }
@@ -50884,252 +51500,6012 @@ function emonkNotify() {
   }
 }
 
-(function() {
-  var STORAGE_KEY = 'edafy_theme';
 
-  /* ── helpers ─────────────────────────────────────────────── */
-  function isDark() {
-    return document.documentElement.getAttribute('data-theme') === 'dark';
-  }
+(function(){
+  // ── Core: call AI, show in section box, echo to eMonk ──
+  window._sAI = async function(prompt, boxId, tag, echoQ) {
+    var box = document.getElementById(boxId);
+    if (!box) return;
+    box.className = 'airb on';
+    box.innerHTML = '<div class="aidots"><span></span><span></span><span></span>&nbsp;Thinking\u2026</div>';
+    if (echoQ !== false) {
+      try { _emonkAppendMsg('user', echoQ || prompt); _emonkShowTyping(true); } catch(e) {}
+    }
+    var text;
+    try {
+      text = await callAI(prompt,
+        'You are eMonk \u2014 EDAFY petroleum AI. Be concise and precise. Use <strong> for key terms and numbers. Max 220 words.',
+        900);
+    } catch(e) { text = null; }
+    if (!text || text.charAt(0) === '[') {
+      text = '<em style="color:var(--red)">AI unavailable \u2014 add your API key in AI Configuration.</em>';
+    }
+    var prov = (typeof aiGetProvider === 'function') ? aiGetProvider() : 'claude';
+    var mdl = (typeof _aiCfg !== 'undefined' && _aiCfg.claudeModel) ? _aiCfg.claudeModel : 'claude';
+    box.innerHTML =
+      '<button class="airb-x" onclick="this.parentElement.classList.remove(\'on\')">\u2715</button>' +
+      '<div>' + text + '</div>' +
+      '<div class="airb-ft">eMonk \u00b7 ' + tag + ' \u00b7 ' + prov + ' \u00b7 ' + mdl + '</div>';
+    if (echoQ !== false) {
+      try {
+        _emonkShowTyping(false);
+        _emonkAppendMsg('assistant', text, [], 'claude');
+        _emonkHistory.push({ role:'assistant', content: text.replace(/<[^>]+>/g,'').slice(0,400) });
+        var msgs = document.getElementById('emonk-messages');
+        if (msgs) msgs.scrollTop = msgs.scrollHeight;
+      } catch(e) {}
+    }
+  };
 
-  /* Returns the right color set for Chart.js based on current theme */
-  window.edafyChartColors = function() {
-    var dark = isDark();
-    return {
-      /* canvas / chart-area background */
-      canvasBg:    dark ? '#161b26'               : '#ffffff',
-      /* axis grid lines */
-      grid:        dark ? 'rgba(255,255,255,.06)'  : 'rgba(107,70,193,.07)',
-      /* axis tick labels */
-      tick:        dark ? '#8896a5'                : '#8896A5',
-      tickBold:    dark ? '#c5cee0'                : '#4a5568',
-      /* tooltip */
-      tooltipBg:   dark ? 'rgba(12,17,28,.96)'     : 'rgba(26,27,46,.93)',
-      tooltipText: dark ? '#e8ecf5'                : '#ffffff',
-      /* radar spokes + angle lines */
-      radarGrid:   dark ? 'rgba(107,70,193,.15)'   : 'rgba(107,70,193,.1)',
-      radarAngle:  dark ? 'rgba(107,70,193,.12)'   : 'rgba(107,70,193,.08)',
-      radarLabel:  dark ? '#8896a5'                : '#8896A5',
-      /* legend labels */
-      legendText:  dark ? '#8896a5'                : '#4a5568',
+  // ── Open eMonk and send prompt ──
+  window._eAsk = function(q) {
+    try { if (!_emonkOpen) emonkToggle(); } catch(e) {}
+    setTimeout(function() { try { emonkSend(q); } catch(e) {} }, 140);
+  };
+
+  // ── Handle free-text input box ──
+  window._sAIInp = async function(inputId, boxId, tag) {
+    var el = document.getElementById(inputId);
+    if (!el) return;
+    var q = el.value.trim();
+    if (!q) { el.focus(); return; }
+    await window._sAI(q, boxId, tag, q);
+    el.value = '';
+  };
+
+  // ── Section AI functions ──
+  window.aiPort1 = function() {
+    var B = typeof BASINS!=='undefined'?BASINS:[];
+    var A = typeof ANALOGUES!=='undefined'?ANALOGUES:[];
+    var avg = B.length ? (B.reduce(function(s,b){return s+b.score;},0)/B.length).toFixed(1) : 0;
+    var top3 = B.slice().sort(function(a,b){return b.score-a.score;}).slice(0,3).map(function(b){return b.name+' ('+b.score+')';}).join(', ');
+    _sAI('Portfolio: '+B.length+' basins, '+A.length+' analogues. Avg score: '+avg+'/100. Top 3: '+top3+'. Give a concise portfolio health assessment and one priority recommendation.','ai-rb-portfolio','Portfolio','Portfolio health assessment and top recommendation');
+  };
+  window.aiPort2 = function() {
+    var B = typeof BASINS!=='undefined'?BASINS:[];
+    var low = B.filter(function(b){return b.score<50;}).map(function(b){return b.name;}).join(', ')||'none';
+    _sAI('Portfolio risk review: '+B.length+' basins. Low-score (<50): '+low+'. Identify key portfolio-level risks and suggest mitigation priorities.','ai-rb-portfolio','Risk Review','What are the key portfolio risks?');
+  };
+  window.aiScr1 = function() {
+    var B = typeof BASINS!=='undefined'?BASINS:[];
+    var top5 = B.slice().sort(function(a,b){return b.score-a.score;}).slice(0,5).map(function(b){return b.name+':'+b.score;}).join(', ');
+    _sAI('Screening leaderboard top 5: '+top5+'. Analyse what makes these basins attractive and any notable screening gaps.','ai-rb-screening','Screening','Analyse the screening leaderboard and explain the top performers');
+  };
+  window.aiScr2 = function() {
+    _sAI('Recommend optimal weighting for basin screening criteria: source rock, reservoir quality, seal integrity, charge efficiency, trap geometry, country risk. Explain rationale.','ai-rb-screening','Weights','Recommend optimal screening criteria weights');
+  };
+  window.aiRnk1 = function() {
+    var B = typeof BASINS!=='undefined'?BASINS:[];
+    var top = B.slice().sort(function(a,b){return b.score-a.score;}).slice(0,5).map(function(b){return b.name+' ('+b.score+', '+b.hc+', '+b.country+')';}).join('; ');
+    _sAI('Top 5 ranked: '+top+'. Strategic ranking commentary \u2014 prioritise for drilling, farm-in, or further studies.','ai-rb-ranking','Ranking','Strategic commentary on opportunity ranking');
+  };
+  window.aiRnk2 = function() {
+    var B = typeof BASINS!=='undefined'?BASINS:[];
+    var hi = B.filter(function(b){return b.score>=70;}).map(function(b){return b.name+' ('+b.region+', '+b.hc+')';}).join(', ')||'none above 70';
+    _sAI('High-prospectivity basins (score>=70): '+hi+'. Recommend shortlist of 3-5 for near-term investment.','ai-rb-ranking','Shortlist','Build a high-value investment shortlist');
+  };
+  window.aiBasin1 = function() {
+    var B = typeof BASINS!=='undefined'?BASINS:[];
+    var s = B.slice(0,5).map(function(b){return b.name+': score='+b.score+', '+b.region+', '+b.hc;}).join('; ');
+    _sAI('Compare basins: '+s+'. Highlight key differentiators in tectonic setting, HC phase, exploration maturity.','ai-rb-basins','Compare','Compare basins and highlight key differentiators');
+  };
+  window.aiBasin2 = function() {
+    var B = typeof BASINS!=='undefined'?BASINS:[];
+    var regs = [];
+    B.forEach(function(b){ if(regs.indexOf(b.region)<0) regs.push(b.region); });
+    var bd = regs.map(function(r){
+      var cnt=B.filter(function(b){return b.region===r;}).length;
+      var avg=(B.filter(function(b){return b.region===r;}).reduce(function(s,b){return s+b.score;},0)/cnt).toFixed(0);
+      return r+': '+cnt+' basins, avg '+avg;
+    }).join('; ');
+    _sAI('Regional breakdown: '+bd+'. Identify regional trends and strategic portfolio gaps.','ai-rb-basins','Regional Trends','What regional trends and gaps exist in the basin catalogue?');
+  };
+  window.aiPF1 = function() {
+    _sAI('Analyse play fairway heatmap. Key indicators of high-value fairway cells? How to prioritise overlapping zones for lead generation? Give 3 actionable insights.','ai-rb-pf','Play Fairway','Analyse play fairway heatmap and identify highest-value leads');
+  };
+  window.aiAna1 = function() {
+    var A = typeof ANALOGUES!=='undefined'?ANALOGUES:[];
+    var ap=A.filter(function(a){return a.por>0;});
+    var avgPor=ap.length?(ap.reduce(function(s,a){return s+a.por;},0)/ap.length).toFixed(1):'N/A';
+    var ak=A.filter(function(a){return a.perm>0;});
+    var avgPerm=ak.length?(ak.reduce(function(s,a){return s+a.perm;},0)/ak.length).toFixed(0):'N/A';
+    var liths=[]; A.forEach(function(a){if(a.lith&&liths.indexOf(a.lith)<0)liths.push(a.lith);});
+    _sAI('Analogue DB: '+A.length+' intervals. Avg por: '+avgPor+'%, avg perm: '+avgPerm+' mD. Liths: '+liths.join(', ')+'. Assess reservoir quality and best analogue candidates.','ai-rb-ana','Reservoir Quality','Assess reservoir quality across the analogue database');
+  };
+  window.aiAna2 = function() {
+    var A = typeof ANALOGUES!=='undefined'?ANALOGUES:[];
+    var top=A.slice().sort(function(a,b){return (b.sim||b.por||0)-(a.sim||a.por||0);}).slice(0,5).map(function(a){return a.name+' (por='+a.por+'%, perm='+a.perm+'mD, '+a.lith+')';}).join('; ');
+    _sAI('Top analogues: '+top+'. Best for deepwater turbidite target? Justify with reservoir quality metrics.','ai-rb-ana','Best Match','Find best analogue matches for deepwater turbidite target');
+  };
+  window.aiBM1 = function() {
+    var B = typeof BASINS!=='undefined'?BASINS:[];
+    var avg=B.length?(B.reduce(function(s,b){return s+b.score;},0)/B.length).toFixed(1):0;
+    _sAI('Benchmarking: '+B.length+' basins, avg score '+avg+'/100. Compare to global exploration benchmarks. What score thresholds indicate world-class vs marginal?','ai-rb-bm','Benchmarking','Benchmark portfolio against global exploration standards');
+  };
+  window.aiPrm1 = function() {
+    _sAI('Critical parameters for: (1) source rock assessment, (2) reservoir characterisation, (3) seal integrity. Typical value ranges and exploration significance.','ai-rb-params','Parameters','Critical exploration parameters and typical value ranges');
+  };
+  window.aiVol1 = function() {
+    _sAI('STOIIP sensitivity ranking: GRV, NTG, porosity, Sw, Bo/Bg. Which inputs have greatest impact on volumetric uncertainty? Where to focus data acquisition.','ai-rb-vol','Volumetric Sensitivity','STOIIP uncertainty drivers and data acquisition priorities');
+  };
+  window.aiVol2 = function() {
+    _sAI('Typical P10/P50/P90 STOIIP ranges for: (1) deepwater turbidite, (2) carbonate reef, (3) fluvial sandstone. In MMbbl with key uncertainty drivers per play.','ai-rb-vol','Reference Ranges','Typical volumetric ranges for different play types');
+  };
+  window.aiRisk1 = function() {
+    _sAI('GCoS assessment: which elements (source, reservoir, seal, trap, charge, timing) most commonly fail in frontier exploration? What data would most effectively de-risk a prospect?','ai-rb-risk','GCoS Commentary','GCoS commentary and de-risking recommendations');
+  };
+  window.aiRisk2 = function() {
+    _sAI('Monte Carlo best practices for prospect resources: common pitfalls, handling parameter correlations (porosity vs NTG), 3 recommendations for robust uncertainty modelling.','ai-rb-risk','Monte Carlo Tips','Monte Carlo best practices for prospect resource estimation');
+  };
+  window.aiTC1 = function() {
+    _sAI('DCA guidance: exponential vs hyperbolic vs harmonic decline \u2014 when to use each? Early warning signs of production deviation from type curve. Actionable guidance.','ai-rb-tc','DCA Intelligence','DCA best practices and production performance deviation indicators');
+  };
+  window.aiEcon1 = function() {
+    _sAI('Critical DCF parameters to stress-test for a frontier oil project. Sensitivity ranking: oil price, capex, opex, production ramp, fiscal terms. Guidance for robust investment case.','ai-rb-econ','DCF Insight','Which DCF parameters to stress-test and in what order?');
+  };
+  window.aiEcon2 = function() {
+    _sAI('Economics at $60, $75, $90/bbl oil. NPV and IRR thresholds for FID: (1) IOC, (2) NOC, (3) E&P independent. Concise benchmarks.','ai-rb-econ','Scenarios','Economic scenarios across oil price decks for FID decisions');
+  };
+  window.aiPO1 = function() {
+    _sAI('Efficient frontier portfolio optimisation: balance high-risk/high-reward frontier vs low-risk/moderate near-field. Framework for risk-adjusted portfolio construction.','ai-rb-po','Efficient Frontier','Efficient frontier portfolio construction and capital allocation');
+  };
+  window.aiSens1 = function() {
+    _sAI('Tornado chart: which parameters drive most NPV variance in petroleum projects? How should results inform data acquisition and appraisal programme?','ai-rb-sens','Tornado Insight','Interpret tornado chart and identify top parameters to de-risk');
+  };
+  window.aiPS1 = function() {
+    // Legacy alias — delegates to new context-aware function
+    aiPS_analyse();
+  };
+  window.aiBayes1 = function() {
+    // Legacy alias — delegates to new context-aware function
+    aiBayes_updatePrior();
+  };
+
+  // ── Extra eMonk intents ──
+  var _origDetect = typeof _emonkDetectIntent !== 'undefined' ? _emonkDetectIntent : null;
+  setTimeout(function(){
+    var _orig = window._emonkDetectIntent;
+    window._emonkDetectIntent = function(q) {
+      var t = q.toLowerCase();
+      if (/^(go to|open|show|navigate).*(play fairway|fairway)/i.test(q)) return 'nav_playfairway';
+      if (/^(go to|open|show).*(benchmark)/i.test(q)) return 'nav_benchmark';
+      if (/^(go to|open|show).*(param)/i.test(q)) return 'nav_params';
+      if (/^(go to|open|show).*(typecurve|type curve|dca)/i.test(q)) return 'nav_typecurves';
+      if (/^(go to|open|show).*(port.*opt|portfolio opt)/i.test(q)) return 'nav_portopt';
+      if (/^(go to|open|show).*(sens|tornado)/i.test(q)) return 'nav_sensitivity';
+      if (/^(go to|open|show).*(petro.*sys|petroleum system)/i.test(q)) return 'nav_petrosystem';
+      if (/^(go to|open|show).*(bayes)/i.test(q)) return 'nav_bayesplay';
+      if (/^(go to|open|show).*(ai analogue)/i.test(q)) return 'nav_aianalogues';
+      if (/^(run|calculate).*(stoiip|volumetric)/i.test(q)) return 'run_volumetrics';
+      if (/^(run|calculate).*(econ|dcf|npv)/i.test(q)) return 'run_economics';
+      return _orig ? _orig(q) : null;
     };
-  };
-
-  /* ── Global Chart.js defaults plugin ─────────────────────── */
-  function applyChartDefaults() {
-    /* Bulletproof — must never throw */
-    try {
-      if (typeof Chart === 'undefined') return;
-      if (!window.edafyChartColors) return;
-      var C = window.edafyChartColors();
-
-      /* Global scale defaults */
-      try {
-        Chart.defaults.color = C.tick;
-        Chart.defaults.borderColor = C.grid;
-        if (Chart.defaults.plugins && Chart.defaults.plugins.legend &&
-            Chart.defaults.plugins.legend.labels) {
-          Chart.defaults.plugins.legend.labels.color = C.legendText;
-        }
-      } catch(de) {}
-
-      /* Register canvas-background plugin once */
-      if (!Chart._edafyBgPluginRegistered) {
-        try {
-          Chart.register({
-            id: 'edafyCanvasBg',
-            beforeDraw: function(chart) {
-              try {
-                var C2 = window.edafyChartColors ? window.edafyChartColors() : {};
-                var ctx = chart.ctx;
-                ctx.save();
-                ctx.globalCompositeOperation = 'destination-over';
-                ctx.fillStyle = C2.canvasBg || '#ffffff';
-                ctx.fillRect(0, 0, chart.width, chart.height);
-                ctx.restore();
-              } catch(e) {}
-            }
-          });
-          Chart._edafyBgPluginRegistered = true;
-        } catch(re) {}
+    var _origExec = window._emonkExecuteIntent;
+    window._emonkExecuteIntent = function(intent, query) {
+      var navMap = {
+        nav_playfairway:'playfairway', nav_benchmark:'benchmark', nav_params:'params',
+        nav_typecurves:'typecurves', nav_portopt:'portopt', nav_sensitivity:'sensitivity',
+        nav_petrosystem:'petrosystem', nav_bayesplay:'bayesplay', nav_aianalogues:'aianalogues'
+      };
+      if (navMap[intent]) {
+        var sc = navMap[intent];
+        var label = sc.charAt(0).toUpperCase()+sc.slice(1);
+        return { text:'Opening <strong>'+label+'</strong>\u2026', actions:[], source:'local',
+                execute: function(){ goTo(sc, null); } };
       }
-    } catch(e) {}
+      if (intent === 'run_volumetrics') return { text:'Opening <strong>Volumetrics</strong>\u2026', actions:[], source:'local',
+        execute: function(){ goTo('volumetrics',null); setTimeout(function(){if(typeof calcStoiip==='function')calcStoiip();},600); }};
+      if (intent === 'run_economics') return { text:'Opening <strong>Economics</strong>\u2026', actions:[], source:'local',
+        execute: function(){ goTo('economics',null); setTimeout(function(){if(typeof runEconomics==='function')runEconomics();},600); }};
+      return _origExec ? _origExec(intent, query) : null;
+
+  // ═══════════════════════════════════════════════════════════════
+  // PETROLEUM SYSTEM ENGINE — Ask AI functions
+  // ═══════════════════════════════════════════════════════════════
+
+  // Helper: read live PSE node data from the graph if available
+  function _pse_context() {
+    var basin = '';
+    var sel = document.getElementById('pse-basin-select');
+    if (sel && sel.value) basin = sel.value;
+    // Try to read KPI values rendered in the section
+    function kv(id) {
+      var el = document.getElementById(id);
+      return el ? el.textContent.trim() : 'N/A';
+    }
+    var gcosEl = document.getElementById('prop-res-gcos');
+    var btlnkEl = document.getElementById('prop-res-btlnk');
+    var context = 'Basin: ' + (basin || 'Not selected') + '. ';
+    if (gcosEl && gcosEl.textContent !== '-') {
+      context += 'System GCoS: ' + gcosEl.textContent + '. ';
+      context += 'Bottleneck element: ' + (btlnkEl ? btlnkEl.textContent : 'unknown') + '. ';
+    }
+    // Read node risk scores from PSE_NODES if available
+    if (typeof PSE_NODES !== 'undefined' && PSE_NODES.length) {
+      var critical = PSE_NODES
+        .filter(function(n){ return n.risk && n.risk < 0.5; })
+        .sort(function(a,b){ return a.risk - b.risk; })
+        .slice(0,4)
+        .map(function(n){ return n.label + ' (risk=' + (n.risk*100).toFixed(0) + '%)'; });
+      if (critical.length) context += 'High-risk nodes: ' + critical.join(', ') + '. ';
+    }
+    return context;
   }
 
-  /* Re-apply scale + grid colors to a live Chart instance */
-  function patchChartInstance(chart) {
-    /* Fully bulletproof — must never throw, never block login */
-    try {
-      if (!chart || chart._destroyed) return;
-      if (!window.edafyChartColors) return;
-      var C = window.edafyChartColors();
-      /* Scales */
-      var scaleKeys = Object.keys(chart.scales || {});
-      scaleKeys.forEach(function(key) {
-        try {
-          var scale = chart.scales[key];
-          if (!scale || !scale.options) return;
-          if (scale.options.grid)        scale.options.grid.color = C.grid;
-          if (scale.options.ticks)       scale.options.ticks.color = C.tick;
-          if (scale.options.pointLabels) scale.options.pointLabels.color = C.radarLabel;
-          if (scale.options.angleLines)  scale.options.angleLines.color = C.radarAngle;
-        } catch(se) {}
+  window.aiPS_analyse = async function() {
+    var ctx = _pse_context();
+    var prompt = 'You are an expert petroleum systems modeller. Analyse this petroleum system context: ' + ctx +
+      ' Identify the critical path elements (source, reservoir, seal, trap, timing, migration). ' +
+      'Highlight which element most controls success probability and explain WHY in 3–4 sentences. ' +
+      'Use <strong> tags for key terms.';
+    await _sAI(prompt, 'ai-rb-ps', 'System Analysis', 'Analyse petroleum system critical path');
+  };
+
+  window.aiPS_failures = async function() {
+    var ctx = _pse_context();
+    var prompt = 'You are a petroleum risk geologist. Context: ' + ctx +
+      ' List the 3 most likely failure modes for this petroleum system, ranked by probability. ' +
+      'For each failure mode: (1) name it, (2) explain the mechanism, (3) suggest one mitigation. ' +
+      'Format with <strong>Failure Mode N:</strong> headers. Keep each item to 2 sentences.';
+    await _sAI(prompt, 'ai-rb-ps', 'Failure Modes', 'Most likely failure modes for this petroleum system');
+  };
+
+  window.aiPS_risksummary = async function() {
+    var ctx = _pse_context();
+    var prompt = 'You are a petroleum exploration risk analyst. Context: ' + ctx +
+      ' Provide a concise risk summary covering: (1) overall system GCoS interpretation, ' +
+      '(2) which elements are adequately de-risked vs still uncertain, ' +
+      '(3) recommended next data acquisition to improve confidence. ' +
+      'Use <strong> for emphasis. Max 180 words.';
+    await _sAI(prompt, 'ai-rb-ps', 'Risk Summary', 'Petroleum system risk summary and recommendations');
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // BAYESIAN PLAY PROBABILITY — Ask AI functions
+  // ═══════════════════════════════════════════════════════════════
+
+  // Helper: read live Bayesian panel state
+  function _bayes_context() {
+    function fv(id) {
+      var el = document.getElementById(id);
+      return el ? (el.value || el.textContent || 'N/A').toString().trim() : 'N/A';
+    }
+    var ctx = '';
+    // Try reading CPT/prior table values
+    var priorEl = document.querySelector('#bp-prior-val, #bayes-prior, [id*="prior"]');
+    var postEl  = document.querySelector('#bp-post-val, #bayes-post, [id*="posterior"]');
+    if (priorEl) ctx += 'Prior probability: ' + priorEl.textContent.trim() + '. ';
+    if (postEl)  ctx += 'Posterior probability: ' + postEl.textContent.trim() + '. ';
+    // Try reading play name
+    var playEl = document.querySelector('#bp-play-name, #bayes-play, select[id*="play"]');
+    if (playEl) ctx += 'Play: ' + (playEl.value || playEl.textContent).trim() + '. ';
+    // Read displayed KPIs
+    ['bp-kpi-prior','bp-kpi-posterior','bp-kpi-voi','bp-kpi-likelihood'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (el) ctx += id.replace('bp-kpi-','') + ': ' + el.textContent.trim() + '. ';
+    });
+    return ctx || 'No live Bayesian data available yet — run the probability propagation first.';
+  }
+
+  window.aiBayes_updatePrior = async function() {
+    var ctx = _bayes_context();
+    var prompt = 'You are a Bayesian petroleum risk analyst. Current state: ' + ctx +
+      ' Explain how to update this play\'s prior probability using new evidence. ' +
+      'Cover: (1) what new data would most shift the posterior (seismic, well, production), ' +
+      '(2) how to calculate a likelihood ratio, ' +
+      '(3) what the updated posterior means for exploration decisions. ' +
+      'Use <strong> for key numbers and terms. Max 200 words.';
+    await _sAI(prompt, 'ai-rb-bayes', 'Prior Update', 'How to update prior probability with new evidence');
+  };
+
+  window.aiBayes_voi = async function() {
+    var ctx = _bayes_context();
+    var prompt = 'You are a decision analyst specialising in petroleum exploration. Context: ' + ctx +
+      ' Assess the Value of Information (VOI) for this play. ' +
+      'Answer: (1) Is the current uncertainty high enough to justify acquiring more data? ' +
+      '(2) Which data type (seismic reprocessing, AVO, new well, production history) has the highest expected VOI? ' +
+      '(3) At what probability threshold should the company drill vs farm-out vs abandon? ' +
+      'Be specific. Use <strong> for decision thresholds. Max 180 words.';
+    await _sAI(prompt, 'ai-rb-bayes', 'VOI Analysis', 'Value of information analysis for this play');
+  };
+
+  window.aiBayes_playsummary = async function() {
+    var ctx = _bayes_context();
+    var prompt = 'You are a play-based exploration geologist. Current Bayesian state: ' + ctx +
+      ' Summarise this play\'s probability status in a management-ready format: ' +
+      '(1) prior vs posterior probability and what drove the update, ' +
+      '(2) key geological risks remaining (use <strong> tags), ' +
+      '(3) recommended portfolio action (drill, acquire data, farm-out, drop). ' +
+      'Keep it concise — 3 short paragraphs.';
+    await _sAI(prompt, 'ai-rb-bayes', 'Play Summary', 'Play probability summary and portfolio action');
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // AI ANALOGUE DISCOVERY — Ask AI functions
+  // ═══════════════════════════════════════════════════════════════
+
+  // Helper: read live analogue state
+  function _aia_context() {
+    var ctx = '';
+    if (typeof _aiaQueryBasin !== 'undefined' && _aiaQueryBasin) {
+      ctx += 'Query basin: ' + _aiaQueryBasin.name +
+        ' | Region: ' + (_aiaQueryBasin.region||'?') +
+        ' | Tectonic: ' + (_aiaQueryBasin.tectonic||'?') +
+        ' | HC: ' + (_aiaQueryBasin.hc||'?') +
+        ' | Score: ' + (_aiaQueryBasin.score||50) + '/100. ';
+    }
+    if (typeof _aiaResults !== 'undefined' && _aiaResults.length) {
+      var top5 = _aiaResults.slice(0,5).map(function(r){
+        return r.name + ' (' + (r.sim*100).toFixed(1) + '% sim, ' +
+              r.tectonic + ', ' + r.region + ', ' + r.hc + ')';
       });
-      /* Tooltip */
-      try {
-        var tt = chart.options && chart.options.plugins && chart.options.plugins.tooltip;
-        if (tt) {
-          tt.backgroundColor = C.tooltipBg;
-          tt.titleColor      = C.tooltipText;
-          tt.bodyColor       = C.tooltipText;
-        }
-      } catch(te) {}
-      /* Legend */
-      try {
-        var lg = chart.options && chart.options.plugins && chart.options.plugins.legend;
-        if (lg && lg.labels) lg.labels.color = C.legendText;
-      } catch(le) {}
-      /* Redraw */
-      try { chart.update('none'); } catch(ue) {}
-    } catch(e) { /* silent */ }
+      ctx += 'Top analogues: ' + top5.join(' | ') + '. ';
+      ctx += 'Total analogues above threshold: ' + _aiaResults.length + '. ';
+      var topSim = (_aiaResults[0].sim*100).toFixed(1);
+      ctx += 'Best match similarity: ' + topSim + '%. ';
+    }
+    return ctx || 'No analogue search run yet — click Find Analogues first.';
   }
 
-  /* Walk all registered Chart instances and repaint them */
-  function repaintAllCharts() {
-    /* Don't run before window.onload — app data/render functions not ready yet */
-    if (!_appReady) return;
-    if (typeof Chart === 'undefined') return;
-    applyChartDefaults();
-    /* Chart.js 4.x stores live instances in Chart.instances */
-    var instances = Chart.instances || {};
-    Object.keys(instances).forEach(function(id) {
-      patchChartInstance(instances[id]);
-    });
-    /* Swap map tile layers to match new theme */
-    try {
-      var tileUrl = _mapTileUrl();
-      if (_leafletTileLayer && _leafletMap) {
-        _leafletMap.removeLayer(_leafletTileLayer);
-        _leafletTileLayer = L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(_leafletMap);
-      }
-      if (_portfolioTileLayer && _portfolioMap) {
-        _portfolioMap.removeLayer(_portfolioTileLayer);
-        _portfolioTileLayer = L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(_portfolioMap);
-      }
-    } catch(e) {}
-
-    /* Also re-trigger custom canvas draw functions so they pick up new theme colors */
-    var canvasFns = [
-      'renderCrossplot', 'renderSimCrossplot', 'renderRadarChart',
-      'renderSimilarityHistogram', 'renderParallelCoords', 'renderBenchmarks',
-      'renderGCoSRadar', 'renderGCoS', 'renderVolSens', 'renderVolTornado',
-      'renderVolSpider', 'renderDQSummary', 'renderResourceDistChart',
-      'renderBasinProfile', 'drawBPRadar', 'renderTCCurve', 'renderMCHistogram',
-      'pse_render', 'bayes_render', 'renderOverlayChart',
-      /* rank/bubble chart — re-render if data is present */
-      '_rankRedraw', '_bubbleRedraw',
-    ];
-    canvasFns.forEach(function(fn) {
-      try {
-        if (typeof window[fn] === 'function') window[fn]();
-      } catch(e) { /* ignore — chart may not be visible or data not loaded */ }
-    });
-  }
-
-  /* ── Canvas-2D (non-Chart.js) background helper ─────────── */
-  /* Exposed globally so custom draw functions can call it */
-  window.edafyCanvasBgColor = function() {
-    return isDark() ? '#161b26' : '#ffffff';
+  window.aiaAI_interpret = async function() {
+    if (typeof _aiaResults === 'undefined' || !_aiaResults.length) {
+      toast('Run Find Analogues first', 'warning'); return;
+    }
+    var ctx = _aia_context();
+    var prompt = 'You are a petroleum basin analyst. Analogue search results: ' + ctx +
+      ' Interpret these results: (1) How strong is the analogue match overall? ' +
+      '(2) What do the top 3 analogues share with the query basin in terms of petroleum system? ' +
+      '(3) Are there any concerning dissimilarities that should limit reliance on these analogues? ' +
+      'Use <strong> for basin names and key metrics. Max 200 words.';
+    await _sAI(prompt, 'ai-rb-aia', 'Analogue Interpretation', 'Interpret top analogue matches');
   };
 
-  /* ── Track whether app has fully loaded (window.onload complete) ── */
-  var _appReady = false;
-  window.addEventListener('load', function() { _appReady = true; });
-
-  /* ── Apply theme to DOM ───────────────────────────────────── */
-  function applyTheme(theme) {
-    document.documentElement.setAttribute('data-theme', theme);
-    /* Toggle button icons */
-    var moon = document.getElementById('theme-icon-moon');
-    var sun  = document.getElementById('theme-icon-sun');
-    if (moon && sun) {
-      if (theme === 'dark') {
-        moon.style.display = 'none';
-        sun.style.display  = 'block';
-      } else {
-        moon.style.display = 'block';
-        sun.style.display  = 'none';
-      }
+  window.aiaAI_riskprofile = async function() {
+    if (typeof _aiaResults === 'undefined' || !_aiaResults.length) {
+      toast('Run Find Analogues first', 'warning'); return;
     }
-    /* Only repaint charts once the app is fully initialised.
-      Calling canvas render functions before window.onload completes
-      can throw errors that prevent the login page from appearing. */
-    if (_appReady) {
-      setTimeout(repaintAllCharts, 60);
-    }
-  }
-
-  /* ── Public toggle function ──────────────────────────────── */
-  window.edafyToggleTheme = function() {
-    var current = document.documentElement.getAttribute('data-theme') || 'light';
-    var next    = current === 'dark' ? 'light' : 'dark';
-    try { localStorage.setItem(STORAGE_KEY, next); } catch(e) {}
-    applyTheme(next);
+    var ctx = _aia_context();
+    var prompt = 'You are a petroleum risk geologist. Context: ' + ctx +
+      ' Based on these basin analogues, construct a risk profile for the query basin: ' +
+      '(1) Which petroleum system elements are well de-risked by the analogues? ' +
+      '(2) Which elements have high variance across analogues (indicating uncertainty)? ' +
+      '(3) What is the implied GCoS range based on the analogue portfolio? ' +
+      'Use <strong> for key risk factors. Be concise — 3 sentences per point.';
+    await _sAI(prompt, 'ai-rb-aia', 'Risk Profile', 'Risk profile from analogue comparison');
   };
 
-  /* ── Restore saved preference ────────────────────────────── */
-  var saved = null;
-  try { saved = localStorage.getItem(STORAGE_KEY); } catch(e) {}
-  if (!saved) {
-    saved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
-            ? 'dark' : 'light';
-  }
+  window.aiaAI_recommendations = async function() {
+    if (typeof _aiaResults === 'undefined' || !_aiaResults.length) {
+      toast('Run Find Analogues first', 'warning'); return;
+    }
+    var ctx = _aia_context();
+    var prompt = 'You are a senior exploration strategist. Analogue results: ' + ctx +
+      ' Provide 3 actionable recommendations for the query basin based on these analogues: ' +
+      '(1) Data acquisition strategy (what analogues suggest is most uncertain), ' +
+      '(2) Play concept refinement (how analogue learnings should shape the prospecting approach), ' +
+      '(3) Portfolio positioning (should this basin be prioritised, deferred, or partnered?). ' +
+      'Format with <strong>Recommendation N:</strong> headers. Max 220 words.';
+    await _sAI(prompt, 'ai-rb-aia', 'Recommendations', 'Strategic recommendations from analogue analysis');
+  };
 
-  /* Apply theme attribute immediately (before paint) — CSS vars only, no JS chart calls */
-  document.documentElement.setAttribute('data-theme', saved);
+    };
+  }, 0);
 
-  /* Apply button icons once DOM is ready — no chart repaints yet */
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      var moon = document.getElementById('theme-icon-moon');
-      var sun  = document.getElementById('theme-icon-sun');
-      if (moon && sun) {
-        if (saved === 'dark') { moon.style.display='none'; sun.style.display='block'; }
-        else                  { moon.style.display='block'; sun.style.display='none'; }
-      }
-    });
-  }
+})();
 
-  /* After window.onload: apply Chart.js defaults and do the first chart repaint.
-    window.onload fires AFTER the app's own window.onload (login/seed render),
-    so all data and render functions are guaranteed to exist by this point. */
-  window.addEventListener('load', function() {
-    setTimeout(function() {
-      applyChartDefaults();
-      repaintAllCharts();
-    }, 800);  /* extra delay so app's own onload fully completes first */
-  });
-
-  /* Patch Chart.js constructor to theme new charts as they are created */
-  document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(function() {
-      if (typeof Chart === 'undefined') return;
-      applyChartDefaults();
-      if (!Chart.prototype._edafyThemePatched) {
-        var _origInit = Chart.prototype.initialize;
-        Chart.prototype.initialize = function(config) {
-          if (_origInit) _origInit.call(this, config);
-          /* Defer so chart is fully built before patching — prevents crash during new Chart() */
-          var _self = this;
-          setTimeout(function() {
-            try { if (_appReady) patchChartInstance(_self); } catch(e) {}
-          }, 0);
-        };
-        Chart.prototype._edafyThemePatched = true;
-      }
-    }, 200);
+//  Mount template sections into the DOM 
+(function mountSections() {
+  const content = document.getElementById("main-content") || document.querySelector(".content");
+  if (!content) return;
+  ["tpl-sec-hierarchy","tpl-sec-knowledgegraph"].forEach(id => {
+    const tpl = document.getElementById(id);
+    if (tpl && !document.getElementById(id.replace("tpl-","").replace("tpl-sec-","sec-"))) {
+      content.appendChild(tpl.content.cloneNode(true));
+    }
   });
 })();
+
+//  Constants 
+const HIER_COLORS = {
+  basin:"#0D9488", petroleum_system:"#7C3AED", play:"#0891B2",
+  prospect:"#D97706", well:"#059669", discovery:"#DC2626"
+};
+const HIER_ICONS = {
+  basin:"", petroleum_system:"", play:"",
+  prospect:"", well:"", discovery:""
+};
+const HIER_LABELS = {
+  basin:"Basin", petroleum_system:"Petroleum System", play:"Play",
+  prospect:"Prospect", well:"Well", discovery:"Discovery"
+};
+const KG_NODE_COLORS = {
+  //  Original 6 core nodes 
+  basin:"#0D9488", petroleum_system:"#7C3AED", play:"#0891B2",
+  prospect:"#D97706", well:"#059669", discovery:"#DC2626",
+  //  Domain 1: Risk & GCoS (9 nodes) 
+  gcos_element:"#6625C4", risk_matrix:"#7C3AED", bayesian_prior:"#8B5CF6",
+  bayesian_posterior:"#A78BFA", monte_carlo_run:"#9333EA", sensitivity_analysis:"#7E22CE",
+  risk_register:"#6D28D9", failure_mode:"#5B21B6", critical_success_factor:"#4C1D95",
+  //  Domain 2: Volumetrics (8 nodes) 
+  gross_rock_volume:"#0558A8", stoiip:"#0369A1", giip:"#0284C7",
+  recovery_factor:"#0EA5E9", recoverable_resource:"#38BDF8", prms_class:"#7DD3FC",
+  parameter_library:"#BAE6FD", type_well:"#0C4A6E",
+  //  Domain 3: Fluid & PVT (8 nodes) 
+  hc_phase:"#0A6B50", fluid_contact:"#059669", pvt_model:"#047857",
+  fluid_sample:"#065F46", pressure_datum:"#064E3B", aquifer:"#0D9488",
+  kerogen_type:"#14B8A6", geochem_fingerprint:"#2DD4BF",
+  //  Domain 4: Structural (7 nodes) 
+  depth_map:"#8C3D0C", avo_anomaly:"#92400E", seismic_inversion:"#B45309",
+  structural_closure:"#D97706", fault_system:"#F59E0B", rock_physics_model:"#CA8A04",
+  velocity_model:"#A16207",
+  //  Domain 5: Production (6 nodes) 
+  production_curve:"#A0480A", decline_curve:"#B45309", eur:"#C2410C",
+  ip_rate:"#DC2626", development_concept:"#EF4444", reservoir_model:"#F87171",
+  //  Domain 6: Economics (7 nodes) 
+  dcf_model:"#0A3880", npv_irr:"#1D4ED8", fiscal_regime:"#2563EB",
+  capex_opex:"#3B82F6", price_deck:"#60A5FA", breakeven_price:"#93C5FD",
+  portfolio_model:"#BFDBFE",
+  //  Domain 7: ESG (6 nodes) 
+  ghg_emissions:"#1A6B35", esg_assessment:"#166534", decommission_liability:"#14532D",
+  env_sensitivity:"#15803D", regulatory_framework:"#16A34A", country_risk:"#22C55E",
+  //  Domain 8: Partners & JV (6 nodes) 
+  operator:"#8C1060", jv_agreement:"#9D174D", farm_transaction:"#BE185D",
+  data_room:"#DB2777", licence_round:"#EC4899", noc:"#F472B6",
+  //  Domain 9: AI & eMonk (5 nodes) 
+  analogue_match:"#4A0E8C", ai_confidence:"#5B21B6", nlp_query:"#6D28D9",
+  ai_interpretation:"#7E22CE", knowledge_article:"#8B5CF6",
+  //  Domain 10: Well Engineering (5 nodes) 
+  well_trajectory:"#065840", completion_design:"#047857", casing_programme:"#064E3B",
+  pore_pressure:"#0D9488", drilling_programme:"#0F766E",
+  //  Domain 11: Depositional Systems (5 nodes) 
+  depositional_system:"#3730A3", paleogeographic_map:"#4338CA", organic_richness:"#4F46E5",
+  facies_model:"#6366F1", chrono_age:"#818CF8"
+};
+const KG_NODE_SIZES = {
+  basin:18, petroleum_system:14, play:12, prospect:10, well:8, discovery:10,
+  // Risk
+  gcos_element:9, risk_matrix:10, bayesian_prior:9, bayesian_posterior:9,
+  monte_carlo_run:8, sensitivity_analysis:8, risk_register:9, failure_mode:8, critical_success_factor:8,
+  // Volumetrics
+  gross_rock_volume:9, stoiip:10, giip:10, recovery_factor:9, recoverable_resource:10,
+  prms_class:9, parameter_library:8, type_well:9,
+  // Fluid
+  hc_phase:9, fluid_contact:9, pvt_model:8, fluid_sample:8, pressure_datum:8,
+  aquifer:8, kerogen_type:9, geochem_fingerprint:9,
+  // Structural
+  depth_map:9, avo_anomaly:9, seismic_inversion:9, structural_closure:10,
+  fault_system:10, rock_physics_model:8, velocity_model:8,
+  // Production
+  production_curve:9, decline_curve:9, eur:9, ip_rate:9, development_concept:10, reservoir_model:10,
+  // Economics
+  dcf_model:11, npv_irr:10, fiscal_regime:10, capex_opex:9, price_deck:9, breakeven_price:9, portfolio_model:11,
+  // ESG
+  ghg_emissions:9, esg_assessment:9, decommission_liability:8, env_sensitivity:8,
+  regulatory_framework:9, country_risk:9,
+  // Partners
+  operator:10, jv_agreement:9, farm_transaction:8, data_room:8, licence_round:9, noc:10,
+  // AI
+  analogue_match:10, ai_confidence:9, nlp_query:8, ai_interpretation:9, knowledge_article:9,
+  // Well Engineering
+  well_trajectory:8, completion_design:8, casing_programme:8, pore_pressure:9, drilling_programme:9,
+  // Depositional
+  depositional_system:10, paleogeographic_map:9, organic_richness:9, facies_model:9, chrono_age:8
+};
+
+//  Hierarchy: build tree object 
+function hierBuildTree(basinName) {
+  const psList = PETROLEUM_SYSTEMS.filter(ps => ps.basin === basinName);
+  return {
+    name: basinName, type: "basin",
+    data: BASINS.find(b => b.name === basinName) || {},
+    children: psList.map(ps => {
+      const plays = PLAYS.filter(p => p.petSysId === ps.id);
+      return {
+        name: ps.name, type: "petroleum_system", data: ps,
+        children: plays.map(play => {
+          const prospects = PROSPECTS.filter(p => p.playId === play.id);
+          return {
+            name: play.name, type: "play", data: play,
+            children: prospects.map(pr => {
+              const wells = WELLS.filter(w => w.prospectId === pr.id);
+              return {
+                name: pr.name, type: "prospect", data: pr,
+                children: wells.map(w => {
+                  const discs = DISCOVERIES.filter(d => d.wellId === w.id);
+                  return {
+                    name: w.name, type: "well", data: w,
+                    children: discs.map(d => ({
+                      name: d.name, type: "discovery", data: d, children: []
+                    }))
+                  };
+                })
+              };
+            })
+          };
+        })
+      };
+    })
+  };
+}
+
+function hierRenderNode(node, depth, expanded) {
+  const hasKids = node.children && node.children.length > 0;
+  const color = HIER_COLORS[node.type] || (window.edafyChartColors ? window.edafyChartColors().tick : "#8896A5");
+  const icon = HIER_ICONS[node.type] || "";
+  const indent = depth * 18;
+  const childBadge = hasKids ? ` <span style="font-size:8px;color:var(--t3)">(${node.children.length})</span>` : "";
+  const toggleBtn = hasKids
+    ? `<span class="hier-toggle" onclick="event.stopPropagation();hierToggle(this)" style="cursor:pointer;font-size:10px;color:var(--t3);margin-right:4px;display:inline-block;width:12px;transition:transform 0.18s;transform:rotate(${expanded?90:0}deg)"></span>`
+    : `<span style="display:inline-block;width:16px"></span>`;
+  const safeName = node.name.replace(/'/g, "\\'");
+  let html = `<div class="hier-node" style="padding:4px 6px 4px ${indent}px;cursor:pointer;border-radius:4px;display:flex;align-items:center;gap:4px;font-size:11px;transition:background 0.12s" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background=''" onclick="hierSelectNode(this,'${node.type}','${safeName}')">`;
+  html += toggleBtn;
+  html += `<span style="font-size:12px">${icon}</span>`;
+  html += `<span style="color:${color};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:${280-indent}px">${node.name}</span>`;
+  html += childBadge + `</div>`;
+  if (hasKids) {
+    html += `<div class="hier-children" style="display:${expanded?"block":"none"}">`;
+    node.children.forEach(c => { html += hierRenderNode(c, depth+1, depth < 1); });
+    html += `</div>`;
+  }
+  return html;
+}
+
+function hierPopulateBasinSelect() {
+  const sel = document.getElementById("hier-basin-select");
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Select Basin…</option>' +
+    BASINS.map(b => `<option value="${b.name}">${b.name}</option>`).join("");
+}
+
+function hierRender() {
+  const sel = document.getElementById("hier-basin-select");
+  if (!sel || !sel.value) return;
+  const panel = document.getElementById("hier-tree-panel");
+  if (!panel) return;
+  const tree = hierBuildTree(sel.value);
+  panel.innerHTML = hierRenderNode(tree, 0, true);
+  // KPI strip
+  const v = id => { const el = document.getElementById(id); if(el) el.textContent = arguments[1]; };
+  document.getElementById("hier-kpi-basins") && (document.getElementById("hier-kpi-basins").textContent = BASINS.length);
+  document.getElementById("hier-kpi-petsys") && (document.getElementById("hier-kpi-petsys").textContent = PETROLEUM_SYSTEMS.length);
+  document.getElementById("hier-kpi-plays") && (document.getElementById("hier-kpi-plays").textContent = PLAYS.length);
+  document.getElementById("hier-kpi-prospects") && (document.getElementById("hier-kpi-prospects").textContent = PROSPECTS.length);
+  document.getElementById("hier-kpi-wells") && (document.getElementById("hier-kpi-wells").textContent = WELLS.length);
+  document.getElementById("hier-kpi-discoveries") && (document.getElementById("hier-kpi-discoveries").textContent = DISCOVERIES.length);
+}
+
+function hierToggle(el) {
+  const children = el.closest(".hier-node").nextElementSibling;
+  if (!children || !children.classList.contains("hier-children")) return;
+  const isOpen = children.style.display !== "none";
+  children.style.display = isOpen ? "none" : "block";
+  el.style.transform = isOpen ? "rotate(0deg)" : "rotate(90deg)";
+}
+
+function hierExpandAll() {
+  document.querySelectorAll("#hier-tree-panel .hier-children").forEach(c => c.style.display = "block");
+  document.querySelectorAll("#hier-tree-panel .hier-toggle").forEach(t => t.style.transform = "rotate(90deg)");
+}
+function hierCollapseAll() {
+  document.querySelectorAll("#hier-tree-panel .hier-children").forEach((c,i) => { if(i>0) c.style.display="none"; });
+  document.querySelectorAll("#hier-tree-panel .hier-toggle").forEach((t,i) => { if(i>0) t.style.transform="rotate(0deg)"; });
+}
+
+function hierSelectNode(el, type, name) {
+  document.querySelectorAll("#hier-tree-panel .hier-node").forEach(n => n.style.background="");
+  el.style.background = "rgba(255,255,255,0.07)";
+  const panel = document.getElementById("hier-detail-panel");
+  const color = HIER_COLORS[type], icon = HIER_ICONS[type], label = HIER_LABELS[type];
+  let data = null;
+  if (type==="basin") data = BASINS.find(b=>b.name===name);
+  else if (type==="petroleum_system") data = PETROLEUM_SYSTEMS.find(p=>p.name===name);
+  else if (type==="play") data = PLAYS.find(p=>p.name===name);
+  else if (type==="prospect") data = PROSPECTS.find(p=>p.name===name);
+  else if (type==="well") data = WELLS.find(w=>w.name===name);
+  else if (type==="discovery") data = DISCOVERIES.find(d=>d.name===name);
+  if (!data) { panel.innerHTML=`<div style="padding:20px;text-align:center;color:var(--t3)">No data for ${name}</div>`; return; }
+  const skip = new Set(["id","osduId","children","data","petSysId","playId","prospectId","wellId"]);
+  let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+    <span style="font-size:22px">${icon}</span>
+    <div>
+      <div style="font-size:14px;font-weight:700;color:var(--t1)">${name}</div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:3px">
+        <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${color}22;color:${color};font-weight:600;text-transform:uppercase">${label}</span>
+        ${data.osduId ? `<span style="font-size:8px;color:var(--t3)">${data.osduId}</span>` : ""}
+      </div>
+    </div>
+  </div>`;
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">`;
+  for (const [key, val] of Object.entries(data)) {
+    if (skip.has(key) || val===null || val===undefined || val==="" || typeof val==="object") continue;
+    const lbl = key.replace(/([A-Z])/g," $1").replace(/^./,s=>s.toUpperCase()).replace(/_/g," ");
+    const display = typeof val==="number" ? val.toLocaleString() : String(val);
+    html += `<div style="background:var(--bg4);border-radius:5px;padding:7px 10px">
+      <div style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">${lbl}</div>
+      <div style="font-size:11px;font-weight:600;color:var(--t1)">${display}</div>
+    </div>`;
+  }
+  html += `</div>`;
+  // KG connections preview
+  const edges = KG_EDGES.filter(e=>(e.srcName===name&&e.srcType===type)||(e.tgtName===name&&e.tgtType===type));
+  if (edges.length > 0) {
+    html += `<div style="margin-top:14px;border-top:1px solid var(--b1);padding-top:10px">
+      <div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:8px">Knowledge Graph Connections (${edges.length})</div>`;
+    edges.slice(0,8).forEach(e => {
+      const isSrc = e.srcName===name, other = isSrc?e.tgtName:e.srcName, otherType = isSrc?e.tgtType:e.srcType;
+      const arrow = isSrc?"→":"←";
+      const _RELC2={contains:"var(--green)",charges:"var(--amber)",similar_to:"var(--purple)",analogous_to:"var(--purple)",sources:"#EF4444",targets:"#F97316",co_located:"#06B6D4",overlies:"#6366F1",supports:"#22C55E",reservoir_in:"#A855F7",seals:"#0891B2",migrates_to:"#F59E0B",de_risks:"#10B981",underlies:"#92400E",correlates_with:"#B45309",bounded_by:"#D97706",controls:"#6366F1",deforms:"#818CF8",cuts:"#A5B4FC",inverts:"#7C3AED",reactivates:"#9333EA",sourced_from:"#EC4899",fingerprinted_by:"#F472B6",typed_as:"#FB7185",expelled_into:"#E11D48",trapped_by:"#BE185D",deposited_by:"#0EA5E9",deposited_in:"#38BDF8",elevates_risk:"#DC2626",reduces_unc:"#16A34A",calibrates:"#15803D",matures_into:"#CA8A04",competes_with:"#B45309",offsets:"#92400E",predicts:"#8B5CF6",updates:"#A78BFA",quantifies:"#C4B5FD",evaluates:"#DDD6FE",derived_from:"#64748B",constrained_by:"#475569",validated_by:"#334155",offloads_to:"#0284C7",tied_back_to:"#0369A1"};
+      const relColor = _RELC2[e.rel]||"var(--cyan)";
+      html += `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:10px">
+        <span style="color:${relColor};font-weight:600;min-width:90px;font-size:10px">${e.rel.replace(/_/g," ")}</span>
+        <span style="color:var(--t3)">${arrow}</span>
+        <span>${HIER_ICONS[otherType]||""}</span>
+        <span style="color:var(--t1)">${other}</span>
+        ${e.weight<1?`<span style="font-size:8px;color:var(--t3);margin-left:auto">${Math.round(e.weight*100)}%</span>`:""}
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  html += `<div style="display:flex;gap:6px;margin-top:14px">
+    <button class="btn" style="font-size:10px;padding:5px 12px" onclick="goTo('knowledgegraph',null);setTimeout(()=>{document.getElementById('kg-focus-type').value='${type}';kgPopulateEntities();document.getElementById('kg-focus-entity').value='${name}';kgRender()},150)">View in Knowledge Graph →</button>
+  </div>`;
+  panel.innerHTML = html;
+}
+
+//  Knowledge Graph 
+let kgNodes = [], kgLinks = [], kgAnimFrame = null;
+
+function updateKGStats() {
+  const contains = KG_EDGES.filter(e=>e.rel==="contains").length;
+  const geological = KG_EDGES.filter(e=>["charges","seals","sources","migrates_to","expelled_into","trapped_by","sourced_from"].includes(e.rel)).length;
+  const analytical = KG_EDGES.filter(e=>["similar_to","analogous_to","de_risks","supports","elevates_risk","reduces_unc","competes_with","offsets","predicts","updates","calibrates","validated_by","derived_from","constrained_by"].includes(e.rel)).length;
+  const allNodes = new Set();
+  KG_EDGES.forEach(e=>{ allNodes.add(`${e.srcType}:${e.srcName}`); allNodes.add(`${e.tgtType}:${e.tgtName}`); });
+  const el = id => document.getElementById(id);
+  if(el("kg-stat-edges")) el("kg-stat-edges").textContent = KG_EDGES.length;
+  if(el("kg-stat-nodes")) el("kg-stat-nodes").textContent = allNodes.size;
+  if(el("kg-stat-contains")) el("kg-stat-contains").textContent = contains;
+  if(el("kg-stat-geological")) el("kg-stat-geological").textContent = geological;
+  if(el("kg-stat-analytical")) el("kg-stat-analytical").textContent = analytical;
+}
+
+function kgPopulateEntities() {
+  const typeEl = document.getElementById("kg-focus-type");
+  const entEl = document.getElementById("kg-focus-entity");
+  if (!typeEl || !entEl) return;
+  const type = typeEl.value;
+  let entities = [];
+  // Core data-driven types
+  if (type==="basin") entities = BASINS.map(b=>b.name);
+  else if (type==="petroleum_system") entities = PETROLEUM_SYSTEMS.map(p=>p.name);
+  else if (type==="play") entities = PLAYS.map(p=>p.name);
+  else if (type==="prospect") entities = PROSPECTS.map(p=>p.name);
+  else if (type==="well") entities = WELLS.map(w=>w.name);
+  else if (type==="discovery") entities = DISCOVERIES.map(d=>d.name);
+  else {
+    // For all expanded ontology node types: collect from KG_EDGES
+    const seen = new Set();
+    (window.KG_EDGES || KG_EDGES || []).forEach(e => {
+      if (e.srcType === type && !seen.has(e.srcName)) { seen.add(e.srcName); entities.push(e.srcName); }
+      if (e.tgtType === type && !seen.has(e.tgtName)) { seen.add(e.tgtName); entities.push(e.tgtName); }
+    });
+    entities.sort();
+  }
+  entEl.innerHTML = '<option value="">Select entity…</option>' +
+    entities.map(n=>`<option value="${n}">${n}</option>`).join("");
+}
+
+function kgRender() {
+  const typeEl = document.getElementById("kg-focus-type");
+  const entEl = document.getElementById("kg-focus-entity");
+  const depthEl = document.getElementById("kg-depth");
+  if (!typeEl||!entEl) return;
+  const focalType = typeEl.value, focalName = entEl.value;
+  const maxDepth = parseInt(depthEl?.value||"2");
+  if (!focalName) return;
+  const hint = document.getElementById("kg-empty-hint");
+  if (hint) hint.style.display = "none";
+  // BFS subgraph
+  const visited = new Set(), nodeMap = new Map(), edgeList = [];
+  const queue = [{type:focalType, name:focalName, depth:0}];
+  visited.add(`${focalType}:${focalName}`);
+  nodeMap.set(`${focalType}:${focalName}`, {id:`${focalType}:${focalName}`, type:focalType, name:focalName, focal:true});
+  while (queue.length) {
+    const cur = queue.shift();
+    if (cur.depth >= maxDepth) continue;
+    for (const e of KG_EDGES) {
+      let neighbor = null;
+      if (e.srcType===cur.type && e.srcName===cur.name) neighbor = {type:e.tgtType, name:e.tgtName};
+      else if (e.tgtType===cur.type && e.tgtName===cur.name) neighbor = {type:e.srcType, name:e.srcName};
+      if (!neighbor) continue;
+      const nKey = `${neighbor.type}:${neighbor.name}`;
+      if (!nodeMap.has(nKey)) nodeMap.set(nKey, {id:nKey, type:neighbor.type, name:neighbor.name, focal:false});
+      if (!visited.has(nKey)) { visited.add(nKey); queue.push({...neighbor, depth:cur.depth+1}); }
+      edgeList.push({source:`${e.srcType}:${e.srcName}`, target:`${e.tgtType}:${e.tgtName}`, rel:e.rel, weight:e.weight});
+    }
+  }
+  kgNodes = Array.from(nodeMap.values()).map(n => ({...n, x:null, y:null, vx:0, vy:0}));
+  kgLinks = edgeList;
+  kgRenderEdgeList();
+  updateKGStats();
+  kgDrawForce();
+}
+
+function kgRenderEdgeList() {
+  const panel = document.getElementById("kg-edge-list");
+  if (!panel) return;
+  if (!kgLinks.length) { panel.innerHTML='<div style="text-align:center;color:var(--t3);padding:20px">No edges found</div>'; return; }
+  const REL_COLORS = {
+    // original
+    contains:"#059669",charges:"#D97706",seals:"#0891B2",similar_to:"#7C3AED",
+    analogous_to:"#8B5CF6",de_risks:"#10B981",migrates_to:"#F59E0B",sources:"#EF4444",
+    targets:"#F97316",co_located:"#06B6D4",overlies:"#6366F1",supports:"#22C55E",
+    reservoir_in:"#A855F7",
+    // new 28 predicates
+    underlies:"#92400E",correlates_with:"#B45309",bounded_by:"#D97706",
+    controls:"#6366F1",deforms:"#818CF8",cuts:"#A5B4FC",inverts:"#7C3AED",reactivates:"#9333EA",
+    sourced_from:"#EC4899",fingerprinted_by:"#F472B6",typed_as:"#FB7185",
+    expelled_into:"#E11D48",trapped_by:"#BE185D",
+    deposited_by:"#0EA5E9",deposited_in:"#38BDF8",
+    elevates_risk:"#DC2626",reduces_unc:"#16A34A",calibrates:"#15803D",
+    matures_into:"#CA8A04",competes_with:"#B45309",offsets:"#92400E",
+    predicts:"#8B5CF6",updates:"#A78BFA",quantifies:"#C4B5FD",evaluates:"#DDD6FE",
+    derived_from:"#64748B",constrained_by:"#475569",validated_by:"#334155",
+    offloads_to:"#0284C7",tied_back_to:"#0369A1"
+  };
+  const uniq = new Set(); let html = "";
+  for (const e of kgLinks) {
+    const key = `${e.source}-${e.rel}-${e.target}`;
+    if (uniq.has(key)) continue; uniq.add(key);
+    const relCol = REL_COLORS[e.rel]||"#8896A5";
+    const src = e.source.split(":")[1], tgt = e.target.split(":")[1];
+    html += `<div style="display:flex;align-items:center;gap:5px;padding:5px 0;border-bottom:1px solid var(--b1)">
+      <div style="flex:1;min-width:0"><div style="font-size:10px;color:var(--t1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${src}</div></div>
+      <div style="background:${relCol}22;color:${relCol};font-size:8px;padding:2px 6px;border-radius:8px;white-space:nowrap;font-weight:600">${e.rel.replace(/_/g," ")}</div>
+      <div style="color:var(--t3);font-size:10px">→</div>
+      <div style="flex:1;min-width:0"><div style="font-size:10px;color:var(--t1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tgt}</div></div>
+      ${e.weight<1?`<div style="font-size:8px;color:var(--t3)">${Math.round(e.weight*100)}%</div>`:""}
+    </div>`;
+  }
+  panel.innerHTML = html;
+}
+
+// ── Continuous physics state for KG force graph ──────────────────
+var _kgDragNode  = null;   // node being dragged
+var _kgDragOX    = 0;      // drag offset x
+var _kgDragOY    = 0;      // drag offset y
+var _kgAlpha     = 1.0;    // simulation "heat" — cools over time, reheats on interaction
+var _kgAlphaMin  = 0.004;  // stop threshold
+var _kgAlphaDecay = 0.022; // cooling rate per frame
+
+function kgDrawForce() {
+  const wrap   = document.getElementById("kg-canvas-wrap");
+  const canvas = document.getElementById("kg-canvas");
+  if (!canvas||!wrap) return;
+
+  const W = wrap.clientWidth||700, H = wrap.clientHeight||500;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + "px";
+  canvas.style.height = H + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+
+  const cx = W/2, cy = H/2;
+
+  // ── Place nodes with ring-layout initial positions ──────────────
+  const nodeIdx = new Map();
+  kgNodes.forEach((n, i) => {
+    if (n.x == null || isNaN(n.x)) {
+      if (n.focal) { n.x = cx; n.y = cy; }
+      else {
+        const rings = Math.ceil(Math.sqrt(kgNodes.length));
+        const ring  = Math.ceil(i / rings);
+        const ang   = (i / kgNodes.length) * Math.PI * 2;
+        const rad   = 80 + ring * 55 + Math.random() * 30;
+        n.x = cx + Math.cos(ang) * rad;
+        n.y = cy + Math.sin(ang) * rad;
+      }
+    }
+    n.vx = n.vx || 0;
+    n.vy = n.vy || 0;
+    nodeIdx.set(n.id, n);
+  });
+
+  // ── Build adjacency sets for link-distance tuning ───────────────
+  const linkLen = {}; // per-pair ideal distance
+  kgLinks.forEach(lk => {
+    const key = lk.source + "§" + lk.target;
+    linkLen[key] = lk.rel === "contains" ? 110 : 140;
+  });
+
+  // ── Edge colour lookup ──────────────────────────────────────────
+  const _RC = {contains:"#059669",charges:"#D97706",similar_to:"#7C3AED",analogous_to:"#8B5CF6",de_risks:"#10B981",sources:"#EF4444",targets:"#F97316",co_located:"#06B6D4",overlies:"#6366F1",supports:"#22C55E",reservoir_in:"#A855F7",seals:"#0891B2",migrates_to:"#F59E0B",underlies:"#92400E",correlates_with:"#B45309",bounded_by:"#D97706",controls:"#6366F1",deforms:"#818CF8",cuts:"#A5B4FC",inverts:"#7C3AED",reactivates:"#9333EA",sourced_from:"#EC4899",fingerprinted_by:"#F472B6",typed_as:"#FB7185",expelled_into:"#E11D48",trapped_by:"#BE185D",deposited_by:"#0EA5E9",deposited_in:"#38BDF8",elevates_risk:"#DC2626",reduces_unc:"#16A34A",calibrates:"#15803D",matures_into:"#CA8A04",competes_with:"#B45309",offsets:"#92400E",predicts:"#8B5CF6",updates:"#A78BFA",quantifies:"#C4B5FD",evaluates:"#DDD6FE",derived_from:"#64748B",constrained_by:"#475569",validated_by:"#334155",offloads_to:"#0284C7",tied_back_to:"#0369A1"};
+
+  // ── Physics step ────────────────────────────────────────────────
+  function physicsStep() {
+    if (_kgAlpha < _kgAlphaMin && !_kgDragNode) return; // simulation cooled
+
+    const a = _kgAlpha;
+
+    // Repulsion (Barnes-Hut approximation not needed at these node counts)
+    for (let i = 0; i < kgNodes.length; i++) {
+      for (let j = i+1; j < kgNodes.length; j++) {
+        const na = kgNodes[i], nb = kgNodes[j];
+        if (na === _kgDragNode || nb === _kgDragNode) continue;
+        const dx = nb.x - na.x, dy = nb.y - na.y;
+        const dist2 = dx*dx + dy*dy || 1;
+        const dist  = Math.sqrt(dist2);
+        // Stronger repulsion at short range (inverse-square with softening)
+        const strength = Math.min(1800 / dist2, 40) * a;
+        const fx = (dx/dist)*strength, fy = (dy/dist)*strength;
+        na.vx -= fx; na.vy -= fy;
+        nb.vx += fx; nb.vy += fy;
+      }
+    }
+
+    // Spring attraction along links
+    for (const lk of kgLinks) {
+      const na = nodeIdx.get(lk.source), nb = nodeIdx.get(lk.target);
+      if (!na||!nb) continue;
+      if (na === _kgDragNode || nb === _kgDragNode) continue;
+      const dx = nb.x - na.x, dy = nb.y - na.y;
+      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      const ideal = linkLen[lk.source+"§"+lk.target] || 120;
+      const stretch = (dist - ideal) * 0.025 * a;
+      const fx = (dx/dist)*stretch, fy = (dy/dist)*stretch;
+      na.vx += fx; na.vy += fy;
+      nb.vx -= fx; nb.vy -= fy;
+    }
+
+    // Weak gravity toward centre
+    kgNodes.forEach(n => {
+      if (n === _kgDragNode) return;
+      n.vx += (cx - n.x) * 0.0008 * a;
+      n.vy += (cy - n.y) * 0.0008 * a;
+      // Velocity damping
+      n.vx *= 0.82;
+      n.vy *= 0.82;
+      // Integrate
+      n.x += n.vx;
+      n.y += n.vy;
+      // Boundary
+      n.x = Math.max(28, Math.min(W-28, n.x));
+      n.y = Math.max(28, Math.min(H-28, n.y));
+    });
+
+    // Cool
+    _kgAlpha = Math.max(0, _kgAlpha - _kgAlphaDecay);
+  }
+
+  // ── Render frame ────────────────────────────────────────────────
+  function drawFrame() {
+    ctx.clearRect(0, 0, W, H);
+
+    // Edges
+    const drawn = new Set();
+    for (const lk of kgLinks) {
+      const key = lk.source+"-"+lk.target+"-"+lk.rel;
+      if (drawn.has(key)) continue; drawn.add(key);
+      const na = nodeIdx.get(lk.source), nb = nodeIdx.get(lk.target);
+      if (!na||!nb) continue;
+      const col = _RC[lk.rel] || "#4B5563";
+      ctx.beginPath(); ctx.moveTo(na.x, na.y); ctx.lineTo(nb.x, nb.y);
+      ctx.strokeStyle = col + "55";
+      ctx.lineWidth   = lk.rel === "contains" ? 1.8 : 1;
+      lk.rel !== "contains" ? ctx.setLineDash([4,3]) : ctx.setLineDash([]);
+      ctx.stroke(); ctx.setLineDash([]);
+      // Edge label at midpoint
+      const mx = (na.x+nb.x)/2, my = (na.y+nb.y)/2;
+      ctx.font = "600 7px 'Segoe UI',system-ui,sans-serif";
+      // Edge labels: theme-aware with shadow for sharpness
+      const _kgEdgeDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      ctx.fillStyle = col + (_kgEdgeDark ? "cc" : "ee");
+      ctx.shadowColor = _kgEdgeDark ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.8)";
+      ctx.shadowBlur  = 2;
+      ctx.textAlign = "center";
+      ctx.fillText(lk.rel.replace(/_/g," "), mx, my-3);
+      ctx.shadowBlur = 0;
+    }
+
+    // Nodes
+    for (const n of kgNodes) {
+      const col = KG_NODE_COLORS[n.type] || "#8896A5";
+      const r   = (KG_NODE_SIZES[n.type]||8) * (n.focal ? 1.4 : 1);
+      const isDragging = n === _kgDragNode;
+
+      // Focal glow
+      if (n.focal || isDragging) {
+        ctx.beginPath(); ctx.arc(n.x, n.y, r+7, 0, Math.PI*2);
+        ctx.fillStyle = col + (isDragging ? "44" : "22");
+        ctx.fill();
+      }
+      // Node circle
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+      ctx.fillStyle  = col;
+      ctx.globalAlpha = n.focal || isDragging ? 1 : 0.88;
+      ctx.fill(); ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth   = n.focal || isDragging ? 2.5 : 1.5;
+      ctx.stroke();
+
+      // Label — theme-aware, sharp with shadow for legibility on any bg
+      ctx.font      = (n.focal ? "700 10px" : "600 9px") + " 'Segoe UI',system-ui,sans-serif";
+      const _kgDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      ctx.fillStyle = _kgDark ? "#f1f5f9" : "#0f172a";
+      ctx.textAlign = "center";
+      // Text shadow for contrast on both themes
+      ctx.shadowColor = _kgDark ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.85)";
+      ctx.shadowBlur  = 3;
+      const lbl = n.name.length > 20 ? n.name.substring(0,18)+"…" : n.name;
+      ctx.fillText(lbl, n.x, n.y + r + 13);
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // ── Animation loop (continuous — slows to a near-stop when cool) ─
+  function loop() {
+    physicsStep();
+    drawFrame();
+    kgAnimFrame = requestAnimationFrame(loop);
+  }
+
+  // ── Drag interaction ────────────────────────────────────────────
+  function _getCanvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const cx2  = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const cy2  = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    return [cx2, cy2];
+  }
+  function _hitNode(px, py) {
+    for (let i = kgNodes.length-1; i >= 0; i--) {
+      const n = kgNodes[i];
+      const r = (KG_NODE_SIZES[n.type]||8) * (n.focal?1.4:1) + 4;
+      if ((px-n.x)*(px-n.x)+(py-n.y)*(py-n.y) <= r*r) return n;
+    }
+    return null;
+  }
+
+  // Remove any old listeners by replacing canvas (clone trick)
+  const newCanvas = canvas.cloneNode(false);
+  newCanvas.id = "kg-canvas";
+  newCanvas.style.cssText = canvas.style.cssText;
+  canvas.parentNode.replaceChild(newCanvas, canvas);
+  const cv = newCanvas;
+  const ctx2 = cv.getContext("2d");
+  ctx2.scale(dpr, dpr);
+  // Redirect drawing context ref inside loop closure
+  // (re-obtain ctx inside each drawFrame call)
+
+  cv.addEventListener("mousedown", e => {
+    const [px, py] = _getCanvasPos(e);
+    const hit = _hitNode(px, py);
+    if (hit) {
+      _kgDragNode = hit;
+      _kgDragOX = px - hit.x;
+      _kgDragOY = py - hit.y;
+      _kgAlpha  = Math.max(_kgAlpha, 0.3); // reheat slightly on grab
+      e.preventDefault();
+    }
+  });
+  cv.addEventListener("mousemove", e => {
+    if (!_kgDragNode) return;
+    const [px, py] = _getCanvasPos(e);
+    _kgDragNode.x  = px - _kgDragOX;
+    _kgDragNode.y  = py - _kgDragOY;
+    _kgDragNode.vx = 0; _kgDragNode.vy = 0;
+    _kgAlpha = Math.max(_kgAlpha, 0.5); // keep simulation hot while dragging
+  });
+  cv.addEventListener("mouseup",   () => { _kgDragNode = null; _kgAlpha = Math.max(_kgAlpha, 0.2); });
+  cv.addEventListener("mouseleave",() => { _kgDragNode = null; });
+
+  // ── Kick off ────────────────────────────────────────────────────
+  // Rebuild nodeIdx for the new canvas context
+  const nodeIdx2 = new Map();
+  kgNodes.forEach(n => nodeIdx2.set(n.id, n));
+  // Patch closure references
+  Object.assign(nodeIdx, nodeIdx2);
+
+  if (kgAnimFrame) cancelAnimationFrame(kgAnimFrame);
+  _kgAlpha = 1.0; // reheat on graph rebuild
+
+  // Use fresh canvas/ctx
+  const ctxLive = cv.getContext("2d");
+  ctxLive.scale(dpr, dpr);
+
+  function loopLive() {
+    physicsStep();
+    // Redraw on new canvas
+    ctxLive.clearRect(0, 0, W, H);
+
+    // Edges
+    const drawnL = new Set();
+    for (const lk of kgLinks) {
+      const key = lk.source+"-"+lk.target+"-"+lk.rel;
+      if (drawnL.has(key)) continue; drawnL.add(key);
+      const na = nodeIdx.get(lk.source), nb = nodeIdx.get(lk.target);
+      if (!na||!nb) continue;
+      const col = _RC[lk.rel] || "#4B5563";
+      ctxLive.beginPath(); ctxLive.moveTo(na.x, na.y); ctxLive.lineTo(nb.x, nb.y);
+      ctxLive.strokeStyle = col + "55";
+      ctxLive.lineWidth   = lk.rel === "contains" ? 1.8 : 1;
+      lk.rel !== "contains" ? ctxLive.setLineDash([4,3]) : ctxLive.setLineDash([]);
+      ctxLive.stroke(); ctxLive.setLineDash([]);
+      const mx=(na.x+nb.x)/2, my=(na.y+nb.y)/2;
+      ctxLive.font="7px system-ui"; ctxLive.fillStyle=col+"99"; ctxLive.textAlign="center";
+      ctxLive.fillText(lk.rel.replace(/_/g," "), mx, my-3);
+    }
+
+    // Nodes
+    for (const n of kgNodes) {
+      const col = KG_NODE_COLORS[n.type] || "#8896A5";
+      const r   = (KG_NODE_SIZES[n.type]||8) * (n.focal ? 1.4 : 1);
+      const isDragging = n === _kgDragNode;
+      if (n.focal || isDragging) {
+        ctxLive.beginPath(); ctxLive.arc(n.x, n.y, r+7, 0, Math.PI*2);
+        ctxLive.fillStyle = col + (isDragging ? "44" : "22"); ctxLive.fill();
+      }
+      ctxLive.beginPath(); ctxLive.arc(n.x, n.y, r, 0, Math.PI*2);
+      ctxLive.fillStyle = col; ctxLive.globalAlpha = n.focal||isDragging?1:0.88;
+      ctxLive.fill(); ctxLive.globalAlpha=1;
+      ctxLive.strokeStyle="#fff"; ctxLive.lineWidth=n.focal||isDragging?2.5:1; ctxLive.stroke();
+      ctxLive.font=(n.focal?"700 10px":"600 9px")+" 'Segoe UI',system-ui,sans-serif";
+      const _kgLiveDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      ctxLive.fillStyle=_kgLiveDark?"#f1f5f9":"#0f172a";
+      ctxLive.shadowColor=_kgLiveDark?"rgba(0,0,0,0.7)":"rgba(255,255,255,0.85)";
+      ctxLive.shadowBlur=3;
+      ctxLive.textAlign="center";
+      const lbl=n.name.length>20?n.name.substring(0,18)+"…":n.name;
+      ctxLive.fillText(lbl, n.x, n.y+r+13);
+      ctxLive.shadowBlur=0;
+    }
+
+    kgAnimFrame = requestAnimationFrame(loopLive);
+  }
+  kgAnimFrame = requestAnimationFrame(loopLive);
+}
+
+//  DOMContentLoaded init 
+document.addEventListener("DOMContentLoaded", function() {
+  // Mount sections (fallback if template mounting ran before DOM was ready)
+  const content = document.getElementById("main-content") || document.querySelector(".content");
+  if (content) {
+    ["tpl-sec-hierarchy","tpl-sec-knowledgegraph"].forEach(id => {
+      const secId = id.replace("tpl-","");
+      const tpl = document.getElementById(id);
+      if (tpl && !document.getElementById(secId)) content.appendChild(tpl.content.cloneNode(true));
+    });
+  }
+  setTimeout(function() {
+    hierPopulateBasinSelect();
+    updateKGStats();
+    const kgType = document.getElementById("kg-focus-type");
+    if (kgType && !kgType._kgInitDone) {
+      kgType._kgInitDone = true;
+      kgType.addEventListener("change", kgPopulateEntities);
+      kgPopulateEntities();
+    }
+  }, 400);
+});
+
+if (document.readyState === "complete" || document.readyState === "interactive") {
+  setTimeout(function() {
+    hierPopulateBasinSelect();
+    updateKGStats();
+    const kgType = document.getElementById("kg-focus-type");
+    if (kgType && !kgType._kgInitDone) {
+      kgType._kgInitDone = true;
+      kgType.addEventListener("change", kgPopulateEntities);
+      kgPopulateEntities();
+    }
+  }, 500);
+}
+
+// 
+  // EXPLORATION INTELLIGENCE HUB — INTERCONNECTION ENGINE
+  //  Data aliases (use window.* exports from main script) 
+  function _hDATA(k) { return window[k] || []; }
+  function _syncData(){ /* data lives on window.* — no local shadows needed */ }
+  // 
+  var _hubCtx = { basin:"", petSys:"", play:"", prospect:"", well:"", disc:"" };
+  var _hubActiveTab = "hierarchy";
+
+  //  AI key/model helper (reads same localStorage as main AI panel) 
+  function _hubAiKey() {
+    // 1. Live _aiCfg variable (set by AI settings panel in same window)
+    try { if(typeof _aiCfg!=="undefined") { var k=_aiCfg.claudeKey||_aiCfg.key||""; if(k) return k; } } catch(e){}
+    // 2. window._aiCfg (in case of scope difference)
+    try { if(window._aiCfg) { var k=window._aiCfg.claudeKey||window._aiCfg.key||""; if(k) return k; } } catch(e){}
+    // 3. localStorage fallback
+    try { var cfg=JSON.parse(localStorage.getItem("edafy_ai_config")||"{}"); return cfg.claudeKey||cfg.key||""; } catch(e){ return ""; }
+  }
+  function _hubAiModel() {
+    try { if(typeof _aiCfg!=="undefined" && _aiCfg.claudeModel) return _aiCfg.claudeModel; } catch(e){}
+    try { if(window._aiCfg && window._aiCfg.claudeModel) return window._aiCfg.claudeModel; } catch(e){}
+    try { return JSON.parse(localStorage.getItem("edafy_ai_config")||"{}").claudeModel||"claude-haiku-4-5-20251001"; } catch(e){ return "claude-haiku-4-5-20251001"; }
+  }
+  function _hubAiHeaders() {
+    var key = _hubAiKey();
+    return {"Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true","x-api-key":key};
+  }
+  // Expose key helpers globally for second IIFE
+  window._hubAiKey     = _hubAiKey;
+  window._hubAiModel   = _hubAiModel;
+  window._hubAiHeaders = _hubAiHeaders;
+
+  var _hubKgAnimFrame = null, _hubKgNodes = [], _hubKgLinks = [];
+  // Tracks which nodes have had analogues injected: key = "type:name", value = true
+  var _kgActiveAnalogueNodes = {};
+  var _HUB_COLORS = {
+    // Core hierarchy
+    basin:"#0D9488", petroleum_system:"#7C3AED", play:"#0891B2",
+    prospect:"#D97706", well:"#059669", discovery:"#DC2626",
+    // Source rock & geochemistry
+    source_rock:"#B45309", charge_timing:"#F59E0B", thermal_maturity:"#EF4444", geochemistry:"#F97316",
+    // Reservoir & petrophysics
+    reservoir:"#2563EB", petrophysical_logs:"#3B82F6", formation_tops:"#60A5FA", core_data:"#1D4ED8", porosity_trap:"#7DD3FC",
+    // Seal & trap
+    seal:"#16A34A", seal_integrity:"#22C55E", fault_seal:"#15803D", trap_geometry:"#4ADE80",
+    // Migration & fluid
+    migration_pathway:"#8B5CF6", hc_expulsion:"#A855F7", hc_preservation:"#6D28D9",
+    // Overburden & burial
+    overburden:"#64748B", burial_history:"#475569", diagenesis:"#94A3B8",
+    // Structural & tectonic
+    tectonic_setting:"#EC4899", fracture_network:"#DB2777",
+    // Subsurface data & measurements
+    seismic_coverage:"#06B6D4", well_test:"#0E7490", heat_flow:"#F43F5E", geothermal:"#FB7185",
+    // Commercial & risk
+    licence_block:"#84CC16", working_interest:"#65A30D", play_resources:"#A3E635",
+    wellbore_risk:"#EF4444", field_gc:"#FB923C", licence_expiry:"#FCD34D",
+    //  DOMAIN A: STRATIGRAPHY 
+    strat_unit:"#6366F1", strat_formation:"#818CF8", strat_member:"#A5B4FC",
+    strat_group:"#4338CA", strat_supergroup:"#3730A3", sequence_strat:"#7C3AED",
+    systems_tract:"#8B5CF6", unconformity:"#C026D3", mfs:"#E879F9",
+    sequence_boundary:"#A21CAF", biostrat_zone:"#9333EA", chron_age:"#6D28D9",
+    strat_column:"#4F46E5", strat_correlation:"#60A5FA", litho_unit:"#818CF8",
+    //  DOMAIN B: DEPOSITIONAL SYSTEMS 
+    dep_env:"#0891B2", fluvial:"#0E7490", delta:"#0F766E",
+    deepwater_fan:"#155E75", turb_channel:"#164E63", turb_lobe:"#0C4A6E",
+    carbonate_platform:"#059669", reef:"#047857", shelf_sand:"#065F46",
+    submarine_fan:"#0D9488", channel_levee:"#0F766E", mtt:"#374151",
+    aeolian:"#D97706", lacustrine:"#0369A1", glacial:"#7DD3FC",
+    //  DOMAIN C: STRUCTURAL GEOLOGY 
+    fault_sys:"#DC2626", anticline:"#16A34A", syncline:"#15803D",
+    salt_diapir:"#F59E0B", salt_canopy:"#FBBF24", thrust_belt:"#EF4444",
+    normal_fault:"#F87171", reverse_fault:"#FCA5A5", strike_slip:"#FCD34D",
+    rollover:"#22C55E", flower_struct:"#4ADE80", inversion:"#86EFAC",
+    struct_closure:"#059669", trap_style:"#D1FAE5",
+    //  DOMAIN D: GEOCHEMISTRY EXTENDED 
+    biomarker:"#F97316", oil_fingerprint:"#FB923C", oil_family:"#FED7AA",
+    gas_composition:"#6EE7B7", isotope_sig:"#A7F3D0", sulfur_pct:"#FEF08A",
+    rock_eval:"#DC2626", toc_val:"#EF4444", vitrinite_ro:"#B45309",
+    expulsion_eff:"#D97706", hc_kitchen:"#92400E", source_corr:"#78350F",
+    //  DOMAIN E: DECISION INTELLIGENCE / AI 
+    play_chance:"#2fb87a", gcos_node:"#2fb87a", emv_node:"#10B981",
+    portfolio_rank:"#059669", drill_priority:"#047857", risk_matrix:"#EF4444",
+    analogue_node:"#8B5CF6", bayesian_node:"#7C3AED", ml_model:"#6366F1",
+    scenario_node:"#F59E0B", sensitivity_node:"#D97706", monte_carlo:"#B45309",
+  };
+  var _HUB_ICONS  = {
+    basin:"", petroleum_system:"", play:"", prospect:"", well:"", discovery:"",
+    source_rock:"", charge_timing:"", thermal_maturity:"", geochemistry:"",
+    reservoir:"", petrophysical_logs:"", formation_tops:"", core_data:"", porosity_trap:"",
+    seal:"", seal_integrity:"", fault_seal:"", trap_geometry:"",
+    migration_pathway:"", hc_expulsion:"", hc_preservation:"",
+    overburden:"", burial_history:"", diagenesis:"",
+    tectonic_setting:"", fracture_network:"",
+    seismic_coverage:"", well_test:"", heat_flow:"", geothermal:"",
+    licence_block:"", working_interest:"", play_resources:"",
+    wellbore_risk:"!", field_gc:"", licence_expiry:"",
+    // Stratigraphy
+    strat_unit:"", strat_formation:"", strat_member:"", strat_group:"",
+    strat_supergroup:"", sequence_strat:"〽", systems_tract:"", unconformity:"",
+    mfs:"", sequence_boundary:"", biostrat_zone:"", chron_age:"",
+    strat_column:"", strat_correlation:"", litho_unit:"",
+    // Depositional
+    dep_env:"", fluvial:"", delta:"", deepwater_fan:"",
+    turb_channel:"〰", turb_lobe:"", carbonate_platform:"", reef:"",
+    shelf_sand:"", submarine_fan:"", channel_levee:"", mtt:"",
+    aeolian:"", lacustrine:"", glacial:"",
+    // Structural
+    fault_sys:"", anticline:"", syncline:"", salt_diapir:"",
+    salt_canopy:"", thrust_belt:"", normal_fault:"", reverse_fault:"",
+    strike_slip:"↔", rollover:"", flower_struct:"", inversion:"↩",
+    struct_closure:"", trap_style:"",
+    // Geochemistry Extended
+    biomarker:"", oil_fingerprint:"", oil_family:"", gas_composition:"",
+    isotope_sig:"", sulfur_pct:"", rock_eval:"", toc_val:"",
+    vitrinite_ro:"", expulsion_eff:"", hc_kitchen:"", source_corr:"",
+    // Decision Intelligence
+    play_chance:"", gcos_node:"", emv_node:"", portfolio_rank:"",
+    drill_priority:"", risk_matrix:"!", analogue_node:"", bayesian_node:"",
+    ml_model:"", scenario_node:"", sensitivity_node:"", monte_carlo:"",
+  };
+  var _HUB_SIZES  = {
+    basin:18, petroleum_system:15, play:13, prospect:11, well:9, discovery:10,
+    source_rock:10, charge_timing:8, thermal_maturity:8, geochemistry:8,
+    reservoir:10, petrophysical_logs:7, formation_tops:7, core_data:8, porosity_trap:8,
+    seal:9, seal_integrity:8, fault_seal:8, trap_geometry:8,
+    migration_pathway:9, hc_expulsion:8, hc_preservation:8,
+    overburden:8, burial_history:7, diagenesis:7,
+    tectonic_setting:9, fracture_network:8,
+    seismic_coverage:9, well_test:8, heat_flow:8, geothermal:7,
+    licence_block:9, working_interest:8, play_resources:8,
+    wellbore_risk:7, field_gc:7, licence_expiry:7,
+    // Stratigraphy
+    strat_unit:11, strat_formation:10, strat_member:8, strat_group:11, strat_supergroup:12,
+    sequence_strat:10, systems_tract:8, unconformity:9, mfs:7,
+    sequence_boundary:7, biostrat_zone:7, chron_age:7,
+    strat_column:9, strat_correlation:8, litho_unit:8,
+    // Depositional
+    dep_env:11, fluvial:9, delta:9, deepwater_fan:10,
+    turb_channel:8, turb_lobe:8, carbonate_platform:10, reef:9,
+    shelf_sand:8, submarine_fan:9, channel_levee:8, mtt:7,
+    aeolian:7, lacustrine:8, glacial:7,
+    // Structural
+    fault_sys:11, anticline:10, syncline:9, salt_diapir:10, salt_canopy:9,
+    thrust_belt:10, normal_fault:8, reverse_fault:8, strike_slip:8,
+    rollover:9, flower_struct:8, inversion:8,
+    struct_closure:10, trap_style:9,
+    // Geochemistry Extended
+    biomarker:8, oil_fingerprint:9, oil_family:8, gas_composition:8,
+    isotope_sig:7, sulfur_pct:7, rock_eval:9, toc_val:8,
+    vitrinite_ro:8, expulsion_eff:8, hc_kitchen:10, source_corr:8,
+    // Decision Intelligence
+    play_chance:11, gcos_node:12, emv_node:11, portfolio_rank:10,
+    drill_priority:10, risk_matrix:9, analogue_node:9, bayesian_node:9,
+    ml_model:10, scenario_node:8, sensitivity_node:7, monte_carlo:8,
+  };
+
+  function _hubBindCascade() {
+    var map = [
+      ['hub-sel-basin',    hubOnBasinChange],
+      ['hub-sel-petsys',   hubOnPetSysChange],
+      ['hub-sel-play',     hubOnPlayChange],
+      ['hub-sel-prospect', hubOnProspectChange],
+      ['hub-sel-well',     hubOnWellChange],
+      ['hub-sel-disc',     hubOnDiscChange]
+    ];
+    map.forEach(function(item) {
+      var old_el = document.getElementById(item[0]);
+      if (!old_el) return;
+      // Preserve the current value before cloneNode wipes it
+      var savedValue = old_el.value;
+      var new_el = old_el.cloneNode(true);
+      old_el.parentNode.replaceChild(new_el, old_el);
+      new_el.addEventListener('change', item[1]);
+      // Restore value on the new element — cloneNode copies innerHTML (options)
+      // but does NOT preserve the programmatically-set .value property
+      if (savedValue) new_el.value = savedValue;
+    });
+    // After all elements are swapped, re-apply the global basin to hub-sel-basin
+    // in case it was wiped. This covers the DOMContentLoaded 700ms re-bind.
+    var activeBasin = window._globalBasin || null;
+    if (activeBasin) {
+      var bs = document.getElementById('hub-sel-basin');
+      if (bs && bs.value !== activeBasin) {
+        bs.value = activeBasin;
+        if (bs.value === activeBasin) {
+          _hubCtx.basin = activeBasin;
+          var psel = document.getElementById('hub-sel-petsys');
+          if (psel && typeof _hubOpts === 'function' && typeof _hubGetPS === 'function') {
+            psel.innerHTML = _hubOpts(_hubGetPS(activeBasin), 'id', 'name');
+          }
+          if (typeof hubUpdateCrumb === 'function') hubUpdateCrumb();
+        }
+      }
+    }
+  }
+
+  function hubInit() {
+    // Populate basin dropdown from embedded data
+    var bs = document.getElementById("hub-sel-basin");
+    if (bs) bs.innerHTML = '<option value="">— Select Basin —</option>' +
+      _HUB_DATA.basins.map(function(b){
+        return '<option value="'+b.name+'">'+b.name+'</option>'
+      }).join("");
+    // KPIs from window.* (best effort)
+    var el = function(id){ return document.getElementById(id); };
+    if(el("hub-kpi-ps"))        el("hub-kpi-ps").textContent        = _HUB_DATA.ps.length;
+    if(el("hub-kpi-plays"))     el("hub-kpi-plays").textContent     = _HUB_DATA.plays.length;
+    if(el("hub-kpi-prospects")) el("hub-kpi-prospects").textContent = _HUB_DATA.prospects.length;
+    if(el("hub-kpi-wells"))     el("hub-kpi-wells").textContent     = (window.WELLS||[]).length;
+    if(el("hub-kpi-disc"))      el("hub-kpi-disc").textContent      = (window.DISCOVERIES||[]).length;
+
+    hubKgPopulate();
+    hubMountBayes();
+    hubMountAIA();
+    hubRenderActivePane();
+    // _hubBindCascade must run before we set .value — it cloneNode-replaces
+    // hub-sel-basin which resets .value to '' on the new element.
+    _hubBindCascade();
+
+    // Pre-select the globally active basin AFTER _hubBindCascade so the
+    // cloned element (not the stale original) gets the value assigned.
+    var activeBasin = window._globalBasin || window._lastSelectedBasin || null;
+    if (activeBasin) {
+      // Re-query after cloneNode swap
+      var bsFresh = document.getElementById('hub-sel-basin');
+      if (bsFresh) {
+        bsFresh.value = activeBasin;
+        if (bsFresh.value === activeBasin) {
+          _hubCtx.basin = activeBasin;
+          var psel = document.getElementById('hub-sel-petsys');
+          if (psel) psel.innerHTML = _hubOpts(_hubGetPS(activeBasin), 'id', 'name');
+          _hubReset('hub-sel-play');
+          _hubReset('hub-sel-prospect');
+          _hubReset('hub-sel-well');
+          _hubReset('hub-sel-disc');
+          hubUpdateCrumb();
+        }
+      }
+    }
+    const defaultTab = "hierarchy";
+    const tabEl = document.querySelector(`#hub-tabs .hub-tab[data-tab="${defaultTab}"]`);
+
+    hubSwitchTab(defaultTab, tabEl);
+  }
+
+  //  Tab switching 
+  function hubSwitchTab(tab, el) {
+    _hubActiveTab = tab;
+
+    // 1. Toggle panes
+    document.querySelectorAll(".hub-pane").forEach((p) => {
+      p.style.display = p.id === `hub-pane-${tab}` ? "block" : "none";
+    });
+
+    // 2. Remove active from ALL tabs (no container dependency)
+    document.querySelectorAll(".hub-tab").forEach((t) => {
+      t.classList.remove("on");
+    });
+
+    // 3. Activate correct tab (works even without `el`)
+    const activeTab = el || document.getElementById(`hub-tab-${tab}`);
+    if (activeTab) activeTab.classList.add("on");
+
+    const bc = document.getElementById("breadcrumb-section");
+    if (bc) bc.textContent = el?.textContent.trim() || "hierarchy";
+
+    // 5. Keep your logic
+    hubRenderActivePane();
+  }
+
+  function hubRenderActivePane() {
+    var t = _hubActiveTab;
+    if(t==="hierarchy")     hubRenderTree();
+    if(t==="petrosystem")   hubRenderPSE();
+    if(t==="knowledgegraph")hubKgRender();
+    if(t==="bayesplay")     hubSyncBayes();
+    if(t==="aianalogues")   hubSyncAIA();
+    if(t==="sankey")        hubSankeyInit();
+    if(t==="reasoning")     hubReasoningInit();
+    if(t==="nlq")           {}
+    if(t==="drillopt")      {}
+    if(t==="maturation")    hubMaturationRender();
+    if(t==="strat")         hubStratInit();
+    if(t==="report")        hubReportInit();
+    // New tabs — called via window to cross IIFE scope boundary
+    if(t==="map")           { if(window.hubMapInit)          window.hubMapInit(); }
+    if(t==="copilot")       { if(window.hubCopilotInit)      window.hubCopilotInit(); }
+    if(t==="newsfeed")      { if(window.hubNewsFeedInit)     window.hubNewsFeedInit(); }
+    if(t==="fiscal")        { if(window.hubFiscalInit)       window.hubFiscalInit(); }
+    if(t==="carbon")        { if(window.hubCarbonRender)     window.hubCarbonRender(); }
+    if(t==="correlation")   { if(window.hubCorrelationInit)  window.hubCorrelationInit(); }
+    if(t==="datagap")       { if(window.hubDataGapRun)       {} }
+    if(t==="docparser")     { if(window.hubDocResetState)    window.hubDocResetState(); }
+    if(t==="wellmap")       { if(window.hubWellMapInit)      window.hubWellMapInit(); }
+    if(t==="lookalike")     { if(window.hubLookalikeInit)    window.hubLookalikeInit(); }
+    if(t==="valuesankey")   { if(window.hubValueSankeyInit)  window.hubValueSankeyInit(); }
+    if(t==="timeline")      { if(window.hubTimelineInit)     window.hubTimelineInit(); }
+    if(t==="radar")         { if(window.hubRadarInit)        window.hubRadarInit(); }
+    if(t==="porepressure")  { if(window.hubPorePressureInit) window.hubPorePressureInit(); }
+    if(t==="burial")        { if(window.hubBurialInit)       window.hubBurialInit(); }
+    if(t==="matbal")        { if(window.hubMatBalInit)       window.hubMatBalInit(); }
+  }
+
+  //  Context bar 
+  var _HUB_DATA = {"basins":[{"id":"b0","name":"Zagros Fold Belt"},{"id":"b1","name":"Permian Basin"},{"id":"b2","name":"North Sea"},{"id":"b3","name":"Kutei Basin"},{"id":"b4","name":"Nile Delta"},{"id":"b5","name":"Murzuq Basin"},{"id":"b6","name":"Sergipe-Alagoas"},{"id":"b7","name":"Malay Basin"},{"id":"b8","name":"Niger Delta"},{"id":"b9","name":"South Caspian"},{"id":"b10","name":"Barents Sea"},{"id":"b11","name":"Browse Basin"},{"id":"b12","name":"East Greenland"},{"id":"b13","name":"Tarim Basin"},{"id":"b14","name":"Neuqu\u00e9n Basin"},{"id":"b15","name":"Malay Basin \u2014 Arang Fm."},{"id":"b16","name":"Kutei Basin \u2014 Tunu Field"},{"id":"b17","name":"Borneo \u2014 Miri Formation"},{"id":"b18","name":"Niger Delta \u2014 Agbada Fm."},{"id":"b19","name":"Nile Delta \u2014 Biogenic Play"},{"id":"b20","name":"Gulf of Mexico \u2014 Wilcox"},{"id":"b21","name":"West Africa \u2014 Pliocene SS"}],"ps":[{"id":"ps-1","name":"Asmari-Pabdeh System","basin":"Zagros Fold Belt"},{"id":"ps-2","name":"Kazhdumi-Sarvak System","basin":"Zagros Fold Belt"},{"id":"ps-3","name":"Wolfcamp-Spraberry System","basin":"Permian Basin"},{"id":"ps-4","name":"Kimmeridge-Brent System","basin":"North Sea"},{"id":"ps-5","name":"Miocene Deltaic System","basin":"Kutei Basin"},{"id":"ps-6","name":"Oligocene Lacustrine System","basin":"Malay Basin"},{"id":"ps-7","name":"Vulcan-Plover System","basin":"Browse Basin"},{"id":"ps-8","name":"Oligocene-Miocene System","basin":"Nile Delta"},{"id":"ps-9","name":"Akata-Agbada System","basin":"Niger Delta"},{"id":"ps-10","name":"Vaca Muerta System","basin":"Neuqu\u00e9n Basin"},{"id":"ps-11","name":"Devonian Carbonate System","basin":"Murzuq Basin"},{"id":"ps-12","name":"Cretaceous Rift System","basin":"Sergipe-Alagoas"},{"id":"ps-13","name":"Mesozoic Carbonate System","basin":"South Caspian"},{"id":"ps-14","name":"Triassic\u2013Jurassic System","basin":"Barents Sea"},{"id":"ps-15","name":"Pre-Salt Carbonate System","basin":"East Greenland"},{"id":"ps-16","name":"Cambrian\u2013Ordovician System","basin":"Tarim Basin"},{"id":"ps-17","name":"Oligocene Carbonate Reef System","basin":"Malay Basin \u2014 Arang Fm."},{"id":"ps-18","name":"Miocene Delta Front System","basin":"Kutei Basin \u2014 Tunu Field"},{"id":"ps-19","name":"Eocene Turbidite System","basin":"Borneo \u2014 Miri Formation"},{"id":"ps-20","name":"Paleogene Delta System","basin":"Niger Delta \u2014 Agbada Fm."},{"id":"ps-21","name":"Biogenic Gas System","basin":"Nile Delta \u2014 Biogenic Play"},{"id":"ps-22","name":"Lower Wilcox Turbidite System","basin":"Gulf of Mexico \u2014 Wilcox"},{"id":"ps-23","name":"Pliocene Submarine Fan System","basin":"West Africa \u2014 Pliocene SS"}],"plays":[{"id":"pl-1","name":"Asmari Anticline Play","petSysId":"ps-1"},{"id":"pl-2","name":"Bangestan Thrust Play","petSysId":"ps-2"},{"id":"pl-3","name":"Wolfcamp Unconventional","petSysId":"ps-3"},{"id":"pl-4","name":"Brent Province Tilted Fault Block","petSysId":"ps-4"},{"id":"pl-5","name":"Miocene Deltaic Sand","petSysId":"ps-5"},{"id":"pl-6","name":"Group F\u2013I Carbonate Reef Play","petSysId":"ps-6"},{"id":"pl-7","name":"Plover Gas Sand","petSysId":"ps-7"},{"id":"pl-8","name":"Pliocene Deepwater Fan","petSysId":"ps-8"},{"id":"pl-9","name":"Agbada Rollover Anticline","petSysId":"ps-9"},{"id":"pl-10","name":"Vaca Muerta Tight Oil","petSysId":"ps-10"},{"id":"pl-11","name":"Murzuq Devonian Carbonate Play","petSysId":"ps-11"},{"id":"pl-12","name":"Sergipe Pre-Salt Carbonate Play","petSysId":"ps-12"},{"id":"pl-13","name":"South Caspian Deepwater Play","petSysId":"ps-13"},{"id":"pl-14","name":"Barents Triassic Clastic Play","petSysId":"ps-14"},{"id":"pl-15","name":"Greenland Pre-Salt Carbonate Play","petSysId":"ps-15"},{"id":"pl-16","name":"Tarim Cambrian Carbonate Play","petSysId":"ps-16"},{"id":"pl-17","name":"Arang Carbonate Reef Play","petSysId":"ps-17"},{"id":"pl-18","name":"Tunu Gas Sand Play","petSysId":"ps-18"},{"id":"pl-19","name":"Miri Eocene Turbidite Play","petSysId":"ps-19"},{"id":"pl-20","name":"Agbada Stacked Sand Play","petSysId":"ps-20"},{"id":"pl-21","name":"Biogenic Shallow Gas Play","petSysId":"ps-21"},{"id":"pl-22","name":"Wilcox Deepwater Fan Play","petSysId":"ps-22"},{"id":"pl-23","name":"Pliocene Submarine Fan Play","petSysId":"ps-23"}],"prospects":[{"id":"pr-alpha","name":"Prospect Alpha","playId":"pl-1","petSysId":"ps-1","basin":"Zagros Fold Belt","gcos":0.231},{"id":"pr-beta","name":"Prospect Beta","playId":"pl-5","petSysId":"ps-5","basin":"Kutei Basin","gcos":0.138},{"id":"pr-gamma","name":"Prospect Gamma","playId":"pl-6","petSysId":"ps-6","basin":"Malay Basin","gcos":0.195},{"id":"pr-delta","name":"Prospect Delta","playId":"pl-8","petSysId":"ps-8","basin":"Nile Delta","gcos":0.172},{"id":"pr-epsilon","name":"Prospect Epsilon","playId":"pl-4","petSysId":"ps-4","basin":"North Sea","gcos":0.265},{"id":"pr-zeta","name":"Prospect Zeta","playId":"pl-3","petSysId":"ps-3","basin":"Permian Basin","gcos":0.421},{"id":"pr-eta","name":"Prospect Eta","playId":"pl-9","petSysId":"ps-9","basin":"Niger Delta","gcos":0.228},{"id":"pr-browse","name":"Prospect Browse-1","playId":"pl-7","petSysId":"ps-7","basin":"Browse Basin","gcos":0.158},{"id":"pr-zohr","name":"Prospect Zohr-West","playId":"pl-8","petSysId":"ps-8","basin":"Nile Delta","gcos":0.285},{"id":"pr-vacamuerta","name":"Prospect Vaca-Norte","playId":"pl-10","petSysId":"ps-10","basin":"Neuqu\u00e9n Basin","gcos":0.395},{"id":"pr-murzuq1","name":"Prospect Murzuq-1","playId":"pl-11","petSysId":"ps-11","basin":"Murzuq Basin","gcos":0.18},{"id":"pr-sergipe1","name":"Prospect Sergipe Deep","playId":"pl-12","petSysId":"ps-12","basin":"Sergipe-Alagoas","gcos":0.22},{"id":"pr-caspian1","name":"Prospect Caspian Deep","playId":"pl-13","petSysId":"ps-13","basin":"South Caspian","gcos":0.25},{"id":"pr-barents1","name":"Prospect Barents North","playId":"pl-14","petSysId":"ps-14","basin":"Barents Sea","gcos":0.2},{"id":"pr-greenland1","name":"Prospect Greenland-1","playId":"pl-15","petSysId":"ps-15","basin":"East Greenland","gcos":0.15},{"id":"pr-tarim1","name":"Prospect Tarim Deep","playId":"pl-16","petSysId":"ps-16","basin":"Tarim Basin","gcos":0.19},{"id":"pr-arang1","name":"Prospect Arang Reef-1","playId":"pl-17","petSysId":"ps-17","basin":"Malay Basin \u2014 Arang Fm.","gcos":0.28},{"id":"pr-tunu1","name":"Prospect Tunu Gas-1","playId":"pl-18","petSysId":"ps-18","basin":"Kutei Basin \u2014 Tunu Field","gcos":0.35},{"id":"pr-miri1","name":"Prospect Miri Deep","playId":"pl-19","petSysId":"ps-19","basin":"Borneo \u2014 Miri Formation","gcos":0.21},{"id":"pr-agbada1","name":"Prospect Agbada Stack-1","playId":"pl-20","petSysId":"ps-20","basin":"Niger Delta \u2014 Agbada Fm.","gcos":0.3},{"id":"pr-biogenic1","name":"Prospect Nile Biogenic-1","playId":"pl-21","petSysId":"ps-21","basin":"Nile Delta \u2014 Biogenic Play","gcos":0.38},{"id":"pr-wilcox1","name":"Prospect Wilcox Deep","playId":"pl-22","petSysId":"ps-22","basin":"Gulf of Mexico \u2014 Wilcox","gcos":0.24},{"id":"pr-pliocene1","name":"Prospect West Africa Fan-1","playId":"pl-23","petSysId":"ps-23","basin":"West Africa \u2014 Pliocene SS","gcos":0.27}]};
+
+  //  Dynamic cascade helpers 
+  function _hubGetPS(basinName) {
+    return _HUB_DATA.ps.filter(function(p){ return p.basin === basinName; });
+  }
+  function _hubGetPlays(psId) {
+    return _HUB_DATA.plays.filter(function(p){ return p.petSysId === psId; });
+  }
+  function _hubGetProspects(playId) {
+    return _HUB_DATA.prospects.filter(function(p){ return p.playId === playId; });
+  }
+  function _hubGetWells(prospectId) {
+    return (window.WELLS||[]).filter(function(w){ return w.prospectId === prospectId; });
+  }
+  function _hubGetDiscs(wellId) {
+    return (window.DISCOVERIES||[]).filter(function(d){ return d.wellId === wellId; });
+  }
+  function _hubOpts(items, valField, labelField) {
+    return '<option value="">— Select —</option>' +
+      items.map(function(x){ return '<option value="'+x[valField]+'">'+x[labelField]+'</option>'; }).join('');
+  }
+  function _hubReset(id) {
+    var el = document.getElementById(id);
+    if(el) el.innerHTML = '<option value="">— Select —</option>';
+  }
+
+  //  Cascade event handlers 
+  function hubOnBasinChange() {
+    var v = document.getElementById('hub-sel-basin').value;
+    if (!v) return;
+    _hubCtx.basin = v; _hubCtx.petSys = ''; _hubCtx.play = ''; _hubCtx.prospect = ''; _hubCtx.well = ''; _hubCtx.disc = '';
+    var psel = document.getElementById('hub-sel-petsys');
+    if(psel) psel.innerHTML = _hubOpts(_hubGetPS(v), 'id', 'name');
+    _hubReset('hub-sel-play'); _hubReset('hub-sel-prospect'); _hubReset('hub-sel-well'); _hubReset('hub-sel-disc');
+    hubUpdateCrumb(); hubRenderActivePane(); _hubKgAutoSync();
+    // Propagate back to the global basin context — syncs catalogue, econ,
+    // bp-basin-select, global basin bar, and all other module selectors.
+    // {silent:true} prevents a second toast since Hub already shows context.
+    if (typeof setGlobalBasin === 'function') {
+      setTimeout(function() { setGlobalBasin(v, {silent: true}); }, 60);
+    }
+  }
+  function hubOnPetSysChange() {
+    var v = document.getElementById('hub-sel-petsys').value;
+    _hubCtx.petSys = v; _hubCtx.play = ''; _hubCtx.prospect = ''; _hubCtx.well = ''; _hubCtx.disc = '';
+    var plsel = document.getElementById('hub-sel-play');
+    if(plsel) plsel.innerHTML = _hubOpts(_hubGetPlays(v), 'id', 'name');
+    _hubReset('hub-sel-prospect'); _hubReset('hub-sel-well'); _hubReset('hub-sel-disc');
+    hubUpdateCrumb(); hubRenderActivePane(); _hubKgAutoSync();
+  }
+  function hubOnPlayChange() {
+    var v = document.getElementById('hub-sel-play').value;
+    _hubCtx.play = v; _hubCtx.prospect = ''; _hubCtx.well = ''; _hubCtx.disc = '';
+    var prsel = document.getElementById('hub-sel-prospect');
+    if(prsel) prsel.innerHTML = _hubOpts(_hubGetProspects(v), 'id', 'name');
+    _hubReset('hub-sel-well'); _hubReset('hub-sel-disc');
+    hubUpdateCrumb(); hubRenderActivePane(); _hubKgAutoSync();
+    var play = _HUB_DATA.plays.find(function(p){ return p.id === v; });
+    if(play){ var bp=document.getElementById('bay-play-sel'); if(bp) for(var i=0;i<bp.options.length;i++){ if(bp.options[i].text.indexOf(play.name)>-1){bp.selectedIndex=i;break;} } }
+  }
+  function hubOnProspectChange() {
+    var v = document.getElementById('hub-sel-prospect').value;
+    _hubCtx.prospect = v; _hubCtx.well = ''; _hubCtx.disc = '';
+    var wsel = document.getElementById('hub-sel-well');
+    if(wsel) wsel.innerHTML = _hubOpts(_hubGetWells(v), 'id', 'name');
+    _hubReset('hub-sel-disc');
+    hubUpdateCrumb(); hubRenderActivePane(); _hubKgAutoSync();
+    var pr = _HUB_DATA.prospects.find(function(p){ return p.id === v; });
+    if(pr){
+      var b=document.getElementById('hub-tab-badge-gcos'); if(b&&pr.gcos) b.textContent=Math.round(pr.gcos*100)+'%';
+      var as=document.getElementById('aia-query-basin'); if(as) for(var i=0;i<as.options.length;i++){ if(as.options[i].value===pr.basin){as.selectedIndex=i;break;} }
+      // Delegate to loadProspect — syncs GCoS sliders, prospect-select, vol-prospect-select,
+      // currentProspect, and loadParamsFromData all in one call.
+      if (typeof loadProspect === 'function') {
+        setTimeout(function() { loadProspect(pr.name); }, 150);
+      }
+    }
+  }
+  function hubOnWellChange() {
+    var v = document.getElementById('hub-sel-well').value;
+    _hubCtx.well = v; _hubCtx.disc = '';
+    var dsel = document.getElementById('hub-sel-disc');
+    if(dsel) dsel.innerHTML = _hubOpts(_hubGetDiscs(v), 'id', 'name');
+    hubUpdateCrumb(); hubRenderActivePane(); _hubKgAutoSync();
+  }
+  function hubOnDiscChange() {
+    var v = document.getElementById('hub-sel-disc').value;
+    _hubCtx.disc = v;
+    hubUpdateCrumb(); hubRenderActivePane(); _hubKgAutoSync();
+  }
+
+  //  KG auto-sync: pick deepest selected level and focus the KG there 
+  function _hubKgAutoSync() {
+    var typeEl = document.getElementById('hub-kg-focus-type');
+    var entEl  = document.getElementById('hub-kg-entity');
+    if(!typeEl || !entEl) return;
+    // Find deepest filled level
+    var resolved = null;
+    if(_hubCtx.disc) {
+      var d=(window.DISCOVERIES||[]).find(function(x){return x.id===_hubCtx.disc;});
+      if(d) resolved={type:"discovery",name:d.name};
+    } else if(_hubCtx.well) {
+      var w=(window.WELLS||[]).find(function(x){return x.id===_hubCtx.well;});
+      if(w) resolved={type:"well",name:w.name};
+    } else if(_hubCtx.prospect) {
+      var p=_HUB_DATA.prospects.find(function(x){return x.id===_hubCtx.prospect;});
+      if(p) resolved={type:"prospect",name:p.name};
+    } else if(_hubCtx.play) {
+      var pl=_HUB_DATA.plays.find(function(x){return x.id===_hubCtx.play;});
+      if(pl) resolved={type:"play",name:pl.name};
+    } else if(_hubCtx.petSys) {
+      var ps=_HUB_DATA.ps.find(function(x){return x.id===_hubCtx.petSys;});
+      if(ps) resolved={type:"petroleum_system",name:ps.name};
+    } else if(_hubCtx.basin) {
+      resolved={type:"basin",name:_hubCtx.basin};
+    }
+    if(!resolved) return;
+    // Set the focus-type selector from the cascade hierarchy (lens no longer overrides this)
+    typeEl.value = resolved.type;
+    // Repopulate entity dropdown for this type & select the entity
+    hubKgPopulate();
+    setTimeout(function(){
+      for(var i=0;i<entEl.options.length;i++){
+        if(entEl.options[i].text===resolved.name||entEl.options[i].value===resolved.name){
+          entEl.selectedIndex=i; break;
+        }
+      }
+      // Update KG breadcrumb chip
+      var chip=document.getElementById('hub-kg-ctx-crumb');
+      if(chip) chip.textContent=_hubCrumbText();
+      if(_hubActiveTab==='knowledgegraph') hubKgRender();
+    },40);
+  }
+
+  // Clear all context
+  function hubClearCtx(){
+    ['hub-sel-basin','hub-sel-petsys','hub-sel-play','hub-sel-prospect','hub-sel-well','hub-sel-disc']
+      .forEach(function(id){
+      var el=document.getElementById(id); if(el) el.selectedIndex=0;
+    });
+    _hubReset('hub-sel-petsys');_hubReset('hub-sel-play');_hubReset('hub-sel-prospect');
+    _hubReset('hub-sel-well');_hubReset('hub-sel-disc');
+    _hubCtx={basin:'',petSys:'',play:'',prospect:'',well:'',disc:''};
+    // Also clear the Geo Lens
+    var lensEl=document.getElementById('hub-sel-lens'); if(lensEl) lensEl.value='';
+    var badge=document.getElementById('hub-kg-lens-badge'); if(badge) badge.style.display='none';
+    hubUpdateCrumb(); hubRenderActivePane();
+  }
+
+  function _hubCrumbText(){
+    var parts=[];
+    if(_hubCtx.basin) parts.push(_hubCtx.basin);
+    if(_hubCtx.petSys){ var ps2=_HUB_DATA.ps.find(function(p){return p.id===_hubCtx.petSys;}); if(ps2) parts.push(ps2.name); }
+    if(_hubCtx.play){   var pl2=_HUB_DATA.plays.find(function(p){return p.id===_hubCtx.play;});  if(pl2) parts.push(pl2.name); }
+    if(_hubCtx.prospect){ var pr2=_HUB_DATA.prospects.find(function(p){return p.id===_hubCtx.prospect;}); if(pr2) parts.push(pr2.name); }
+    if(_hubCtx.well){ var w2=(window.WELLS||[]).find(function(w){return w.id===_hubCtx.well;}); if(w2) parts.push(w2.name); }
+    if(_hubCtx.disc){ var d2=(window.DISCOVERIES||[]).find(function(d){return d.id===_hubCtx.disc;}); if(d2) parts.push(d2.name); }
+    return parts.join(' → ');
+  }
+
+  function hubUpdateCrumb() {
+    var c = document.getElementById("hub-crumb-text"); if(!c) return;
+    var txt = _hubCrumbText();
+    c.textContent = txt || "No context selected";
+    // Also update KG crumb chip
+    var chip=document.getElementById('hub-kg-ctx-crumb');
+    if(chip) chip.textContent=txt?'> '+txt:'';
+    // ① Update interactive breadcrumb in KG toolbar
+    hubKgUpdateBreadcrumb();
+  }
+  function hubScrollCtx(){ var e=document.getElementById("hub-ctx-bar"); if(e) e.scrollIntoView({behavior:"smooth",block:"nearest"}); }
+
+  //  Tab 1: Hierarchy 
+  function hubRenderTree() {
+    _syncData();
+    var panel = document.getElementById("hub-tree-panel"); if(!panel) return;
+    if(!_hubCtx.basin){ panel.innerHTML='<div style="padding:28px;text-align:center;color:var(--t3);font-size:11px">Select a basin above to explore the hierarchy</div>'; return; }
+    var basin = _hubCtx.basin;
+    var psList = (window.PETROLEUM_SYSTEMS||[]).filter(function(ps){ return ps.basin===basin; });
+    var tree = { name:basin, type:"basin", data:(window.BASINS||[]).find(function(b){return b.name===basin;})||{}, children:
+      psList.map(function(ps){
+        var plays=(window.PLAYS||[]).filter(function(p){return p.petSysId===ps.id;});
+        return {name:ps.name,type:"petroleum_system",data:ps,children:
+          plays.map(function(play){
+            var prx=(window.PROSPECTS||[]).filter(function(p){return p.playId===play.id;});
+            return {name:play.name,type:"play",data:play,children:
+              prx.map(function(pr){
+                var wells=(window.WELLS||[]).filter(function(w){return w.prospectId===pr.id;});
+                return {name:pr.name,type:"prospect",data:pr,children:
+                  wells.map(function(w){
+                    var discs=(window.DISCOVERIES||[]).filter(function(d){return d.wellId===w.id;});
+                    return {name:w.name,type:"well",data:w,children:
+                      discs.map(function(d){return {name:d.name,type:"discovery",data:d,children:[]};})};
+                  })};
+              })};
+          })};
+      })};
+    panel.innerHTML = _hubTreeNode(tree,0,true);
+  }
+  function _hubTreeNode(node,depth,expanded){
+    var hasK=node.children&&node.children.length>0;
+    var col=_HUB_COLORS[node.type]||"#8896A5", icon=_HUB_ICONS[node.type]||"";
+    var ind=depth*16;
+    var badge=hasK?'<span style="font-size:8px;color:var(--t3);margin-left:3px">('+node.children.length+')</span>':"";
+    var tog=hasK
+      ?'<span class="hub-tn-tog" onclick="event.stopPropagation();_hubTog(this)" style="cursor:pointer;font-size:10px;color:var(--t3);margin-right:4px;display:inline-block;width:12px;transition:transform .15s;transform:rotate('+(expanded?90:0)+'deg)"></span>'
+      :'<span style="display:inline-block;width:16px"></span>';
+    var sn=node.name.replace(/'/g,"\\'");
+    var docTag = node.data && node.data._docSource
+      ? '<span class="doc-src-badge" style="font-size:7px;padding:0 4px" title="Imported from: '+((node.data._docSourceFile)||'Doc Parser')+'">Doc</span>' : '';
+    var html='<div class="hub-tn" style="padding:4px 6px 4px '+ind+'px;cursor:pointer;border-radius:4px;display:flex;align-items:center;gap:4px;font-size:11px;transition:background .12s" onmouseover="this.style.background=\'rgba(255,255,255,.05)\'" onmouseout="this.style.background=\'\'" onclick="_hubDetail(\''+sn+'\',\''+node.type+'\')">'
+      +tog+'<span style="font-size:12px">'+icon+'</span>'
+      +'<span style="color:'+col+';font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:'+(260-ind)+'px">'+node.name+'</span>'
+      +badge+docTag+'</div>';
+    if(hasK){
+      html+='<div class="hub-tc" style="display:'+(expanded?"block":"none")+'">';
+      node.children.forEach(function(c){html+=_hubTreeNode(c,depth+1,depth<1);});
+      html+='</div>';
+    }
+    return html;
+  }
+  function _hubTog(el){
+    var k=el.closest(".hub-tn").nextElementSibling;
+    if(!k||!k.classList.contains("hub-tc")) return;
+    var o=k.style.display!=="none";
+    k.style.display=o?"none":"block";
+    el.style.transform=o?"rotate(0deg)":"rotate(90deg)";
+  }
+  function _hubDetail(name,type){
+    var d=document.getElementById("hub-detail-panel"); if(!d) return;
+    var data=null;
+    if(type==="basin") data=BASINS.find(function(b){return b.name===name;});
+    else if(type==="petroleum_system") data=PETROLEUM_SYSTEMS.find(function(p){return p.name===name;});
+    else if(type==="play")      data=PLAYS.find(function(p){return p.name===name;});
+    else if(type==="prospect")  data=PROSPECTS.find(function(p){return p.name===name;});
+    else if(type==="well")      data=WELLS.find(function(w){return w.name===name;});
+    else if(type==="discovery") data=DISCOVERIES.find(function(x){return x.name===name;});
+    if(!data){d.innerHTML='<div style="padding:16px;text-align:center;color:var(--t3)">No data</div>';return;}
+    var col=_HUB_COLORS[type],icon=_HUB_ICONS[type];
+    var tlbl=type.replace(/_/g," ").replace(/\b\w/g,function(c){return c.toUpperCase();});
+    var skip={id:1,osduId:1,children:1,data:1,petSysId:1,playId:1,prospectId:1,wellId:1};
+    var html='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
+      +'<span style="font-size:22px">'+icon+'</span><div>'
+      +'<div style="font-size:14px;font-weight:700;color:var(--t1)">'+name+'</div>'
+      +'<div style="display:flex;gap:5px;align-items:center;margin-top:3px">'
+      +'<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:'+col+'22;color:'+col+';font-weight:600">'+tlbl+'</span>'
+      +(data.osduId?'<span style="font-size:8px;color:var(--t3)">'+data.osduId+'</span>':"")
+      +'</div></div></div>';
+    // Doc-source provenance badge in detail panel
+    if(data._docSource) {
+      var _dts = data._docSourceTime ? new Date(data._docSourceTime).toLocaleString() : '';
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;margin-bottom:10px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:6px;font-size:8.5px">'
+        + '<span class="doc-src-badge" style="margin:0">Doc Import</span>'
+        + '<span style="color:var(--t2)">from <b>'+(data._docSourceFile||'Doc Parser')+'</b></span>'
+        + (_dts ? '<span style="color:var(--t3)">· '+_dts+'</span>' : '')
+        + (data._docSourceCountry ? '<span style="color:var(--t3)">· '+data._docSourceCountry+'</span>' : '')
+        + (data._docSourceBasin   ? '<span style="color:var(--t3)">· '+data._docSourceBasin+'</span>'   : '')
+        + '</div>';
+    }
+    // Deep-link buttons
+    html+='<div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap">';
+    if(type==="prospect") html+='<span class="hub-deeplink" onclick="hubSwitchTab(\'bayesplay\')"> Bayesian →</span><span class="hub-deeplink" onclick="hubSwitchTab(\'aianalogues\')"> Analogues →</span>';
+    if(type==="play"||type==="petroleum_system") html+='<span class="hub-deeplink" onclick="hubSwitchTab(\'petrosystem\')"> System →</span>';
+    var sn2=name.replace(/'/g,"\\'");
+    html+='<span class="hub-deeplink" onclick="hubKgFocusOn(\''+type+'\',\''+sn2+'\')"> KG →</span></div>';
+    // Fields
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">';
+    for(var key in data){
+      if(skip[key]||data[key]===null||data[key]===undefined||data[key]===""||typeof data[key]==="object") continue;
+      var lbl=key.replace(/([A-Z])/g," $1").replace(/^./,function(s){return s.toUpperCase();}).replace(/_/g," ");
+      var disp=typeof data[key]==="number"?data[key].toLocaleString():String(data[key]);
+      html+='<div style="background:var(--bg4);border-radius:5px;padding:6px 9px">'
+        +'<div style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">'+lbl+'</div>'
+        +'<div style="font-size:11px;font-weight:600;color:var(--t1)">'+disp+'</div></div>';
+    }
+    html+='</div>';
+    // Edges
+    var edges=KG_EDGES.filter(function(e){return(e.srcName===name&&e.srcType===type)||(e.tgtName===name&&e.tgtType===type);});
+    if(edges.length){
+      var RC={contains:"#059669",charges:"#D97706",seals:"#0891B2",similar_to:"#7C3AED",analogous_to:"#8B5CF6",de_risks:"#10B981",migrates_to:"#F59E0B"};
+      html+='<div style="margin-top:12px;border-top:1px solid var(--b1);padding-top:10px">'
+        +'<div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:6px">KG Connections ('+edges.length+')</div>';
+      edges.slice(0,6).forEach(function(e){
+        var isSrc=e.srcName===name,other=isSrc?e.tgtName:e.srcName,otherType=isSrc?e.tgtType:e.srcType;
+        var rc=RC[e.rel]||"#8896A5",arrow=isSrc?"→":"←";
+        html+='<div style="display:flex;align-items:center;gap:5px;padding:3px 0;font-size:10px">'
+          +'<span style="color:'+rc+';font-weight:600;min-width:80px;font-size:10px">'+e.rel.replace(/_/g," ")+'</span>'
+          +'<span style="color:var(--t3)">'+arrow+'</span><span>'+(_HUB_ICONS[otherType]||"")+'</span>'
+          +'<span style="color:var(--t1)">'+other+'</span>'
+          +(e.weight<1?'<span style="font-size:8px;color:var(--t3);margin-left:auto">'+Math.round(e.weight*100)+'%</span>':"")
+          +'</div>';
+      });
+      html+='</div>';
+    }
+    d.innerHTML=html;
+  }
+
+  //  Tab 2: Petroleum System Engine 
+  function hubRenderPSE() { _syncData();
+    var m=document.getElementById("hub-pse-mount"); if(!m) return;
+    if(!_hubCtx.basin){m.innerHTML='<div style="padding:40px;text-align:center;color:var(--t3);font-size:11px"><div style="font-size:28px;opacity:.25;margin-bottom:8px"></div>Select a basin above</div>';return;}
+    var basin=_hubCtx.basin;
+    var ps2=document.getElementById("pse-basin-select");
+    if(ps2){if(ps2.options.length<2&&typeof pse_populateBasinSelect==="function")pse_populateBasinSelect();ps2.value=basin;}
+    var psList=PETROLEUM_SYSTEMS.filter(function(p){return p.basin===basin;});
+    var html='<div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+      +'<span style="font-size:18px"></span>'
+      +'<div><div style="font-size:13px;font-weight:700;color:var(--t1)">Petroleum System — '+basin+'</div>'
+      +'<div style="font-size:10px;color:var(--t3)">'+psList.length+' system(s) · causal network & risk propagation</div></div>'
+      +'<span class="hub-deeplink" style="margin-left:auto" onclick="_hubGoLegacy(\'petrosystem\')">Open Full Engine ↗</span>'
+      +'</div>';
+    if(!psList.length){html+='<div style="color:var(--t3);font-size:11px;padding:8px">No petroleum systems found for this basin</div>';}
+    else{
+      html+='<table style="width:100%;border-collapse:collapse;font-size:10px">'
+        +'<thead><tr style="border-bottom:1px solid var(--b1)">'
+        +'<th style="text-align:left;padding:5px 8px;color:var(--t3)">System</th>'
+        +'<th style="text-align:left;padding:5px 8px;color:var(--t3)">Source Rock</th>'
+        +'<th style="padding:5px 8px;color:var(--t3)">Kerogen</th>'
+        +'<th style="padding:5px 8px;color:var(--t3)">Maturity</th>'
+        +'<th style="padding:5px 8px;color:var(--t3)">Charge Risk</th>'
+        +'<th style="padding:5px 8px;color:var(--t3)">Trap Style</th>'
+        +'<th style="padding:5px 8px;color:var(--t3)">Plays</th>'
+        +'</tr></thead><tbody>';
+      psList.forEach(function(ps){
+        var plays=(window.PLAYS||[]).filter(function(p){return p.petSysId===ps.id;});
+        var cc=ps.chargeRisk>=0.85?"var(--green)":ps.chargeRisk>=0.7?"var(--amber)":"var(--red)";
+        html+='<tr style="border-bottom:1px solid var(--b1)">'
+          +'<td style="padding:6px 8px;font-weight:600;color:var(--t1)">'+ps.name+'</td>'
+          +'<td style="padding:6px 8px;color:var(--t2)">'+ps.sourceRock+'<span style="color:var(--t3);font-size:8px;margin-left:4px">('+ps.sourceRockAge+')</span></td>'
+          +'<td style="padding:6px 8px;text-align:center;color:var(--t2)">'+ps.kerogenType+'</td>'
+          +'<td style="padding:6px 8px;text-align:center;color:var(--t2)">'+ps.maturity+'</td>'
+          +'<td style="padding:6px 8px;text-align:center;font-weight:700;color:'+cc+'">'+Math.round(ps.chargeRisk*100)+'%</td>'
+          +'<td style="padding:6px 8px;text-align:center;color:var(--t2)">'+ps.trapStyle+'</td>'
+          +'<td style="padding:6px 8px;text-align:center;color:var(--t2)">'+plays.length+'</td>'
+          +'</tr>';
+      });
+      html+='</tbody></table>';
+    }
+    html+='</div>';
+    m.innerHTML=html;
+    setTimeout(function(){if(typeof pse_loadBasin==="function")pse_loadBasin(basin);},80);
+  }
+
+  //  Tab 3: Knowledge Graph 
+  function hubKgPopulate(){
+    _syncData();
+    var te=document.getElementById("hub-kg-focus-type"),ee=document.getElementById("hub-kg-entity");
+    if(!te||!ee) return;
+    var type=te.value, ents=[];
+    // Core hierarchy types
+    if(type==="basin")             ents=(window.BASINS||[]).map(function(b){return b.name;});
+    else if(type==="petroleum_system") ents=(window.PETROLEUM_SYSTEMS||[]).map(function(p){return p.name;});
+    else if(type==="play")         ents=(window.PLAYS||[]).map(function(p){return p.name;});
+    else if(type==="prospect")     ents=(window.PROSPECTS||[]).map(function(p){return p.name;});
+    else if(type==="well")         ents=(window.WELLS||[]).map(function(w){return w.name;});
+    else if(type==="discovery")    ents=(window.DISCOVERIES||[]).map(function(d){return d.name;});
+    else {
+      // Geological attribute types — derive unique names from KG_EDGES
+      var seen2={};
+      (window.KG_EDGES||[]).forEach(function(e){
+        if(e.srcType===type && !seen2[e.srcName]){seen2[e.srcName]=true;ents.push(e.srcName);}
+        if(e.tgtType===type && !seen2[e.tgtName]){seen2[e.tgtName]=true;ents.push(e.tgtName);}
+      });
+      ents.sort();
+    }
+    ee.innerHTML='<option value="">Select entity…</option>'+ents.map(function(n){return'<option value="'+n+'">'+n+'</option>';}).join("");
+  }
+
+  /*  Geo Lens handler 
+     The Geo Lens is a VISUAL OVERLAY on the existing cascade context.
+     It does NOT replace the focal node or the KG graph traversal.
+     Instead it annotates nodes with lensMatch:true/false after the graph is
+     built, and hubKgDraw uses that flag to dim non-lens nodes and highlight
+     lens-matching ones. The cascade context (what you're looking at) stays
+     unchanged — the lens just answers "which geological dimension to spotlight."
+   */
+
+  // Map each lens option value → the set of node types it covers
+  var _GEO_LENS_TYPES = {
+    // Source Rock group
+    source_rock:       ['source_rock','thermal_maturity','charge_timing','geochemistry'],
+    thermal_maturity:  ['source_rock','thermal_maturity','charge_timing','geochemistry'],
+    charge_timing:     ['source_rock','thermal_maturity','charge_timing','geochemistry'],
+    geochemistry:      ['source_rock','thermal_maturity','charge_timing','geochemistry'],
+    // Reservoir group
+    reservoir:         ['reservoir','petrophysical_logs','formation_tops','core_data','porosity_trap'],
+    petrophysical_logs:['reservoir','petrophysical_logs','formation_tops','core_data','porosity_trap'],
+    formation_tops:    ['reservoir','petrophysical_logs','formation_tops','core_data','porosity_trap'],
+    core_data:         ['reservoir','petrophysical_logs','formation_tops','core_data','porosity_trap'],
+    porosity_trap:     ['reservoir','petrophysical_logs','formation_tops','core_data','porosity_trap'],
+    // Seal & Trap group
+    seal:              ['seal','seal_integrity','fault_seal','trap_geometry'],
+    seal_integrity:    ['seal','seal_integrity','fault_seal','trap_geometry'],
+    fault_seal:        ['seal','seal_integrity','fault_seal','trap_geometry'],
+    trap_geometry:     ['seal','seal_integrity','fault_seal','trap_geometry'],
+    // Migration & Fluid group
+    migration_pathway: ['migration_pathway','hc_expulsion','hc_preservation'],
+    hc_expulsion:      ['migration_pathway','hc_expulsion','hc_preservation'],
+    hc_preservation:   ['migration_pathway','hc_expulsion','hc_preservation'],
+    // Overburden group
+    overburden:        ['overburden','burial_history','diagenesis'],
+    burial_history:    ['overburden','burial_history','diagenesis'],
+    diagenesis:        ['overburden','burial_history','diagenesis'],
+    // Structure group
+    tectonic_setting:  ['tectonic_setting','fracture_network','heat_flow','geothermal'],
+    fracture_network:  ['tectonic_setting','fracture_network','heat_flow','geothermal'],
+    heat_flow:         ['tectonic_setting','fracture_network','heat_flow','geothermal'],
+    geothermal:        ['tectonic_setting','fracture_network','heat_flow','geothermal'],
+    // Subsurface Data group
+    seismic_coverage:  ['seismic_coverage','well_test'],
+    well_test:         ['seismic_coverage','well_test'],
+    // Commercial group
+    licence_block:     ['licence_block','working_interest','licence_expiry','play_resources','wellbore_risk','field_gc'],
+    working_interest:  ['licence_block','working_interest','licence_expiry','play_resources','wellbore_risk','field_gc'],
+    licence_expiry:    ['licence_block','working_interest','licence_expiry','play_resources','wellbore_risk','field_gc'],
+    play_resources:    ['licence_block','working_interest','licence_expiry','play_resources','wellbore_risk','field_gc'],
+    wellbore_risk:     ['licence_block','working_interest','licence_expiry','play_resources','wellbore_risk','field_gc'],
+    field_gc:          ['licence_block','working_interest','licence_expiry','play_resources','wellbore_risk','field_gc'],
+    //  DOMAIN A: STRATIGRAPHY 
+    strat_unit:        ['strat_unit','strat_formation','strat_member','strat_group','strat_supergroup','strat_column','litho_unit'],
+    strat_formation:   ['strat_unit','strat_formation','strat_member','strat_group','strat_supergroup','strat_column','litho_unit'],
+    strat_member:      ['strat_unit','strat_formation','strat_member','strat_group','strat_supergroup','strat_column','litho_unit'],
+    strat_group:       ['strat_unit','strat_formation','strat_member','strat_group','strat_supergroup','strat_column','litho_unit'],
+    strat_supergroup:  ['strat_unit','strat_formation','strat_member','strat_group','strat_supergroup','strat_column','litho_unit'],
+    sequence_strat:    ['sequence_strat','systems_tract','unconformity','mfs','sequence_boundary','strat_correlation'],
+    systems_tract:     ['sequence_strat','systems_tract','unconformity','mfs','sequence_boundary','strat_correlation'],
+    unconformity:      ['sequence_strat','systems_tract','unconformity','mfs','sequence_boundary','strat_correlation'],
+    mfs:               ['sequence_strat','systems_tract','unconformity','mfs','sequence_boundary','strat_correlation'],
+    biostrat_zone:     ['biostrat_zone','chron_age','strat_correlation','litho_unit'],
+    chron_age:         ['biostrat_zone','chron_age','strat_correlation','litho_unit'],
+    //  DOMAIN B: DEPOSITIONAL 
+    dep_env:           ['dep_env','fluvial','delta','lacustrine','aeolian','glacial'],
+    fluvial:           ['dep_env','fluvial','delta','lacustrine','aeolian','glacial'],
+    delta:             ['dep_env','fluvial','delta','lacustrine','aeolian','glacial'],
+    deepwater_fan:     ['deepwater_fan','turb_channel','turb_lobe','submarine_fan','channel_levee','mtt'],
+    turb_channel:      ['deepwater_fan','turb_channel','turb_lobe','submarine_fan','channel_levee','mtt'],
+    turb_lobe:         ['deepwater_fan','turb_channel','turb_lobe','submarine_fan','channel_levee','mtt'],
+    carbonate_platform:['carbonate_platform','reef','shelf_sand'],
+    reef:              ['carbonate_platform','reef','shelf_sand'],
+    shelf_sand:        ['carbonate_platform','reef','shelf_sand'],
+    //  DOMAIN C: STRUCTURAL 
+    fault_sys:         ['fault_sys','normal_fault','reverse_fault','strike_slip','thrust_belt'],
+    anticline:         ['anticline','syncline','rollover','struct_closure','trap_style'],
+    syncline:          ['anticline','syncline','rollover','struct_closure','trap_style'],
+    rollover:          ['anticline','syncline','rollover','struct_closure','trap_style'],
+    salt_diapir:       ['salt_diapir','salt_canopy','inversion','flower_struct'],
+    thrust_belt:       ['fault_sys','normal_fault','reverse_fault','strike_slip','thrust_belt'],
+    struct_closure:    ['struct_closure','trap_style','anticline','rollover'],
+    //  DOMAIN D: GEOCHEMISTRY EXTENDED 
+    biomarker:         ['biomarker','oil_fingerprint','oil_family','source_corr'],
+    oil_fingerprint:   ['biomarker','oil_fingerprint','oil_family','source_corr'],
+    rock_eval:         ['rock_eval','toc_val','vitrinite_ro','expulsion_eff','hc_kitchen'],
+    toc_val:           ['rock_eval','toc_val','vitrinite_ro','expulsion_eff','hc_kitchen'],
+    vitrinite_ro:      ['rock_eval','toc_val','vitrinite_ro','expulsion_eff','hc_kitchen'],
+    hc_kitchen:        ['rock_eval','toc_val','vitrinite_ro','expulsion_eff','hc_kitchen'],
+    gas_composition:   ['gas_composition','isotope_sig','sulfur_pct'],
+    isotope_sig:       ['gas_composition','isotope_sig','sulfur_pct'],
+    //  DOMAIN E: DECISION INTELLIGENCE 
+    play_chance:       ['play_chance','gcos_node','emv_node','risk_matrix'],
+    gcos_node:         ['play_chance','gcos_node','emv_node','risk_matrix'],
+    emv_node:          ['play_chance','gcos_node','emv_node','risk_matrix'],
+    risk_matrix:       ['play_chance','gcos_node','emv_node','risk_matrix'],
+    portfolio_rank:    ['portfolio_rank','drill_priority','scenario_node','sensitivity_node','monte_carlo'],
+    drill_priority:    ['portfolio_rank','drill_priority','scenario_node','sensitivity_node','monte_carlo'],
+    analogue_node:     ['analogue_node','bayesian_node','ml_model'],
+    bayesian_node:     ['analogue_node','bayesian_node','ml_model'],
+    ml_model:          ['analogue_node','bayesian_node','ml_model'],
+  };
+
+  // Active lens value — read by hubKgRender to annotate nodes, and by hubKgDraw to shade them
+  var _activeGeoLens = '';
+
+  function hubOnLensChange(lensVal) {
+    _activeGeoLens = lensVal || '';
+    var badge    = document.getElementById('hub-kg-lens-badge');
+    var badgeLbl = document.getElementById('hub-kg-lens-badge-label');
+
+    if (lensVal) {
+      // Get human label from the select
+      var lensLabel = (function() {
+        var s = document.getElementById('hub-sel-lens');
+        if (!s) return lensVal;
+        var opt = s.options[s.selectedIndex];
+        return opt ? opt.text : lensVal;
+      })();
+      if (badge)    badge.style.display = 'flex';
+      if (badgeLbl) badgeLbl.textContent = lensLabel;
+      // Switch to KG tab so user sees the overlay
+      hubSwitchTab('knowledgegraph');
+    } else {
+      if (badge) badge.style.display = 'none';
+    }
+    // Re-render the existing KG graph with lens overlay applied (or removed)
+    // hub-kg-focus-type and entity are NOT changed — context stays the same
+    if (document.getElementById('hub-kg-entity') &&
+        document.getElementById('hub-kg-entity').value) {
+      hubKgRender();
+    } else {
+      // No entity yet — trigger auto-sync to pick deepest cascade level
+      _hubKgAutoSync();
+    }
+  }
+
+  function hubKgFocusOn(type,name){
+    hubSwitchTab("knowledgegraph");
+    var te=document.getElementById("hub-kg-focus-type"); if(te)te.value=type;
+    hubKgPopulate();
+    var ee=document.getElementById("hub-kg-entity"); if(ee)ee.value=name;
+    setTimeout(hubKgRender,60);
+  }
+  function hubKgRender(){
+    var te=document.getElementById("hub-kg-focus-type"),ee=document.getElementById("hub-kg-entity"),de=document.getElementById("hub-kg-depth");
+    if(!te||!ee) return;
+    var fType=te.value,fName=ee.value,maxD=parseInt(de?de.value:"2");
+    if(!fName) return;
+    var hint=document.getElementById("hub-kg-hint"); if(hint)hint.style.display="none";
+    var vis={},nm={},el2=[];
+    var q=[{type:fType,name:fName,depth:0}]; vis[fType+":"+fName]=true; nm[fType+":"+fName]={id:fType+":"+fName,type:fType,name:fName,focal:true};
+    // Helper to look up entity data (for doc-source tagging on KG nodes)
+    function _kgEntityData(type, name) {
+      var arr = type==='basin'?window.BASINS:type==='play'?window.PLAYS:type==='prospect'?window.PROSPECTS:
+               type==='well'?window.WELLS:type==='discovery'?window.DISCOVERIES:type==='petroleum_system'?window.PETROLEUM_SYSTEMS:[];
+      return (arr||[]).find(function(x){return x.name===name||x.id===name;}) || {};
+    }
+
+    //  ANALOGUE RELS: never traversed in normal BFS; injected on-demand via right-click 
+    var _ANALOGUE_RELS = {analogous_to:true, similar_to:true};
+
+    while(q.length){
+      var cur=q.shift(); if(cur.depth>=maxD) continue;
+      (window.KG_EDGES||[]).forEach(function(e){
+        // Skip analogous_to / similar_to in normal BFS — they are injected on-demand
+        if(_ANALOGUE_RELS[e.rel]) return;
+        var nb=null;
+        if(e.srcType===cur.type&&e.srcName===cur.name) nb={type:e.tgtType,name:e.tgtName};
+        else if(e.tgtType===cur.type&&e.tgtName===cur.name) nb={type:e.srcType,name:e.srcName};
+        if(!nb) return;
+        var nk=nb.type+":"+nb.name;
+        if(!nm[nk]){
+          var ndata=_kgEntityData(nb.type,nb.name);
+          nm[nk]={id:nk,type:nb.type,name:nb.name,focal:false,data:ndata};
+        }
+        if(!vis[nk]){vis[nk]=true;q.push({type:nb.type,name:nb.name,depth:cur.depth+1});}
+        el2.push({source:e.srcType+":"+e.srcName,target:e.tgtType+":"+e.tgtName,rel:e.rel,weight:e.weight,isAnalogue:false});
+      });
+    }
+    // Also attach data to focal node
+    nm[fType+":"+fName].data = _kgEntityData(fType, fName);
+    _hubKgNodes=Object.values(nm); _hubKgLinks=el2;
+    // Clear any previously shown analogues when graph is re-rendered
+    _kgActiveAnalogueNodes = {};
+
+    //  Geo Lens overlay: annotate each node with lensMatch 
+    // lensMatch=true  → this node belongs to the active lens group → spotlight it
+    // lensMatch=null  → no lens active → all nodes rendered normally
+    // lensMatch=false → lens active but this node type is outside it → dim it
+    if (_activeGeoLens) {
+      var _lensTypes = _GEO_LENS_TYPES[_activeGeoLens] || [_activeGeoLens];
+      _hubKgNodes.forEach(function(n) {
+        // Focal node (the cascade context entity) is always treated as a hub anchor,
+        // never dimmed — it's the root the lens radiates from
+        if (n.focal) { n.lensMatch = null; return; }
+        n.lensMatch = (_lensTypes.indexOf(n.type) !== -1);
+      });
+      // Also mark edges: a lens-edge connects at least one lensMatch node
+      _hubKgLinks.forEach(function(lnk) {
+        var a = nm[lnk.source], b = nm[lnk.target];
+        lnk.lensEdge = (a && a.lensMatch) || (b && b.lensMatch);
+      });
+    } else {
+      // No lens — clear all annotations
+      _hubKgNodes.forEach(function(n) { n.lensMatch = null; });
+      _hubKgLinks.forEach(function(lnk) { lnk.lensEdge = null; });
+    }
+
+    var sn=document.getElementById("hub-kg-stat-nodes"),se2=document.getElementById("hub-kg-stat-edges");
+    if(sn)sn.textContent=_hubKgNodes.length; if(se2)se2.textContent=_hubKgLinks.length;
+    // Edge list
+    var ep=document.getElementById("hub-kg-edge-list");
+    if(ep){
+      var RC2={contains:"#059669",charges:"#D97706",seals:"#0891B2",similar_to:"#7C3AED",analogous_to:"#8B5CF6",de_risks:"#10B981",migrates_to:"#F59E0B"};
+      var seen={},ehtml="";
+      _hubKgLinks.forEach(function(lnk){var k=lnk.source+"-"+lnk.rel+"-"+lnk.target;if(seen[k])return;seen[k]=true;
+        var rc=RC2[lnk.rel]||"#8896A5",src=lnk.source.split(":")[1],tgt=lnk.target.split(":")[1];
+        ehtml+='<div style="display:flex;align-items:center;gap:4px;padding:4px 0;border-bottom:1px solid var(--b1)">'
+          +'<div style="flex:1;min-width:0"><div style="font-size:10px;color:var(--t1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+src+'</div></div>'
+          +'<div style="background:'+rc+'22;color:'+rc+';font-size:8px;padding:2px 5px;border-radius:8px;white-space:nowrap;font-weight:600">'+lnk.rel.replace(/_/g," ")+'</div>'
+          +'<div style="color:var(--t3)">→</div>'
+          +'<div style="flex:1;min-width:0"><div style="font-size:10px;color:var(--t1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+tgt+'</div></div>'
+          +(lnk.weight<1?'<div style="font-size:8px;color:var(--t3)">'+Math.round(lnk.weight*100)+'%</div>':"")
+          +'</div>';
+      });
+      ep.innerHTML=ehtml||'<div style="text-align:center;color:var(--t3);padding:16px">No edges</div>';
+    }
+    // ④ Neighbourhood filter: keep only nodes directly connected to focal
+    if (_kgNeighbourhood && _hubKgNodes && _hubKgNodes.length) {
+      var _focal = _hubKgNodes.find(function(n){ return n.focal; });
+      if (_focal) {
+        var _fid = _focal.id;
+        var _conn = {}; _conn[_fid]=true;
+        _hubKgLinks.forEach(function(l){
+          var s=typeof l.source==='object'?l.source.id:l.source;
+          var t=typeof l.target==='object'?l.target.id:l.target;
+          if(s===_fid) _conn[t]=true;
+          if(t===_fid) _conn[s]=true;
+        });
+        _hubKgNodes = _hubKgNodes.filter(function(n){ return _conn[n.id]; });
+        _hubKgLinks = _hubKgLinks.filter(function(l){
+          var s=typeof l.source==='object'?l.source.id:l.source;
+          var t=typeof l.target==='object'?l.target.id:l.target;
+          return _conn[s]&&_conn[t];
+        });
+      }
+    }
+    hubKgDraw();
+    // Move edge list into card body if Edges tab is active, else just refresh the active card
+    if(typeof hubKgRenderCard==="function") setTimeout(hubKgRenderCard,60);
+  }
+  //  KG state for interaction 
+  var _kgDrag=null, _kgHover=null, _kgSelected=null, _kgTooltip=null, _kgPulse=0;
+  var _kgPan={x:0,y:0}, _kgPanStart=null, _kgZoom=1;
+  var _kgLive=true; // always-on simulation flag
+
+  function _kgRelColor(rel){
+    var map={
+      contains:"#059669",       // green — hierarchy/contains
+      charges:"#D97706",        // amber — charging
+      seals:"#0891B2",          // cyan — seal
+      similar_to:"#7C3AED",     // violet — analogue
+      analogous_to:"#8B5CF6",   // purple — analogue
+      de_risks:"#10B981",       // emerald — de-risking
+      migrates_to:"#F59E0B",    // yellow — migration
+      sources:"#EF4444",        // red — sourcing
+      targets:"#F97316",        // orange — targeting
+      co_located:"#06B6D4",     // cyan — co-location
+      overlies:"#6366F1",       // indigo — stratigraphy
+      supports:"#22C55E",       // bright green — data support
+      reservoir_in:"#A855F7",   // purple — reservoir membership
+      //  NEW DOMAIN RELATIONS 
+      deposited_in:"#0891B2",   // cyan — depositional environment
+      deposited_by:"#0E7490",   // dark cyan — depositional process
+      correlates_with:"#818CF8",// indigo — stratigraphic correlation
+      bounded_by:"#A21CAF",     // magenta — stratigraphic boundary
+      underlies:"#4338CA",      // dark indigo — stratigraphic position
+      deforms:"#DC2626",        // red — structural deformation
+      cuts:"#EF4444",           // bright red — fault cutting
+      inverts:"#F97316",        // orange — structural inversion
+      controls:"#EC4899",       // pink — structural control
+      sourced_from:"#B45309",   // brown — geochemical sourcing
+      typed_as:"#F59E0B",       // amber — geochemical typing
+      fingerprinted_by:"#FB923C",// light amber — oil fingerprint
+      evaluates:"#10B981",      // emerald — data evaluation
+      ranks:"#059669",          // green — portfolio ranking
+      predicts:"#6366F1",       // indigo — ML prediction
+      updates:"#7C3AED",        // violet — Bayesian update
+      prioritises:"#2fb87a",    // brand green — drill priority
+      quantifies:"#2fb87a",     // mint — resource quantification
+      matures_into:"#F97316",   // orange — prospect maturation
+      promotes_to:"#DC2626",    // red — discovery promotion
+    };
+    return map[rel]||"#64748b";
+  }
+
+  function _kgHitTest(mx,my,W,H){
+    // Convert mouse → world coords (undo pan/zoom)
+    var wx=(mx-W/2-_kgPan.x)/_kgZoom+W/2;
+    var wy=(my-H/2-_kgPan.y)/_kgZoom+H/2;
+    for(var i=_hubKgNodes.length-1;i>=0;i--){
+      var n=_hubKgNodes[i];
+      var r=(_HUB_SIZES[n.type]||8)*(n.focal?1.6:1)+4;
+      var dx=wx-n.x,dy=wy-n.y;
+      if(dx*dx+dy*dy<=r*r) return n;
+    }
+    return null;
+  }
+
+  function _kgShowTooltip(canvas,n,mx,my){
+    var wrap=document.getElementById("hub-kg-left")||document.getElementById("hub-kg-wrap");if(!wrap)return;
+    var tt=document.getElementById("hub-kg-tt");
+    if(!tt){tt=document.createElement("div");tt.id="hub-kg-tt";
+      tt.style.cssText="position:absolute;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:9px 12px;font-size:10px;color:#1e293b;pointer-events:none;max-width:210px;z-index:99;box-shadow:0 4px 20px rgba(0,0,0,.12);transition:opacity .15s";
+      wrap.appendChild(tt);}
+    var col=_HUB_COLORS[n.type]||"#8896A5";
+    var icon=_HUB_ICONS[n.type]||"";
+    var conns=(_hubKgLinks||[]).filter(function(l){return l.source===n.id||l.target===n.id;}).length;
+    tt.innerHTML='<div style="font-weight:700;color:'+col+';margin-bottom:3px;font-size:11px">'+icon+' '+n.name+'</div>'
+      +'<div style="color:#64748b;font-size:8.5px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;background:'+col+'18;display:inline-block;padding:1px 6px;border-radius:4px">'+n.type.replace(/_/g," ")+'</div>'
+      +(n.focal?'<div style="font-size:8px;color:'+col+';font-weight:600;margin-bottom:3px"> Focal node</div>':'')
+      +'<div style="color:#475569;font-size:10px">'+conns+' connection'+(conns!==1?"s":"")+'</div>'
+      +'<div style="color:#94a3b8;font-size:8px;margin-top:4px;border-top:1px solid #f1f5f9;padding-top:4px">Click to make focal · Drag to move</div>';
+    tt.style.opacity="1";
+    var rect=wrap.getBoundingClientRect();
+    tt.style.left=Math.min(mx+14,wrap.clientWidth-220)+"px";
+    tt.style.top=Math.max(my-8,4)+"px";
+  }
+
+  function _kgHideTooltip(){
+    var tt=document.getElementById("hub-kg-tt");if(tt)tt.style.opacity="0";
+  }
+
+  function _kgHighlightEdgeList(nodeId){
+    var ep=document.getElementById("hub-kg-edge-list");if(!ep)return;
+    ep.querySelectorAll(".kg-edge-row").forEach(function(row){
+      if(!nodeId){row.style.background="transparent";return;}
+      var active=row.dataset.src===nodeId||row.dataset.tgt===nodeId;
+      row.style.background=active?"rgba(124,58,237,.10)":"transparent";
+      row.style.outline=active?"1px solid rgba(107,70,193,.18)":"none";
+    });
+  }
+
+  function hubKgDraw(){
+    // Target the left pane (renamed from hub-kg-wrap)
+    var wrap=document.getElementById("hub-kg-left")||document.getElementById("hub-kg-wrap");
+    if(!wrap) return;
+
+    //  All geometry in CSS pixels 
+    var DPR=Math.round(window.devicePixelRatio||1);
+    var W=wrap.clientWidth||600;
+    var H=wrap.clientHeight||520;
+
+    // Remove any existing canvas; create fresh one
+    var oldC=wrap.querySelector("canvas[id='hub-kg-canvas']");
+    if(oldC) oldC.remove();
+    var canvas=document.createElement("canvas");
+    canvas.id="hub-kg-canvas";
+    // CSS size fills the container; physical size = CSS × DPR
+    canvas.style.cssText="position:absolute;top:0;left:0;width:"+W+"px;height:"+H+"px;cursor:default;display:block;";
+    canvas.width=W*DPR;
+    canvas.height=H*DPR;
+    wrap.appendChild(canvas);
+    var ctx2=canvas.getContext("2d");
+
+    // Hide hint
+    var hint=document.getElementById("hub-kg-hint");
+    if(hint) hint.style.display="none";
+
+    //  Node radius (CSS px) — base size; drawn in world space so scales with zoom 
+    var _nodeR=function(n){
+      var b={
+        basin:18, petroleum_system:15, play:13, prospect:11, well:9, discovery:10,
+        // geological attribute types — all slightly smaller than hierarchy nodes
+        source_rock:11, charge_timing:9, thermal_maturity:9, geochemistry:9,
+        reservoir:11, petrophysical_logs:8, formation_tops:8, core_data:9, porosity_trap:9,
+        seal:10, seal_integrity:9, fault_seal:9, trap_geometry:9,
+        migration_pathway:10, hc_expulsion:9, hc_preservation:9,
+        overburden:9, burial_history:8, diagenesis:8,
+        tectonic_setting:10, fracture_network:9, heat_flow:9, geothermal:8,
+        seismic_coverage:10, well_test:9,
+        licence_block:10, working_interest:9, play_resources:9,
+        wellbore_risk:8, field_gc:8, licence_expiry:8,
+        // Stratigraphy
+        strat_unit:11,strat_formation:10,strat_member:8,strat_group:11,strat_supergroup:12,
+        sequence_strat:10,systems_tract:8,unconformity:9,mfs:7,
+        sequence_boundary:7,biostrat_zone:7,chron_age:7,
+        strat_column:9,strat_correlation:8,litho_unit:8,
+        // Depositional
+        dep_env:11,fluvial:9,delta:9,deepwater_fan:10,
+        turb_channel:8,turb_lobe:8,carbonate_platform:10,reef:9,
+        shelf_sand:8,submarine_fan:9,channel_levee:8,mtt:7,
+        aeolian:7,lacustrine:8,glacial:7,
+        // Structural
+        fault_sys:11,anticline:10,syncline:9,salt_diapir:10,salt_canopy:9,
+        thrust_belt:10,normal_fault:8,reverse_fault:8,strike_slip:8,
+        rollover:9,flower_struct:8,inversion:8,struct_closure:10,trap_style:9,
+        // Geochemistry Extended
+        biomarker:8,oil_fingerprint:9,oil_family:8,gas_composition:8,
+        isotope_sig:7,sulfur_pct:7,rock_eval:9,toc_val:8,
+        vitrinite_ro:8,expulsion_eff:8,hc_kitchen:10,source_corr:8,
+        // Decision Intelligence
+        play_chance:11,gcos_node:12,emv_node:11,portfolio_rank:10,
+        drill_priority:10,risk_matrix:9,analogue_node:9,bayesian_node:9,
+        ml_model:10,scenario_node:8,sensitivity_node:7,monte_carlo:8,
+      };
+      return(b[n.type]||9)*(n.focal?1.5:1);
+    };
+
+    //  Spread nodes via radial tiers — ALL types mapped 
+    var cx=W/2, cy=H/2;
+    // Tier 0=innermost (basin), higher = further out
+    var TYPE_TIER={
+      basin:0,
+      petroleum_system:1,
+      tectonic_setting:1,   // same level as petroleum system
+      play:2,
+      source_rock:2,        // sourced by petroleum system → same ring
+      overburden:2,
+      seismic_coverage:2,
+      licence_block:2,
+      // Stratigraphy tier-1 roots
+      strat_supergroup:1, strat_group:1, strat_column:1,
+      // Depositional tier-2
+      dep_env:2, carbonate_platform:2, deepwater_fan:2,
+      // Structural tier-1/2
+      fault_sys:1, anticline:2, thrust_belt:2, salt_diapir:2,
+      // Geochemistry Extended tier-2
+      hc_kitchen:2, rock_eval:2,
+      // Decision Intelligence tier-1/2
+      gcos_node:1, play_chance:2, portfolio_rank:2,
+      prospect:3,
+      reservoir:3,
+      seal:3,
+      migration_pathway:3,
+      thermal_maturity:3,
+      charge_timing:3,
+      heat_flow:3,
+      working_interest:3,
+      // Strat tier-3
+      strat_unit:3, sequence_strat:3, strat_formation:3,
+      // Depositional tier-3
+      fluvial:3, delta:3, lacustrine:3, reef:3, shelf_sand:3, submarine_fan:3,
+      // Structural tier-3
+      syncline:3, rollover:3, struct_closure:3, salt_canopy:3,
+      // Geochem Extended tier-3
+      toc_val:3, vitrinite_ro:3, oil_fingerprint:3, oil_family:3,
+      // Decision tier-3
+      emv_node:3, risk_matrix:3, analogue_node:3, bayesian_node:3, ml_model:3, drill_priority:3,
+      well:4,
+      petrophysical_logs:4,
+      formation_tops:4,
+      seal_integrity:4,
+      hc_expulsion:4,
+      burial_history:4,
+      fracture_network:4,
+      trap_geometry:4,
+      geothermal:4,
+      play_resources:4,
+      licence_expiry:4,
+      // Strat tier-4
+      strat_member:4, systems_tract:4, litho_unit:4, strat_correlation:4, biostrat_zone:4,
+      // Depositional tier-4
+      turb_channel:4, turb_lobe:4, channel_levee:4, aeolian:4, glacial:4,
+      // Structural tier-4
+      normal_fault:4, reverse_fault:4, strike_slip:4, inversion:4, flower_struct:4, trap_style:4,
+      // Geochem Extended tier-4
+      biomarker:4, gas_composition:4, isotope_sig:4, sulfur_pct:4, expulsion_eff:4, source_corr:4,
+      // Decision tier-4
+      scenario_node:4, sensitivity_node:4, monte_carlo:4,
+      discovery:5,
+      core_data:5,
+      fault_seal:5,
+      hc_preservation:5,
+      diagenesis:5,
+      geochemistry:5,
+      well_test:5,
+      porosity_trap:5,
+      wellbore_risk:5,
+      field_gc:5,
+      // Strat tier-5
+      unconformity:5, mfs:5, sequence_boundary:5, chron_age:5,
+      // Depositional tier-5
+      mtt:5,
+      // Geochem tier-5
+      vitrinite_ro:5,
+    };
+    var byTier={};
+    _hubKgNodes.forEach(function(n){
+      var t=TYPE_TIER[n.type]!==undefined?TYPE_TIER[n.type]:3;
+      (byTier[t]=byTier[t]||[]).push(n);
+    });
+    var minDim=Math.min(W,H);
+    _hubKgNodes.forEach(function(n){
+      if(n.focal){n.x=cx;n.y=cy;n.pinned=true;}
+      else{
+        var t=TYPE_TIER[n.type]!==undefined?TYPE_TIER[n.type]:3;
+        var tier=byTier[t]||[n];
+        var i=tier.indexOf(n);
+        // Spread radius: tier 0 = centre, tier 5 = edge
+        var r=minDim*(0.15+t*0.12);
+        var angle=(i/Math.max(tier.length,1))*Math.PI*2 - Math.PI/2 + t*0.4;
+        n.x=cx+Math.cos(angle)*r;
+        n.y=cy+Math.sin(angle)*r;
+        n.pinned=false;
+      }
+      n.vx=0; n.vy=0;
+    });
+    var ni={};_hubKgNodes.forEach(function(n){ni[n.id]=n;});
+    _kgPan={x:0,y:0}; _kgZoom=1; _kgDrag=null; _kgHover=null;
+
+    //  Coordinate helpers 
+    // CRITICAL: read rect fresh every time — handles scrolling/resizing
+    function getPos(e){
+      var rect=canvas.getBoundingClientRect();
+      var src=e.touches?e.touches[0]:e;
+      // Returns pure CSS coords (no DPR factor — everything in CSS pixel space)
+      return{
+        x:(src.clientX-rect.left)*(W/rect.width),
+        y:(src.clientY-rect.top)*(H/rect.height)
+      };
+    }
+    // CSS mouse → world node-space (undo pan & zoom centred on cx,cy)
+    function toWorld(mx,my){
+      return{
+        x:(mx-cx)/_kgZoom - _kgPan.x/_kgZoom + cx,
+        y:(my-cy)/_kgZoom - _kgPan.y/_kgZoom + cy
+      };
+    }
+    function hitTest(mx,my){
+      var w=toWorld(mx,my);
+      for(var i=_hubKgNodes.length-1;i>=0;i--){
+        var n=_hubKgNodes[i];
+        var r=_nodeR(n)+8; // generous 8px extra hit padding
+        var dx=w.x-n.x, dy=w.y-n.y;
+        if(dx*dx+dy*dy<=r*r) return n;
+      }
+      return null;
+    }
+
+    //  Mouse / wheel events 
+    var _downPos=null, _moved=false;
+    canvas.addEventListener("mousedown",function(e){
+      if(e.button===2) return; // right-click handled by contextmenu event
+      e.preventDefault(); e.stopPropagation();
+      var p=getPos(e);
+      _downPos={x:p.x,y:p.y}; _moved=false;
+      var hit=hitTest(p.x,p.y);
+      if(hit){
+        _kgDrag=hit; hit.pinned=true; alpha=Math.max(alpha,0.5);
+        canvas.style.cursor="grabbing";
+      } else {
+        _kgPanStart={mx:p.x,my:p.y,px:_kgPan.x,py:_kgPan.y};
+        canvas.style.cursor="grabbing";
+      }
+    });
+    canvas.addEventListener("mousemove",function(e){
+      var p=getPos(e);
+      if(_downPos && (Math.abs(p.x-_downPos.x)+Math.abs(p.y-_downPos.y))>3) _moved=true;
+      if(_kgDrag){
+        var w=toWorld(p.x,p.y);
+        _kgDrag.x=Math.max(20,Math.min(W-20,w.x));
+        _kgDrag.y=Math.max(20,Math.min(H-20,w.y));
+        _kgDrag.vx=0; _kgDrag.vy=0;
+        return;
+      }
+      if(_kgPanStart){
+        _kgPan.x=_kgPanStart.px+(p.x-_kgPanStart.mx);
+        _kgPan.y=_kgPanStart.py+(p.y-_kgPanStart.my);
+        return;
+      }
+      // Hover detection
+      var hit=hitTest(p.x,p.y);
+      if(hit!==_kgHover){
+        _kgHover=hit;
+        canvas.style.cursor=hit?"pointer":"default";
+        if(hit) _kgShowTooltip(canvas,hit,p.x,p.y);
+        else    _kgHideTooltip();
+        _kgHighlightEdgeList(hit?hit.id:null);
+      } else if(hit){
+        _kgShowTooltip(canvas,hit,p.x,p.y);
+      }
+    });
+    canvas.addEventListener("mouseup",function(e){
+      var p=getPos(e);
+      // Click (not drag) on non-focal node → make it focal
+      if(_kgDrag && !_moved && !_kgDrag.focal){
+        _kgSelected=_kgDrag; // pulse the clicked node
+        _kgSyncCascadeFromNode(_kgDrag); // ③ bidirectional cascade sync
+        var te=document.getElementById("hub-kg-focus-type"),ee=document.getElementById("hub-kg-entity");
+        if(te&&ee){
+          te.value=_kgDrag.type; hubKgPopulate();
+          for(var i=0;i<ee.options.length;i++){
+            if(ee.options[i].text===_kgDrag.name||ee.options[i].value===_kgDrag.name){ee.selectedIndex=i;break;}
+          }
+          _kgDrag=null;_kgPanStart=null;_downPos=null;_moved=false;
+          hubKgRender(); return;
+        }
+      }
+      // Click on focal node → select it for pulse + sync cascade
+      if(_kgDrag && !_moved && _kgDrag.focal){
+        _kgSelected=_kgDrag;
+        _kgSyncCascadeFromNode(_kgDrag); // ③ bidirectional sync
+      }
+      _kgDrag=null; _kgPanStart=null; _downPos=null; _moved=false;
+      canvas.style.cursor="default";
+    });
+    canvas.addEventListener("mouseleave",function(){
+      if(!_kgDrag){ _kgHover=null; _kgHideTooltip(); _kgHighlightEdgeList(null); }
+      canvas.style.cursor="default";
+    });
+    // ⑤ Right-click context menu
+    canvas.addEventListener("contextmenu",function(e){
+      e.preventDefault();
+      var p=getPos(e);
+      var hit=hitTest(p.x,p.y);
+      if(hit) _kgShowCtxMenu(e.clientX,e.clientY,hit);
+    });
+    canvas.addEventListener("wheel",function(e){
+      e.preventDefault();
+      var f=e.deltaY<0?1.12:0.9;
+      _kgZoom=Math.max(0.2,Math.min(6,_kgZoom*f));
+    },{passive:false});
+    canvas.addEventListener("dblclick",function(e){
+      if(!hitTest(getPos(e).x,getPos(e).y)){_kgZoom=1;_kgPan={x:0,y:0};alpha=0.6;}
+    });
+
+    //  Force simulation 
+    var alpha=1;
+    var REPEL=7000, LINK_IDEAL=160, LINK_K=0.018, GRAVITY=0.0004, DAMPING=0.74;
+    function _simStep(){
+      if(alpha>0.002) alpha*=0.981; else alpha=0.002;
+      for(var i=0;i<_hubKgNodes.length;i++){
+        for(var j=i+1;j<_hubKgNodes.length;j++){
+          var a=_hubKgNodes[i],b=_hubKgNodes[j];
+          var dx=b.x-a.x,dy=b.y-a.y,d2=Math.max(dx*dx+dy*dy,1),d=Math.sqrt(d2);
+          // Extra repulsion when nodes are very close (minimum separation)
+          var minSep=(_nodeR(a)+_nodeR(b))*2.2;
+          var repStr=d<minSep ? REPEL*4 : REPEL;
+          var f=repStr/d2*alpha,fx=dx/d*f,fy=dy/d*f;
+          if(!a.pinned){a.vx-=fx;a.vy-=fy;}
+          if(!b.pinned){b.vx+=fx;b.vy+=fy;}
+        }
+      }
+      _hubKgLinks.forEach(function(lnk){
+        var a=ni[lnk.source],b=ni[lnk.target]; if(!a||!b) return;
+        var dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||1;
+        var f=(d-LINK_IDEAL)*LINK_K*alpha,fx=dx/d*f,fy=dy/d*f;
+        if(!a.pinned){a.vx+=fx;a.vy+=fy;}
+        if(!b.pinned){b.vx-=fx;b.vy-=fy;}
+      });
+      _hubKgNodes.forEach(function(n){
+        if(n.pinned) return;
+        n.vx+=(cx-n.x)*GRAVITY; n.vy+=(cy-n.y)*GRAVITY;
+        n.vx*=DAMPING; n.vy*=DAMPING;
+        n.x=Math.max(30,Math.min(W-30,n.x+n.vx));
+        n.y=Math.max(30,Math.min(H-30,n.y+n.vy));
+      });
+    }
+
+    //  Darken colour 
+    function _darker(hex,amt){
+      try{var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b2=parseInt(hex.slice(5,7),16);
+        return'#'+[r,g,b2].map(function(v){return('0'+Math.max(0,v-amt).toString(16)).slice(-2);}).join('');}
+      catch(ex){return hex;}
+    }
+
+    //  Draw frame 
+    // Transform maps CSS-pixel node coords → physical canvas pixels:
+    //   physical = (css - cx) * zoom * DPR + cx*DPR + pan*DPR
+    function _draw(){
+      ctx2.save();
+      var s=DPR*_kgZoom;
+      var tx=DPR*(cx + _kgPan.x - cx*_kgZoom);
+      var ty=DPR*(cy + _kgPan.y - cy*_kgZoom);
+      ctx2.setTransform(s,0,0,s,tx,ty);
+      ctx2.clearRect(-cx*10,-cy*10,W*20,H*20);
+
+      // Edges
+      var drawnE={};
+      _hubKgLinks.forEach(function(lnk){
+        var k=lnk.source+"→"+lnk.target; if(drawnE[k]) return; drawnE[k]=true;
+        var a=ni[lnk.source],b=ni[lnk.target]; if(!a||!b) return;
+        var isHl=_kgHover&&(lnk.source===_kgHover.id||lnk.target===_kgHover.id);
+        // Geo Lens: dim edges that don't touch any lens node
+        var isLensEdge = lnk.lensEdge;
+        var lensActive = !!_activeGeoLens;
+        var edgeDimmed = lensActive && (isLensEdge === false);
+
+        //  ANALOGUE EDGE: distinctive glowing dashed style 
+        if (lnk.isAnalogue) {
+          var rc = lnk.rel === 'analogous_to' ? '#A78BFA' : '#38BDF8';
+          var rA2=_nodeR(a), rB2=_nodeR(b);
+          var dx2=b.x-a.x, dy2=b.y-a.y, dist2=Math.sqrt(dx2*dx2+dy2*dy2)||1;
+          var ang2=Math.atan2(dy2,dx2);
+          var sx2=a.x+dx2/dist2*rA2, sy2=a.y+dy2/dist2*rA2;
+          var tipX2=b.x-dx2/dist2*(rB2+2), tipY2=b.y-dy2/dist2*(rB2+2);
+          var asz2=isHl?14:10, asw2=isHl?6:4;
+          var baseX2=tipX2-Math.cos(ang2)*asz2, baseY2=tipY2-Math.sin(ang2)*asz2;
+          // Outer glow pass
+          ctx2.beginPath(); ctx2.moveTo(sx2,sy2); ctx2.lineTo(baseX2,baseY2);
+          ctx2.strokeStyle = rc + '28';
+          ctx2.lineWidth = isHl ? 14 : 9;
+          ctx2.setLineDash([8,5]);
+          ctx2.stroke();
+          // Core line
+          ctx2.beginPath(); ctx2.moveTo(sx2,sy2); ctx2.lineTo(baseX2,baseY2);
+          ctx2.strokeStyle = isHl ? rc : rc + 'bb';
+          ctx2.lineWidth = isHl ? 3.5 : 2.5;
+          ctx2.setLineDash([8,5]);
+          ctx2.stroke();
+          ctx2.setLineDash([]);
+          // Arrowhead
+          var perpX2=-Math.sin(ang2), perpY2=Math.cos(ang2);
+          ctx2.beginPath();
+          ctx2.moveTo(tipX2,tipY2);
+          ctx2.lineTo(baseX2+perpX2*asw2,baseY2+perpY2*asw2);
+          ctx2.lineTo(baseX2-perpX2*asw2,baseY2-perpY2*asw2);
+          ctx2.closePath();
+          ctx2.fillStyle = rc + (isHl?'':'cc');
+          ctx2.fill();
+          // Always show similarity score badge on analogue edges
+          var mx2=(sx2+tipX2)/2, my2=(sy2+tipY2)/2;
+          var simLabel = (lnk.rel==='analogous_to'?'≈ ':  '~ ') + Math.round(lnk.weight*100)+'%';
+          var eFontSz2=Math.max(6,9/_kgZoom);
+          ctx2.font='bold '+eFontSz2+'px system-ui'; ctx2.textAlign='center';
+          ctx2.lineWidth=2.5/_kgZoom; ctx2.strokeStyle='rgba(15,18,32,0.95)';
+          ctx2.lineJoin='round'; ctx2.strokeText(simLabel,mx2,my2-3/_kgZoom);
+          ctx2.fillStyle=rc; ctx2.fillText(simLabel,mx2,my2-3/_kgZoom);
+          return; // skip normal draw path
+        }
+
+        var rc=_kgRelColor(lnk.rel);
+        var rA=_nodeR(a), rB=_nodeR(b);
+        var dx=b.x-a.x,dy=b.y-a.y,dist=Math.sqrt(dx*dx+dy*dy)||1;
+        // Arrow geometry
+        var asz = edgeDimmed ? 6 : (isHl ? 14 : 10);  // arrowhead length
+        var asw = edgeDimmed ? 3 : (isHl ? 6  : 4.5); // arrowhead half-width
+        var ang = Math.atan2(dy, dx);
+        // Line starts at source node edge, ends just before arrowhead base
+        var sx=a.x+dx/dist*rA, sy=a.y+dy/dist*rA;
+        var tipX=b.x-dx/dist*(rB+1), tipY=b.y-dy/dist*(rB+1); // arrow tip at target node edge
+        var baseX=tipX-Math.cos(ang)*asz, baseY=tipY-Math.sin(ang)*asz; // arrowhead base
+        // Draw shaft (stops at arrowhead base so it doesn't bleed through)
+        ctx2.beginPath();ctx2.moveTo(sx,sy);ctx2.lineTo(baseX,baseY);
+        if (edgeDimmed) {
+          ctx2.strokeStyle = rc + "18";
+          ctx2.lineWidth = 0.8;
+        } else {
+          ctx2.strokeStyle=isHl?rc:(isLensEdge?rc+"cc":rc+"88");
+          ctx2.lineWidth=isHl?6:(isLensEdge?4.5:3.5);
+        }
+        if(lnk.rel!=="contains") ctx2.setLineDash([5,4]); else ctx2.setLineDash([]);
+        ctx2.stroke(); ctx2.setLineDash([]);
+        // Solid filled arrowhead
+        var perpX = -Math.sin(ang), perpY = Math.cos(ang);
+        ctx2.beginPath();
+        ctx2.moveTo(tipX, tipY);
+        ctx2.lineTo(baseX + perpX*asw, baseY + perpY*asw);
+        ctx2.lineTo(baseX - perpX*asw, baseY - perpY*asw);
+        ctx2.closePath();
+        ctx2.fillStyle = edgeDimmed ? rc+"18" : (isHl ? rc : rc+"cc");
+        ctx2.fill();
+        // Use tip coords for hover label midpoint
+        var ex=tipX, ey=tipY;
+        // Label on hover only — outline stroke for legibility
+        if(isHl){
+          var mx2=(sx+ex)/2, my2=(sy+ey)/2-4/_kgZoom;
+          var lbl=lnk.rel.replace(/_/g," ");
+          var eFontSz=Math.max(6,8/_kgZoom);
+          ctx2.font="bold "+eFontSz+"px system-ui"; ctx2.textAlign="center";
+          ctx2.lineWidth=2.5/_kgZoom; ctx2.strokeStyle="rgba(255,255,255,0.95)";
+          ctx2.lineJoin="round"; ctx2.strokeText(lbl,mx2,my2);
+          ctx2.fillStyle=rc; ctx2.fillText(lbl,mx2,my2);
+        }
+      });
+
+      // Nodes + Labels — drawn in world space (inside the zoom transform)
+      // Font is inverse-zoom so it stays at a fixed apparent size on screen,
+      // but zooming in lets you see more detail without labels blowing up.
+      var BASE_FONT = 9;  // apparent px at zoom=1
+      var apparentFont = Math.max(7, Math.min(11, BASE_FONT / _kgZoom));
+
+      _hubKgNodes.forEach(function(n){
+        var col=_HUB_COLORS[n.type]||"#8896A5";
+        var r=_nodeR(n);
+        var isHov=_kgHover&&_kgHover.id===n.id;
+        var isDrag=_kgDrag&&_kgDrag.id===n.id;
+        var isSel=_kgSelected&&_kgSelected.id===n.id;
+
+        //  Analogue indicator: small purple orbit ring on nodes that HAVE analogues available 
+        var _ARELS = {analogous_to:true, similar_to:true};
+        var hasAnalogues = (window.KG_EDGES||[]).some(function(e){
+          return _ARELS[e.rel] && ((e.srcType===n.type&&e.srcName===n.name)||(e.tgtType===n.type&&e.tgtName===n.name));
+        });
+        var analoguesShown = !!_kgActiveAnalogueNodes[n.id];
+        if (hasAnalogues && !analoguesShown) {
+          // Dotted purple ring at r+9 to hint analogues are available
+          ctx2.beginPath(); ctx2.arc(n.x, n.y, r + 9, 0, Math.PI*2);
+          ctx2.strokeStyle = '#A78BFA55';
+          ctx2.lineWidth   = 1.5 / Math.max(_kgZoom, 0.4);
+          ctx2.setLineDash([3, 4]);
+          ctx2.stroke();
+          ctx2.setLineDash([]);
+          // Small "≈" badge at top-right of node
+          var badgeFontSz = Math.max(5, 7/_kgZoom);
+          ctx2.font = 'bold ' + badgeFontSz + 'px system-ui';
+          ctx2.textAlign = 'center';
+          ctx2.fillStyle = '#A78BFA';
+          ctx2.fillText('≈', n.x + r*0.72, n.y - r*0.72);
+        }
+        //  Analogue node (injected on demand): purple halo 
+        if (n.isAnalogueNode) {
+          ctx2.beginPath(); ctx2.arc(n.x, n.y, r + 6, 0, Math.PI*2);
+          ctx2.strokeStyle = '#A78BFAaa';
+          ctx2.lineWidth   = 2 / Math.max(_kgZoom, 0.4);
+          ctx2.setLineDash([4, 3]);
+          ctx2.stroke();
+          ctx2.setLineDash([]);
+        }
+
+        //  Geo Lens: determine if this node is dimmed, spotlit, or neutral 
+        // lensMatch=true  → node type is in active lens group → spotlight
+        // lensMatch=false → node type outside lens group      → dim
+        // lensMatch=null  → no lens active                    → normal render
+        var lensActive2 = !!_activeGeoLens;
+        var isLensSpot  = lensActive2 && (n.lensMatch === true);
+        var isLensDim   = lensActive2 && (n.lensMatch === false);
+        // Boost colour for spotlit nodes — slightly saturate
+        if (isLensSpot) {
+          col = _HUB_COLORS[n.type] || col; // already vivid, no change needed
+        }
+        // Spotlit nodes get a bright outer halo ring drawn before body
+        if (isLensSpot) {
+          var haloR = r + 7;
+          ctx2.beginPath(); ctx2.arc(n.x, n.y, haloR, 0, Math.PI*2);
+          ctx2.strokeStyle = col + "cc";
+          ctx2.lineWidth   = 2 / Math.max(_kgZoom, 0.4);
+          ctx2.setLineDash([4, 3]);
+          ctx2.stroke();
+          ctx2.setLineDash([]);
+          // Soft fill glow
+          var lGr = ctx2.createRadialGradient(n.x, n.y, r, n.x, n.y, haloR + 6);
+          lGr.addColorStop(0, col + "44");
+          lGr.addColorStop(1, col + "00");
+          ctx2.beginPath(); ctx2.arc(n.x, n.y, haloR + 6, 0, Math.PI*2);
+          ctx2.fillStyle = lGr; ctx2.fill();
+        }
+
+        // Pulsating rings for selected node
+        if(isSel){
+          var pulse=Math.sin(_kgPulse*0.07)*0.5+0.5; // 0..1 oscillating
+          // Outer expanding ring
+          var pr1=r+8+pulse*12;
+          ctx2.beginPath();ctx2.arc(n.x,n.y,pr1,0,Math.PI*2);
+          ctx2.strokeStyle=col;ctx2.lineWidth=2/Math.max(_kgZoom,0.4);
+          ctx2.globalAlpha=0.55*(1-pulse*0.5);ctx2.stroke();ctx2.globalAlpha=1;
+          // Second ring slightly offset in phase
+          var pulse2=Math.sin(_kgPulse*0.07+1.4)*0.5+0.5;
+          var pr2=r+4+pulse2*18;
+          ctx2.beginPath();ctx2.arc(n.x,n.y,pr2,0,Math.PI*2);
+          ctx2.strokeStyle=col;ctx2.lineWidth=1/Math.max(_kgZoom,0.4);
+          ctx2.globalAlpha=0.3*(1-pulse2*0.6);ctx2.stroke();ctx2.globalAlpha=1;
+          // Inner glow fill
+          var pgr=ctx2.createRadialGradient(n.x,n.y,r*.3,n.x,n.y,r+10+pulse*8);
+          pgr.addColorStop(0,col+"55");pgr.addColorStop(1,col+"00");
+          ctx2.beginPath();ctx2.arc(n.x,n.y,r+10+pulse*8,0,Math.PI*2);
+          ctx2.fillStyle=pgr;ctx2.globalAlpha=0.7;ctx2.fill();ctx2.globalAlpha=1;
+        }
+
+        // Glow halo
+        if(n.focal||isHov||isDrag){
+          var hR=r+(isDrag?18:isHov?13:8);
+          var gr=ctx2.createRadialGradient(n.x,n.y,r*.4,n.x,n.y,hR);
+          gr.addColorStop(0,col+(isDrag?"66":isHov?"55":"22"));
+          gr.addColorStop(1,col+"00");
+          ctx2.beginPath();ctx2.arc(n.x,n.y,hR,0,Math.PI*2);
+          ctx2.fillStyle=gr;ctx2.fill();
+        }
+
+        // Body gradient
+        ctx2.shadowColor=col+"88"; ctx2.shadowBlur=isHov?14:(isSel?12:5);
+        var grd=ctx2.createRadialGradient(n.x-r*.3,n.y-r*.35,r*.05,n.x,n.y,r);
+        grd.addColorStop(0,"#ffffff");
+        grd.addColorStop(0.28,col);
+        grd.addColorStop(1,_darker(col,40));
+        ctx2.beginPath();ctx2.arc(n.x,n.y,r,0,Math.PI*2);
+        ctx2.fillStyle=grd;
+        // Lens dimming: non-lens nodes fade to 15% opacity; lens nodes at full vivid
+        var nodeAlpha = n.focal ? 1
+          : isLensDim  ? 0.13
+          : isLensSpot ? 1
+          : (isHov ? 0.97 : 0.9);
+        ctx2.globalAlpha = nodeAlpha;
+        ctx2.fill(); ctx2.globalAlpha=1; ctx2.shadowBlur=0;
+
+        // Border — selected gets bright white pulsing stroke
+        if(isSel){
+          var bp=Math.sin(_kgPulse*0.07)*0.5+0.5;
+          ctx2.strokeStyle="#ffffff";
+          ctx2.lineWidth=(2+bp*1.5)/Math.max(_kgZoom,0.4);
+        } else {
+          ctx2.strokeStyle=isHov?"#111827":(n.focal?"#fff":col);
+          ctx2.lineWidth=isHov?2.5:(n.focal?3:1.5);
+        }
+        ctx2.stroke();
+
+        // Focal star
+        if(n.focal){
+          ctx2.font=(9/Math.max(_kgZoom,0.5))+"px system-ui";
+          ctx2.fillStyle="#fff";ctx2.textAlign="center";
+          ctx2.fillText("",n.x,n.y+3/_kgZoom);
+        }
+
+        //  Doc-source ring: amber outer ring for imported nodes 
+        if(n.data && n.data._docSource) {
+          ctx2.beginPath();
+          ctx2.arc(n.x,n.y,r+3/_kgZoom,0,Math.PI*2);
+          ctx2.strokeStyle='rgba(245,158,11,0.75)';
+          ctx2.lineWidth=2/_kgZoom;
+          ctx2.setLineDash([3/_kgZoom,2/_kgZoom]);
+          ctx2.stroke();
+          ctx2.setLineDash([]);
+        }
+
+        //  Label — pill background for sharp, clean legibility on dark canvas
+        var lbl=n.name;
+        // Truncate based on apparent zoom level: zoom-in = more chars visible
+        var maxCh=_kgZoom<0.5?8:(_kgZoom<0.8?12:(_kgZoom<1.5?18:25));
+        if(lbl.length>maxCh) lbl=lbl.substring(0,maxCh-1)+"…";
+
+        var fSize = n.focal ? Math.max(9, apparentFont * 1.2) : Math.max(8, apparentFont);
+        var fontWeight = (n.focal || isHov || isSel) ? "700" : "600";
+        ctx2.font = fontWeight + " " + fSize + "px 'Segoe UI',system-ui,sans-serif";
+        ctx2.textAlign = "center";
+        ctx2.textBaseline = "middle";
+
+        // Label Y: fixed gap below node edge
+        var labelGap = 5 / _kgZoom;
+        var ly = n.y + r + labelGap + fSize * 0.6;
+
+        // Measure text for pill background
+        var tw = ctx2.measureText(lbl).width;
+        var ph = fSize + 4 / _kgZoom;   // pill height
+        var pw = tw + 10 / _kgZoom;     // pill width (horizontal padding)
+        var pr2 = ph * 0.5;             // pill corner radius (fully rounded)
+
+        // Dim everything for non-lens nodes
+        ctx2.globalAlpha = isLensDim ? 0.13 : 1;
+
+        // Draw pill background — dark, semi-opaque for contrast on any bg
+        var pillAlpha = (isHov || isSel) ? 0.95 : 0.82;
+        ctx2.beginPath();
+        ctx2.moveTo(n.x - pw/2 + pr2, ly - ph/2);
+        ctx2.lineTo(n.x + pw/2 - pr2, ly - ph/2);
+        ctx2.arcTo(n.x + pw/2, ly - ph/2, n.x + pw/2, ly + ph/2, pr2);
+        ctx2.lineTo(n.x + pw/2, ly + ph/2);
+        ctx2.arcTo(n.x + pw/2, ly + ph/2, n.x - pw/2 + pr2, ly + ph/2, pr2);
+        ctx2.lineTo(n.x - pw/2 + pr2, ly + ph/2);
+        ctx2.arcTo(n.x - pw/2, ly + ph/2, n.x - pw/2, ly - ph/2, pr2);
+        ctx2.lineTo(n.x - pw/2, ly - ph/2);
+        ctx2.arcTo(n.x - pw/2, ly - ph/2, n.x - pw/2 + pr2, ly - ph/2, pr2);
+        ctx2.closePath();
+        ctx2.fillStyle = "rgba(8,10,22," + pillAlpha + ")";
+        ctx2.fill();
+
+        // Pill border — node colour for identity tie-in
+        ctx2.strokeStyle = (isHov || isSel) ? col : col + "66";
+        ctx2.lineWidth = (isHov || isSel ? 1.5 : 1) / _kgZoom;
+        ctx2.stroke();
+
+        // Crisp light text on top of pill
+        ctx2.fillStyle = isLensDim ? "#64748b" : ((isHov || isSel) ? "#ffffff" : "#dde3f0");
+        ctx2.fillText(lbl, n.x, ly);
+
+        // Reset
+        ctx2.textBaseline = "alphabetic";
+        ctx2.globalAlpha = 1;
+      });
+
+      ctx2.restore();
+    }
+
+    //  Loop 
+    function tick(){ _kgPulse++; _simStep(); _draw(); _hubKgAnimFrame=requestAnimationFrame(tick); }
+    if(_hubKgAnimFrame) cancelAnimationFrame(_hubKgAnimFrame);
+    _hubKgAnimFrame=requestAnimationFrame(tick);
+    _kgRefreshEdgePanel();
+  }
+
+
+  // Build edge list fresh into the card body (fixes "No edges yet" bug)
+  function _kgRefreshEdgePanel(){
+    var RC={contains:"#059669",charges:"#D97706",seals:"#0891B2",similar_to:"#7C3AED",
+            analogous_to:"#8B5CF6",de_risks:"#10B981",migrates_to:"#F59E0B",
+            sources:"#EF4444",supports:"#22C55E",reservoir_in:"#A855F7",
+            deposited_in:"#0891B2",deposited_by:"#0E7490",correlates_with:"#818CF8",
+            bounded_by:"#A21CAF",underlies:"#4338CA",deforms:"#DC2626",
+            cuts:"#EF4444",inverts:"#F97316",controls:"#EC4899",
+            sourced_from:"#B45309",typed_as:"#F59E0B",fingerprinted_by:"#FB923C",
+            evaluates:"#10B981",ranks:"#059669",predicts:"#6366F1",
+            updates:"#7C3AED",prioritises:"#2fb87a",quantifies:"#2fb87a",
+            matures_into:"#F97316",promotes_to:"#DC2626"};
+    var seen={},rows=[];
+    (_hubKgLinks||[]).forEach(function(lnk){
+      var k=lnk.source+"-"+lnk.rel+"-"+lnk.target; if(seen[k]) return; seen[k]=true;
+      var rc=RC[lnk.rel]||"#8896A5";
+      var src=lnk.source.split(":").slice(1).join(":");
+      var tgt=lnk.target.split(":").slice(1).join(":");
+      var srcType=lnk.source.split(":")[0];
+      var tgtType=lnk.target.split(":")[0];
+      var srcCol=_HUB_COLORS[srcType]||"#8896A5";
+      var tgtCol=_HUB_COLORS[tgtType]||"#8896A5";
+      rows.push(
+        '<div class="kg-edge-row" data-src="'+lnk.source+'" data-tgt="'+lnk.target
+        +'" style="display:flex;align-items:center;gap:5px;padding:6px 5px;border-bottom:1px solid #e5e7eb;cursor:pointer;border-radius:4px;transition:background .12s"'
+        +' onmouseenter="this.style.background=\'#f1f5f9\';_kgHighlightEdgeList(\''+lnk.source+'\')"'
+        +' onmouseleave="this.style.background=\'transparent\'"'
+        +' onclick="_kgFocusEdgeNode(\''+lnk.source+'\',\''+lnk.target+'\')">'
+        // Source node pill
+        +'<div style="flex:1;min-width:0;display:flex;align-items:center;gap:3px">'
+        +'<span style="width:7px;height:7px;border-radius:50%;background:'+srcCol+';flex-shrink:0;display:inline-block"></span>'
+        +'<span style="font-size:10px;color:#1e293b;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+src+'</span></div>'
+        // Relation badge
+        +'<div style="background:'+rc+'18;color:'+rc+';font-size:7.5px;padding:2px 6px;border-radius:8px;white-space:nowrap;font-weight:700;flex-shrink:0">'+lnk.rel.replace(/_/g," ")+'</div>'
+        +'<span style="color:#94a3b8;font-size:10px">→</span>'
+        // Target node pill
+        +'<div style="flex:1;min-width:0;display:flex;align-items:center;gap:3px">'
+        +'<span style="width:7px;height:7px;border-radius:50%;background:'+tgtCol+';flex-shrink:0;display:inline-block"></span>'
+        +'<span style="font-size:10px;color:#1e293b;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+tgt+'</span></div>'
+        +(lnk.weight<1?'<span style="font-size:8px;color:#94a3b8;flex-shrink:0">'+Math.round(lnk.weight*100)+'%</span>':"")
+        +'</div>'
+      );
+    });
+    var html=rows.length?rows.join('')
+      :'<div style="padding:24px;text-align:center;color:#94a3b8;font-size:10px"><div style="font-size:22px;margin-bottom:6px;opacity:.3"></div>Select a focal entity above to see edges</div>';
+
+    // Always write into a standalone div that persists
+    var el=document.getElementById("hub-kg-edge-list");
+    if(!el){el=document.createElement("div");el.id="hub-kg-edge-list";}
+    el.innerHTML=html;
+
+    // Place it into card body if edges tab is active
+    var body=document.getElementById("hub-kg-card-body");
+    if(body&&_kgActiveCard==="edges"){
+      body.innerHTML="";
+      body.appendChild(el);
+    }
+  }
+
+  // Helper: clicking edge list row highlights both endpoints
+  function _kgHighlightRow(el,on){el.style.background=on?"rgba(107,70,193,.07)":"transparent";}
+  function _kgFocusEdgeNode(srcId,tgtId){
+    // Highlight both nodes temporarily
+    _hubKgNodes.forEach(function(n){n._hl=(n.id===srcId||n.id===tgtId);});
+    setTimeout(function(){_hubKgNodes.forEach(function(n){delete n._hl;});},1500);
+    _kgHighlightEdgeList(srcId);
+  }
+
+  //  KG Card tab switcher 
+  //  Resizable KG split panel 
+  (function(){
+    var handle=document.getElementById("hub-kg-handle");
+    var left=document.getElementById("hub-kg-left");
+    var split=document.getElementById("hub-kg-split");
+    if(!handle||!left||!split) return;
+    var dragging=false, startX=0, startW=0;
+    handle.addEventListener("mousedown",function(e){
+      e.preventDefault();
+      dragging=true;
+      startX=e.clientX;
+      startW=left.offsetWidth;
+      document.body.style.cursor="col-resize";
+      document.body.style.userSelect="none";
+    });
+    document.addEventListener("mousemove",function(e){
+      if(!dragging) return;
+      var totalW=split.offsetWidth;
+      var newW=Math.max(180,Math.min(totalW-200, startW+(e.clientX-startX)));
+      left.style.flex="0 0 "+newW+"px";
+      // Redraw canvas to new size after brief settle
+      clearTimeout(handle._rt);
+      handle._rt=setTimeout(function(){
+        if(typeof hubKgDraw==="function" && (_hubKgNodes&&_hubKgNodes.length)) hubKgDraw();
+      },120);
+    });
+    document.addEventListener("mouseup",function(){
+      if(!dragging) return;
+      dragging=false;
+      document.body.style.cursor="";
+      document.body.style.userSelect="";
+    });
+  })();
+
+  var _kgActiveCard = "edges";
+  function hubKgCard(name, btn) {
+    _kgActiveCard = name;
+    document.querySelectorAll(".hub-kgc-tab").forEach(function(t){
+      t.classList.remove("on");
+      t.style.color="var(--t3)";
+      t.style.borderBottomColor="transparent";
+      t.style.fontWeight="normal";
+    });
+    if(btn){ btn.classList.add("on"); btn.style.color="var(--brand)"; btn.style.borderBottomColor="var(--brand)"; btn.style.fontWeight="700"; }
+    hubKgRenderCard();
+  }
+
+  function hubKgRenderCard(){
+    var body=document.getElementById("hub-kg-card-body"); if(!body) return;
+    var te=document.getElementById("hub-kg-focus-type"), ee=document.getElementById("hub-kg-entity");
+    var fType=te?te.value:"", fName=ee?ee.value:"";
+    // Use the shared full resolver (covers basin, well, discovery, play, prospect, ps)
+    var resolved = _kgResolvePsAndProspect(fType, fName);
+    var ps = resolved.ps;
+    var prospect = resolved.prospect;
+
+    var c=_kgActiveCard;
+    if(c==="edges")      { _kgRefreshEdgePanel(); return; }
+    if(c==="inspector")  { _kgCardInspector(body,fType,fName,ps,prospect); return; }
+    if(c==="srcrock")    { _kgCardSrcRock(body,ps); return; }
+    if(c==="riskdecomp") { _kgCardRiskDecomp(body,ps,prospect); return; }
+    if(c==="timing")     { _kgCardTiming(body,ps); return; }
+    if(c==="srqmatrix")  { _kgCardSRQMatrix(body,ps); return; }
+    if(c==="migration")  { _kgCardMigration(body,ps,prospect); return; }
+    if(c==="trapseal")   { _kgCardTrapSeal(body,ps,prospect); return; }
+    if(c==="ai")         { _kgCardAI(body,fType,fName,ps,prospect); return; }
+  }
+
+  /* 
+     AI INSIGHT CARD  — Knowledge Graph AI analysis
+     Builds a rich context prompt from the live graph state and calls Claude.
+      */
+  var _kgAiHistory = [];   // conversation history per focal entity
+  var _kgAiLastFocus = ''; // track focal entity changes to reset history
+
+  function _kgBuildGraphContext(fType, fName, ps, prospect) {
+    // Collect all nodes and edges in the current rendered graph
+    var nodes = (_hubKgNodes || []);
+    var edges = (_hubKgLinks || []);
+
+    // Summarise node types present
+    var typeCounts = {};
+    nodes.forEach(function(n) {
+      if (!n.focal) typeCounts[n.type] = (typeCounts[n.type]||0)+1;
+    });
+    var nodesSummary = Object.keys(typeCounts).map(function(t){
+      return typeCounts[t]+'× '+t.replace(/_/g,' ')
+    }).join(', ');
+
+    // Summarise relationships
+    var relCounts = {};
+    edges.forEach(function(e){
+      var r = e.rel||'connected';
+      relCounts[r] = (relCounts[r]||0)+1;
+    });
+    var relSummary = Object.keys(relCounts).map(function(r){
+      return relCounts[r]+' "'+r.replace(/_/g,' ')+'"'
+    }).join(', ');
+
+    // List direct neighbours of focal node
+    var focalId = fType+':'+fName;
+    var neighbours = [];
+    edges.forEach(function(e){
+      var src = typeof e.source==='object'?e.source.id:e.source;
+      var tgt = typeof e.target==='object'?e.target.id:e.target;
+      if(src===focalId) neighbours.push({dir:'→',rel:e.rel,node:tgt});
+      else if(tgt===focalId) neighbours.push({dir:'←',rel:e.rel,node:src});
+    });
+    // Deduplicate and cap at 12
+    var seen = {}; var nbList = [];
+    neighbours.forEach(function(nb){
+      var k = nb.dir+nb.rel+nb.node;
+      if(!seen[k]){ seen[k]=true; nbList.push(nb); }
+    });
+    nbList = nbList.slice(0,12);
+
+    var nbText = nbList.map(function(nb){
+      var parts = nb.node.split(':');
+      return nb.dir+' '+nb.rel.replace(/_/g,' ')+' → '+parts[1]+' ('+parts[0].replace(/_/g,' ')+')'
+    }).join('\n  ');
+
+    // Cascade context
+    var cascadeCtx = '';
+    if(_hubCtx.basin)   cascadeCtx += 'Basin: '+_hubCtx.basin+'. ';
+    if(_hubCtx.petSys){
+      var pso=(_HUB_DATA.ps||[]).find(function(p){return p.id===_hubCtx.petSys;});
+      if(pso) cascadeCtx += 'Petroleum System: '+pso.name+'. ';
+    }
+    if(_hubCtx.play){
+      var plo=(_HUB_DATA.plays||[]).find(function(p){return p.id===_hubCtx.play;});
+      if(plo) cascadeCtx += 'Play: '+plo.name+'. ';
+    }
+    if(_hubCtx.prospect){
+      var pro=(_HUB_DATA.prospects||[]).find(function(p){return p.id===_hubCtx.prospect;});
+      if(pro) cascadeCtx += 'Prospect: '+pro.name+', GCoS '+Math.round((pro.gcos||0)*100)+'%, P50 '+(pro.p50Mmboe||'?')+' MMboe. ';
+    }
+
+    // Active geo lens
+    var lensCtx = _activeGeoLens ? 'Active Geo Lens filter: '+_activeGeoLens.replace(/_/g,' ')+'. ' : '';
+
+    //  SECTION 1: Graph topology (Edges + Inspector cards) 
+    var graphSection = '\n\n=== GRAPH TOPOLOGY (Edges & Inspector) ===\n'
+      +'Focal Entity: '+fName+' ('+fType.replace(/_/g,' ')+')\n'
+      +'Total nodes: '+nodes.length+' | Total edges: '+edges.length+'\n'
+      +'Node types: '+nodesSummary+'\n'
+      +'Edge types: '+relSummary+'\n'
+      +(nbList.length ? 'Direct connections:\n  '+nbText+'\n' : '');
+
+    //  SECTION 2: Source Rock (srcrock card) 
+    var srcRockSection = '';
+    if(ps){
+      var toc = ps.tocPct||0;
+      var ro  = ps.roPct||0;
+      var tocGrade = toc>=4?'Excellent':toc>=2?'Good':toc>=0.5?'Fair':'Poor';
+      var roGrade  = ro>=0.6&&ro<=1.35?'Oil Window':ro>1.35&&ro<=2.0?'Wet Gas':ro>2.0?'Dry Gas':'Immature';
+      srcRockSection = '\n\n=== SOURCE ROCK DATA ===\n'
+        +'Formation: '+ps.sourceRock+' | Age: '+ps.sourceRockAge+'\n'
+        +'Kerogen: '+ps.kerogenType+' | TOC: '+toc+'% ('+tocGrade+') | Ro: '+ro+'% ('+roGrade+')\n'
+        +'Maturity: '+ps.maturity+' | Charge Type: '+ps.chargeType+'\n'
+        +'Charge Risk (confidence): '+Math.round((ps.chargeRisk||0)*100)+'%\n'
+        +'Preservation Risk: '+ps.preservationRisk+'\n'
+        +(ps.notes ? 'Notes: '+ps.notes+'\n' : '');
+    }
+
+    //  SECTION 3: Risk Decomposition (riskdecomp card) 
+    var riskSection = '';
+    if(ps || prospect){
+      riskSection = '\n\n=== RISK DECOMPOSITION ===\n';
+      if(ps){
+        riskSection += 'System: '+ps.name+'\n'
+          +'  Charge Confidence: '+Math.round((ps.chargeRisk||0)*100)+'%\n'
+          +'  Seal Integrity: '+Math.round((ps.sealRisk||0)*100)+'%\n'
+          +'  Preservation Risk: '+ps.preservationRisk+'\n'
+          +'  System Status: '+ps.status+'\n';
+      }
+      if(prospect){
+        var gcos = prospect.gcos||0;
+        var cr=prospect.chargeRisk||0, rr=prospect.reservoirRisk||0;
+        var sr=prospect.sealRisk||0,   tr=prospect.trapRisk||0;
+        var composite = cr*rr*sr*tr;
+        riskSection += 'Prospect: '+prospect.name+'\n'
+          +'  GCoS: '+Math.round(gcos*100)+'%\n'
+          +'  Charge Risk: '+Math.round(cr*100)+'%\n'
+          +'  Reservoir Risk: '+Math.round(rr*100)+'%\n'
+          +'  Seal Risk: '+Math.round(sr*100)+'%\n'
+          +'  Trap Risk: '+Math.round(tr*100)+'%\n'
+          +'  Composite P(success): '+Math.round(composite*100)+'%\n'
+          +'  Risk Level: '+(composite>0.3?'Low':composite>0.15?'Medium':'High')+'\n';
+      }
+    }
+
+    //  SECTION 4: Timing (timing card) 
+    var timingSection = '';
+    if(ps){
+      var cm = ps.criticalMomentMa||0;
+      var era = cm>252?'Paleozoic':cm>66?'Mesozoic':cm>23?'Paleogene':'Neogene–Recent';
+      timingSection = '\n\n=== TIMING ANALYSIS ===\n'
+        +'Source Rock Age: '+ps.sourceRockAge+'\n'
+        +'Critical Moment: '+cm+' Ma ('+era+')\n'
+        +'Estimated Deposition: ~'+(cm+Math.round(cm*0.15))+' Ma\n'
+        +'Estimated Expulsion: ~'+cm+' Ma (critical moment)\n'
+        +'Migration Style: '+ps.migrationStyle+'\n'
+        +'Preservation to Present: '+(ps.preservationRisk||'Unknown')+' risk\n';
+    }
+
+    //  SECTION 5: SR Quality Matrix (srqmatrix card) 
+    var srqSection = '';
+    if(ps){
+      var toc2=ps.tocPct||0, ro2=ps.roPct||0;
+      var kerMap={'Type I':{oil:95,gas:5,quality:90},'Type II':{oil:80,gas:20,quality:85},
+        'Type II/III':{oil:60,gas:40,quality:70},'Type III':{oil:20,gas:80,quality:65},'Type IV':{oil:0,gas:0,quality:10}};
+      var ker = kerMap[ps.kerogenType]||{oil:50,gas:50,quality:60};
+      // Peer comparison
+      var peers = (window.PETROLEUM_SYSTEMS||[]).filter(function(s){return s.id!==ps.id && s.tocPct;}).slice(0,4);
+      var peerText = peers.map(function(p){
+        var pg=p.tocPct>=4?'Excellent':p.tocPct>=2?'Good':p.tocPct>=0.5?'Fair':'Poor';
+        return '  '+p.name+': TOC '+p.tocPct+'%, Ro '+p.roPct+'% ('+pg+')'
+      }).join('\n');
+      srqSection = '\n\n=== SOURCE ROCK QUALITY MATRIX ===\n'
+        +'TOC: '+toc2+'% | Ro: '+ro2+'%\n'
+        +'TOC Grade: '+(toc2>=4?'Excellent':toc2>=2?'Good':toc2>=0.5?'Fair':'Poor')+'\n'
+        +'Maturity Window: '+(ro2>=0.6&&ro2<=1.35?'Oil Window':ro2>1.35&&ro2<=2.0?'Wet Gas':ro2>2.0?'Dry Gas':'Immature')+'\n'
+        +'Kerogen: '+ps.kerogenType+' | Oil potential: '+ker.oil+'% | Gas potential: '+ker.gas+'% | Overall quality: '+ker.quality+'%\n'
+        +(peerText ? 'Peer systems:\n'+peerText+'\n' : '');
+    }
+
+    //  SECTION 6: Migration (migration card) 
+    var migSection = '';
+    if(ps){
+      var styleMap={'Vertical + Fault-assisted':{eff:80,dist:'Short–Medium',risk:'Low–Medium'},
+        'Vertical (self-sourced)':{eff:95,dist:'In-situ',risk:'Very Low'},
+        'Lateral':{eff:65,dist:'Long',risk:'Medium'},
+        'Fault-assisted lateral':{eff:70,dist:'Medium',risk:'Medium'},
+        'Vertical':{eff:75,dist:'Short',risk:'Low'},
+        'Lateral + Fault':{eff:68,dist:'Medium–Long',risk:'Medium–High'}};
+      var ms = styleMap[ps.migrationStyle]||{eff:60,dist:'Unknown',risk:'Unknown'};
+      migSection = '\n\n=== MIGRATION PATHWAY ANALYSIS ===\n'
+        +'Migration Style: '+ps.migrationStyle+'\n'
+        +'Efficiency: '+ms.eff+'% | Distance: '+ms.dist+' | Risk: '+ms.risk+'\n'
+        +'Critical Expulsion: '+ps.criticalMomentMa+' Ma\n'
+        +'Trap Style fed: '+ps.trapStyle+' | Sealed by: '+ps.sealRock+'\n'
+        +'Charge Confidence: '+Math.round((ps.chargeRisk||0)*100)+'%\n'
+        +(prospect ? 'Prospect '+prospect.name+': charge risk '+Math.round((prospect.chargeRisk||0)*100)+'%, GCoS '+Math.round((prospect.gcos||0)*100)+'%\n' : '');
+    }
+
+    //  SECTION 7: Trap & Seal (trapseal card) 
+    var trapSection = '';
+    if(ps || prospect){
+      trapSection = '\n\n=== TRAP & SEAL INTEGRITY ===\n';
+      if(ps){
+        var trapRisks={'Anticline / Thrust':0.88,'Anticline':0.85,'Tilted Fault Block':0.75,
+          'Stratigraphic / Unconventional':0.72,'4-way Dip Closure':0.90,'Rollover Anticline':0.80,'Structural Pinchout':0.70};
+        var trp = trapRisks[ps.trapStyle]||0.72;
+        trapSection += 'System: '+ps.name+'\n'
+          +'  Trap Style: '+ps.trapStyle+' (structural integrity: '+Math.round(trp*100)+'%)\n'
+          +'  Seal Rock: '+ps.sealRock+'\n'
+          +'  Overburden: '+ps.overburden+'\n'
+          +'  Seal Integrity: '+Math.round((ps.sealRisk||0)*100)+'%\n'
+          +'  Charge Retention: '+Math.round((ps.chargeRisk||0)*100)+'%\n';
+      }
+      if(prospect){
+        var psr=prospect.sealRisk||0, ptr=prospect.trapRisk||0;
+        trapSection += 'Prospect: '+prospect.name+'\n'
+          +'  Seal Risk: '+Math.round(psr*100)+'%\n'
+          +'  Trap Risk: '+Math.round(ptr*100)+'%\n'
+          +'  Combined Trap×Seal: '+Math.round(psr*ptr*100)+'%\n'
+          +'  Risk Level: '+(psr*ptr>=0.6?'LOW':psr*ptr>=0.4?'MODERATE':'HIGH')+'\n'
+          +'  P50 Resource: '+(prospect.p50Mmboe||'?')+' MMboe | P10: '+(prospect.p10Mmboe||'?')+' | P90: '+(prospect.p90Mmboe||'?')+'\n';
+      }
+    }
+
+    return 'KNOWLEDGE GRAPH — FULL ANALYTICAL CONTEXT\n'
+      +(cascadeCtx?'Hierarchy Context: '+cascadeCtx+'\n':'')
+      +(lensCtx?'Active Lens: '+lensCtx+'\n':'')
+      // Entity inventory for navigation actions
+      +'\n=== NAVIGABLE ENTITIES (use exact names in ACTION) ===\n'
+      +'Basins: '+(window.BASINS||[]).map(function(b){return b.name;}).join(', ')+'\n'
+      +'Petroleum Systems: '+(window.PETROLEUM_SYSTEMS||[]).map(function(p){return p.name;}).join(', ')+'\n'
+      +'Plays: '+(window.PLAYS||[]).map(function(p){return p.name;}).join(', ')+'\n'
+      +'Prospects: '+(window.PROSPECTS||[]).map(function(p){return p.name;}).join(', ')+'\n'
+      +graphSection
+      +srcRockSection
+      +riskSection
+      +timingSection
+      +srqSection
+      +migSection
+      +trapSection;
+  }
+
+  var _KG_AI_SYSTEM = 'You are an expert petroleum exploration geologist and knowledge graph analyst embedded in the EDAFY Geo-Basin Intelligence Platform. '
+    +'You have access to the complete analytical data shown across all KG panel tabs: graph topology (Edges & Inspector), Source Rock geochemistry, Risk Decomposition, Timing Analysis, SR Quality Matrix, Migration Pathway, and Trap & Seal Integrity. '
+    +'Always reference the specific numeric values, node names, and relationship types provided in the context — never make up figures. '
+    +'When asked about a specific section (e.g. source rock, risk, timing), use the corresponding section data from the context. '
+    +'Use <b> for key terms and values, <span style="color:#10B981"> for positive/low-risk signals, <span style="color:#EF4444"> for risks/concerns, <span style="color:#F59E0B"> for moderate signals. '
+    +'Close all span tags you open. Be technically precise and concise. Reference specific node names and data values.\n\n'
+    +'GRAPH NAVIGATION: If the user asks to "show", "focus on", "navigate to", "explore", "go to", or "switch to" a specific entity, '
+    +'OR if your answer would be best illustrated by focusing the graph on a different entity, '
+    +'append a JSON action block at the very end of your response in this exact format (no code fences, just the raw JSON on its own line):\n'
+    +'ACTION:{"type":"focus","entityType":"<type>","entityName":"<exact name from data>"}\n'
+    +'Valid entityType values: basin, petroleum_system, play, prospect, well, discovery\n'
+    +'Only emit an ACTION if you are confident the exact entity name appears in the data provided. If unsure, do not emit ACTION.';
+
+  function _kgCardAI(body, fType, fName, ps, prospect) {
+    if(!fName) {
+      body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--t3);font-size:10px">'
+        +'<div style="font-size:28px;margin-bottom:8px;opacity:.3"></div>'
+        +'Select a focal entity in the graph above to start AI analysis</div>';
+      return;
+    }
+
+    // Always re-resolve ps+prospect from scratch using the full resolver
+    // (the ps/prospect passed from hubKgRenderCard may be incomplete for basin/well/discovery types)
+    var resolved = _kgResolvePsAndProspect(fType, fName);
+    ps = resolved.ps;
+    prospect = resolved.prospect;
+
+    // Reset history when focal entity changes
+    if(_kgAiLastFocus !== fType+':'+fName) {
+      _kgAiLastFocus = fType+':'+fName;
+      _kgAiHistory = [];
+    }
+
+    var col = _HUB_COLORS[fType]||'#8896A5';
+    var icon = _HUB_ICONS[fType]||'';
+    var graphCtx = _kgBuildGraphContext(fType, fName, ps, prospect);
+
+    body.innerHTML =
+      // Header
+      '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:'+col+'11;border-radius:6px;border:1px solid '+col+'33;margin-bottom:10px;flex-shrink:0">'
+        +'<div style="width:28px;height:28px;border-radius:50%;background:'+col+';display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">'+icon+'</div>'
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="font-size:11px;font-weight:700;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+fName+'</div>'
+          +'<div style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px">'+fType.replace(/_/g,' ')+'</div>'
+        +'</div>'
+        +'<div style="font-size:8px;background:rgba(107,70,193,.08);border:1px solid rgba(0,200,255,.2);border-radius:8px;padding:2px 8px;color:var(--cyan);font-weight:700;white-space:nowrap"> AI Active</div>'
+      +'</div>'
+      // Quick-fire prompt buttons
+      +'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px" id="kg-ai-prompts"></div>'
+      // Conversation thread
+      +'<div id="kg-ai-thread" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;max-height:260px;overflow-y:auto"></div>'
+      // Input bar
+      +'<div style="display:flex;gap:5px;align-items:center;border-top:1px solid var(--b1);padding-top:8px;flex-shrink:0">'
+        +'<input id="kg-ai-input" type="text" placeholder="Ask about this node, its connections, risks…" '
+          +'style="flex:1;background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:5px;padding:5px 9px;font-size:10px;font-family:inherit;outline:none" '
+          +'onkeydown="if(event.key===\'Enter\')_kgAiSend()" />'
+        +'<button onclick="_kgAiSend()" style="background:var(--brand);border:none;color:#000;border-radius:5px;padding:5px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">Ask ↵</button>'
+      +'</div>';
+
+    // Render quick-prompt chips — one per KG card section
+    var chips = [
+      {label:' Graph summary',    q:'Using the GRAPH TOPOLOGY section, summarise this knowledge graph node. What do its connections reveal geologically? Which relationship types are most significant?'},
+      {label:' Source rock',       q:'Using the SOURCE ROCK DATA section, evaluate the source rock quality. Assess TOC, Ro, kerogen type, maturity window, and what this means for hydrocarbon generation potential.'},
+      {label:'! Risk breakdown',    q:'Using the RISK DECOMPOSITION section, break down the geological risks. Which risk factor is the weakest link? What does the composite P(success) tell us?'},
+      {label:' Timing',            q:'Using the TIMING ANALYSIS section, assess the petroleum system timing. Is the critical moment favourable? What are the timing risks for trap fill and preservation?'},
+      {label:' SR quality',        q:'Using the SOURCE ROCK QUALITY MATRIX section, evaluate the source rock quality matrix. How does TOC grade, maturity window, and kerogen type compare to peer systems in the dataset?'},
+      {label:' Migration',         q:'Using the MIGRATION PATHWAY ANALYSIS section, evaluate the migration efficiency and risks. Is the migration style favourable for this trap? What is the charge confidence?'},
+      {label:' Trap & seal',       q:'Using the TRAP & SEAL INTEGRITY section, assess the trap and seal integrity. What is the combined trap×seal probability? What are the main structural risks?'},
+      {label:' Opportunity',       q:'Synthesising ALL sections of the context — graph topology, source rock, risk, timing, migration, and trap — what is the single most important exploration opportunity or risk for this entity? What should a geologist do next?'},
+    ];
+    var promptsDiv = document.getElementById('kg-ai-prompts');
+    if(promptsDiv){
+      chips.forEach(function(c){
+        var btn = document.createElement('button');
+        btn.textContent = c.label;
+        btn.style.cssText = 'font-size:8px;padding:3px 8px;border-radius:10px;border:1px solid var(--b1);background:var(--bg2);color:var(--t2);cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap';
+        btn.onmouseenter = function(){ this.style.borderColor='var(--brand)'; this.style.color='var(--brand)'; };
+        btn.onmouseleave = function(){ this.style.borderColor='var(--b1)'; this.style.color='var(--t2)'; };
+        btn.onclick = (function(question){ return function(){ _kgAiAsk(question, graphCtx); }; })(c.q);
+        promptsDiv.appendChild(btn);
+      });
+    }
+
+    // Auto-trigger initial summary if no history
+    if(_kgAiHistory.length === 0) {
+      setTimeout(function(){
+        _kgAiAsk('Using ALL sections of the analytical context provided — graph topology, source rock, risk decomposition, timing, SR quality matrix, migration, and trap & seal — provide a concise expert synthesis of this entity. Cover: (1) what this entity represents and its graph position, (2) the most significant geological strengths visible in the data, (3) the top risk or concern across all sections.', graphCtx);
+      }, 120);
+    } else {
+      // Re-render existing history
+      var thread = document.getElementById('kg-ai-thread');
+      if(thread){
+        thread.innerHTML = '';
+        _kgAiHistory.forEach(function(msg){ _kgAiAppend(msg.role, msg.html, true); });
+      }
+    }
+  }
+
+  //  Shared ps + prospect resolver — works for ALL focal entity types 
+  // Mirrors exactly what hubKgRenderCard needs, but extended to basin/well/discovery
+  function _kgResolvePsAndProspect(fType, fName) {
+    var ps = null, prospect = null;
+
+    if(fType === 'petroleum_system') {
+      ps = (window.PETROLEUM_SYSTEMS||[]).find(function(p){ return p.name===fName; });
+
+    } else if(fType === 'play') {
+      var pl = (window.PLAYS||[]).find(function(p){ return p.name===fName; });
+      if(pl) ps = (window.PETROLEUM_SYSTEMS||[]).find(function(p){ return p.id===pl.petSysId; });
+
+    } else if(fType === 'prospect') {
+      prospect = (window.PROSPECTS||[]).find(function(p){ return p.name===fName; });
+      if(prospect) {
+        var pl2 = (window.PLAYS||[]).find(function(p){ return p.id===prospect.playId; });
+        if(pl2) ps = (window.PETROLEUM_SYSTEMS||[]).find(function(p){ return p.id===pl2.petSysId; });
+      }
+
+    } else if(fType === 'well') {
+      var well = (window.WELLS||[]).find(function(w){ return w.name===fName; });
+      if(well) {
+        var pr2 = (window.PROSPECTS||[]).find(function(p){ return p.id===well.prospectId; });
+        if(pr2) {
+          prospect = pr2;
+          var pl3 = (window.PLAYS||[]).find(function(p){ return p.id===pr2.playId; });
+          if(pl3) ps = (window.PETROLEUM_SYSTEMS||[]).find(function(p){ return p.id===pl3.petSysId; });
+        }
+      }
+
+    } else if(fType === 'discovery') {
+      var disc = (window.DISCOVERIES||[]).find(function(d){ return d.name===fName; });
+      if(disc) {
+        var well2 = (window.WELLS||[]).find(function(w){ return w.id===disc.wellId; });
+        if(well2) {
+          var pr3 = (window.PROSPECTS||[]).find(function(p){ return p.id===well2.prospectId; });
+          if(pr3) {
+            prospect = pr3;
+            var pl4 = (window.PLAYS||[]).find(function(p){ return p.id===pr3.playId; });
+            if(pl4) ps = (window.PETROLEUM_SYSTEMS||[]).find(function(p){ return p.id===pl4.petSysId; });
+          }
+        }
+      }
+
+    } else if(fType === 'basin') {
+      // For a basin focal node, grab the first (or highest-scoring) linked PS as representative
+      ps = (window.PETROLEUM_SYSTEMS||[]).find(function(p){ return p.basin===fName; });
+    }
+
+    return { ps: ps, prospect: prospect };
+  }
+
+  function _kgAiSend() {
+    var input = document.getElementById('kg-ai-input');
+    if(!input || !input.value.trim()) return;
+    var q = input.value.trim();
+    input.value = '';
+    var te = document.getElementById('hub-kg-focus-type');
+    var ee = document.getElementById('hub-kg-entity');
+    var fType = te ? te.value : '';
+    var fName = ee ? ee.value : '';
+    var resolved = _kgResolvePsAndProspect(fType, fName);
+    var graphCtx = _kgBuildGraphContext(fType, fName, resolved.ps, resolved.prospect);
+    _kgAiAsk(q, graphCtx);
+  }
+
+  function _kgAiAppend(role, html, skipHistory) {
+    var thread = document.getElementById('kg-ai-thread');
+    if(!thread) return;
+    var isUser = role === 'user';
+    var div = document.createElement('div');
+    div.style.cssText = 'display:flex;gap:6px;align-items:flex-start;'+(isUser?'flex-direction:row-reverse':'');
+    var avatar = document.createElement('div');
+    avatar.style.cssText = 'width:20px;height:20px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;'
+      +(isUser?'background:var(--bg1);border:1px solid var(--b1)':'background:linear-gradient(135deg,#00c8ff,#2fb87a)');
+    avatar.textContent = isUser ? '' : '';
+    var bubble = document.createElement('div');
+    bubble.style.cssText = 'max-width:85%;padding:7px 10px;border-radius:8px;font-size:10px;line-height:1.6;'
+      +(isUser
+        ? 'background:var(--bg1);color:var(--t2);border:1px solid var(--b1);border-top-right-radius:2px'
+        : 'background:rgba(107,70,193,.06);color:var(--t1);border:1px solid rgba(107,70,193,.15);border-top-left-radius:2px');
+    bubble.innerHTML = html;
+    div.appendChild(avatar);
+    div.appendChild(bubble);
+    thread.appendChild(div);
+    thread.scrollTop = thread.scrollHeight;
+    if(!skipHistory) _kgAiHistory.push({role:role, html:html});
+  }
+
+  async function _kgAiAsk(question, graphCtx) {
+    // Show user message
+    _kgAiAppend('user', question.replace(/</g,'&lt;').replace(/>/g,'&gt;'));
+
+    // Show typing indicator
+    var thread = document.getElementById('kg-ai-thread');
+    var typingId = 'kg-ai-typing-'+Date.now();
+    if(thread){
+      var td = document.createElement('div');
+      td.id = typingId;
+      td.style.cssText = 'display:flex;gap:6px;align-items:flex-start';
+      td.innerHTML = '<div style="width:20px;height:20px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;background:linear-gradient(135deg,#00c8ff,#2fb87a)"></div>'
+        +'<div style="padding:7px 10px;border-radius:8px;background:rgba(107,70,193,.06);border:1px solid rgba(107,70,193,.15);border-top-left-radius:2px">'
+          +'<span style="display:inline-flex;gap:3px;align-items:center">'
+            +'<span style="width:5px;height:5px;border-radius:50%;background:var(--cyan);animation:kg-ai-dot 1.2s ease-in-out infinite"></span>'
+            +'<span style="width:5px;height:5px;border-radius:50%;background:var(--cyan);animation:kg-ai-dot 1.2s ease-in-out .24s infinite"></span>'
+            +'<span style="width:5px;height:5px;border-radius:50%;background:var(--cyan);animation:kg-ai-dot 1.2s ease-in-out .48s infinite"></span>'
+          +'</span>'
+        +'</div>';
+      thread.appendChild(td);
+      thread.scrollTop = thread.scrollHeight;
+    }
+
+    // Build messages array with history
+    var messages = [];
+    _kgAiHistory.filter(function(m){ return m.role==='user'; }).slice(-3).forEach(function(m){
+      messages.push({role:'user', content: m.html.replace(/<[^>]+>/g,'')});
+      // find corresponding assistant reply
+      var idx = _kgAiHistory.indexOf(m);
+      if(idx+1 < _kgAiHistory.length && _kgAiHistory[idx+1].role==='assistant'){
+        messages.push({role:'assistant', content: _kgAiHistory[idx+1].html.replace(/<[^>]+>/g,'')});
+      }
+    });
+    // Add current question with graph context prepended
+    messages.push({role:'user', content: graphCtx+'\n\n---\nUser question: '+question});
+
+    try {
+      var res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+          'x-api-key': (typeof _aiCfg !== 'undefined' ? (_aiCfg.claudeKey || _aiCfg.key || '') : ''),
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 900,
+          system: _KG_AI_SYSTEM,
+          messages: messages,
+        })
+      });
+      var data = await res.json();
+      var typing = document.getElementById(typingId);
+      if(typing) typing.remove();
+      if(data.content && data.content[0]) {
+        var rawReply = data.content[0].text;
+
+        //  Parse and strip ACTION block 
+        var action = null;
+        var actionMatch = rawReply.match(/ACTION:\s*(\{[^\n]+\})/);
+        if(actionMatch){
+          try { action = JSON.parse(actionMatch[1]); } catch(e){ action = null; }
+          rawReply = rawReply.replace(/ACTION:\s*\{[^\n]+\}\s*$/, '').trimEnd();
+        }
+
+        // Convert markdown to HTML
+        var reply = rawReply
+          .replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')
+          .replace(/\*(.*?)\*/g,'<em>$1</em>')
+          .replace(/\n\n/g,'</p><p style="margin:5px 0 0">')
+          .replace(/\n/g,'<br>');
+        reply = '<p style="margin:0">'+reply+'</p>';
+
+        //  Execute graph navigation action 
+        if(action && action.type === 'focus' && action.entityType && action.entityName){
+          var navType = action.entityType;
+          var navName = action.entityName;
+
+          // Append navigation indicator to reply bubble
+          var navIndicator = '<div style="margin-top:8px;padding:5px 8px;background:rgba(107,70,193,.08);border:1px solid rgba(107,70,193,.25);border-radius:6px;font-size:8.5px;display:flex;align-items:center;gap:5px">'
+            +'<span style="font-size:11px">'+(_HUB_ICONS[navType]||'')+'</span>'
+            +'<span style="color:var(--cyan);font-weight:700">Graph updated →</span>'
+            +'<span style="color:var(--t2)">'+navName+'</span>'
+            +'<span style="color:var(--t3);font-size:7.5px;margin-left:auto">'+navType.replace(/_/g,' ')+'</span>'
+            +'</div>';
+          reply += navIndicator;
+
+          // Drive KG focus-type + entity selects
+          setTimeout(function(){
+            var te = document.getElementById('hub-kg-focus-type');
+            var ee = document.getElementById('hub-kg-entity');
+            if(te) te.value = navType;
+            hubKgPopulate();
+            setTimeout(function(){
+              if(ee){
+                for(var i=0;i<ee.options.length;i++){
+                  if(ee.options[i].text===navName||ee.options[i].value===navName){
+                    ee.selectedIndex=i; break;
+                  }
+                }
+              }
+              // Sync cascade dropdowns + breadcrumb via existing node-sync logic
+              _kgSyncCascadeFromNode({type:navType, name:navName});
+              // Reset AI history for new focal entity (it will change on next render)
+              _kgAiLastFocus = navType+':'+navName;
+              // Re-render KG with new focus
+              hubKgRender();
+              // Refresh breadcrumb after cascade settles
+              setTimeout(function(){ hubUpdateCrumb(); hubKgUpdateBreadcrumb(); }, 250);
+            }, 50);
+          }, 80);
+        }
+
+        _kgAiAppend('assistant', reply);
+      } else if(data.error) {
+        var typing2 = document.getElementById(typingId);
+        if(typing2) typing2.remove();
+        _kgAiAppend('assistant', '<span style="color:var(--red)">! '+( data.error.message||'API error — check your API key in Settings')+'</span>');
+      }
+    } catch(err) {
+      var typing3 = document.getElementById(typingId);
+      if(typing3) typing3.remove();
+      _kgAiAppend('assistant', '<span style="color:var(--amber)">! Could not reach AI — check your connection or API key in Settings.</span>');
+    }
+  }
+
+  // helper: small KPI box
+  function _kgKpi(lbl,val,col){
+    return '<div style="background:var(--bg2);border-radius:6px;padding:7px 8px;border:1px solid var(--b1)">'
+      +'<div style="font-size:7.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">'+lbl+'</div>'
+      +'<div style="font-size:13px;font-weight:800;color:'+(col||"var(--t1)")+'">'+(val||"—")+'</div></div>';
+  }
+  function _kgBar(lbl,pct,col){
+    var p=Math.round((pct||0)*100);
+    return '<div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">'
+      +'<div style="font-size:10px;color:var(--t2);min-width:90px">'+lbl+'</div>'
+      +'<div style="flex:1;background:var(--bg2);border-radius:3px;height:7px">'
+      +'<div style="width:'+p+'%;background:'+(col||"var(--brand)")+';border-radius:3px;height:100%;transition:width .4s"></div></div>'
+      +'<div style="font-size:10px;font-weight:700;color:'+(col||"var(--brand)")+';min-width:30px;text-align:right">'+p+'%</div></div>';
+  }
+  function _kgSection(title,content){
+    return '<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--b1)">'+title+'</div>'+content+'</div>';
+  }
+  function _kgNoData(msg){
+    return '<div style="padding:28px;text-align:center;color:var(--t3);font-size:10px"><div style="font-size:24px;margin-bottom:6px;opacity:.3"></div>'+(msg||"Select a Petroleum System node to load analytical cards")+'</div>';
+  }
+
+  // Card 1 – Graph Edges
+  function _kgCardEdges(body){
+    _kgRefreshEdgePanel();
+  }
+
+  // Card 2 – Node Inspector
+  function _kgCardInspector(body,fType,fName,ps,prospect){
+    if(!fName){body.innerHTML=_kgNoData();return;}
+    var col=_HUB_COLORS[fType]||"#8896A5";
+    var icon=_HUB_ICONS[fType]||"";
+    var conns=(_hubKgLinks||[]).filter(function(l){return l.source===fType+":"+fName||l.target===fType+":"+fName;});
+    var inDeg=conns.filter(function(l){return l.target===fType+":"+fName;}).length;
+    var outDeg=conns.filter(function(l){return l.source===fType+":"+fName;}).length;
+    // Unique neighbour types
+    var nTypes={};
+    conns.forEach(function(l){
+      var nb=l.source===fType+":"+fName?l.target:l.source;
+      var t=nb.split(":")[0]; nTypes[t]=(nTypes[t]||0)+1;
+    });
+    var html='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:10px;background:'+col+'11;border-radius:7px;border:1px solid '+col+'33">'
+      +'<div style="width:36px;height:36px;border-radius:50%;background:'+col+';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">'+icon+'</div>'
+      +'<div><div style="font-size:12px;font-weight:700;color:var(--t1)">'+fName+'</div>'
+      +'<div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px">'+fType.replace(/_/g," ")+'</div></div></div>';
+    html+=_kgSection("Graph Metrics",
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'
+      +_kgKpi("Total Edges",conns.length,"var(--brand)")
+      +_kgKpi("Inbound",inDeg,"var(--cyan)")
+      +_kgKpi("Outbound",outDeg,"var(--green)")+'</div>');
+    if(Object.keys(nTypes).length){
+      var ntHtml='<div style="display:flex;flex-wrap:wrap;gap:5px">';
+      Object.keys(nTypes).forEach(function(t){
+        var tc=_HUB_COLORS[t]||"#8896A5";
+        ntHtml+='<div style="background:'+tc+'22;color:'+tc+';font-size:8px;padding:2px 8px;border-radius:8px;font-weight:600">'+t.replace(/_/g," ")+' ('+nTypes[t]+')</div>';
+      });
+      ntHtml+='</div>';
+      html+=_kgSection("Connected Types",ntHtml);
+    }
+    // Rel type breakdown
+    var relMap={};
+    conns.forEach(function(l){relMap[l.rel]=(relMap[l.rel]||0)+1;});
+    if(Object.keys(relMap).length){
+      var rHtml='';
+      Object.keys(relMap).forEach(function(r){
+        var rc=_kgRelColor(r);
+        rHtml+='<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid var(--b1)">'
+          +'<div style="font-size:10px;color:var(--t2)"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:'+rc+';margin-right:4px"></span>'+r.replace(/_/g," ")+'</div>'
+          +'<div style="font-size:10px;font-weight:700;color:'+rc+'">'+relMap[r]+'</div></div>';
+      });
+      html+=_kgSection("Relationship Types",rHtml);
+    }
+    if(ps){
+      html+=_kgSection("Petroleum System Link",
+        '<div style="font-size:10px;color:var(--t2);line-height:1.7">'
+        +'<b style="color:var(--t1)">'+ps.name+'</b><br>'
+        +'Status: <b>'+ps.status+'</b> · HC: <b>'+ps.chargeType+'</b><br>'
+        +(ps.notes?'<span style="color:var(--t3);font-size:8.5px">'+ps.notes+'</span>':'')+'</div>');
+    }
+    body.innerHTML=html;
+  }
+
+  // Card 3 – Source Rock Data
+  function _kgCardSrcRock(body,ps){
+    if(!ps){body.innerHTML=_kgNoData("Select a Petroleum System or linked entity");return;}
+    var matColor=ps.maturity&&ps.maturity.toLowerCase().includes("peak")?"var(--green)":ps.maturity&&ps.maturity.toLowerCase().includes("over")?"var(--red)":"var(--amber)";
+    var html=_kgSection("Source Rock Identity",
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+      +_kgKpi("Formation",ps.sourceRock,"var(--brand)")
+      +_kgKpi("Age",ps.sourceRockAge,"var(--cyan)")
+      +_kgKpi("Kerogen",ps.kerogenType,"var(--amber)")
+      +_kgKpi("Status",ps.status,"var(--green)")+'</div>');
+    html+=_kgSection("Geochemistry",
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'
+      +_kgKpi("TOC %",(ps.tocPct||"—")+"%","var(--brand)")
+      +_kgKpi("Ro %",(ps.roPct||"—")+"%","var(--cyan)")
+      +_kgKpi("Maturity",ps.maturity,matColor)+'</div>');
+    // TOC quality bar
+    var tocQ=Math.min(1,(ps.tocPct||0)/8);
+    html+=_kgSection("Richness Assessment",
+      _kgBar("TOC Quality",tocQ,"var(--green)")
+      +_kgBar("Charge Confidence",ps.chargeRisk||0,"var(--brand)")
+      +'<div style="font-size:8.5px;color:var(--t3);margin-top:4px">TOC > 2% = Good · > 4% = Excellent · Ro 0.6–1.3% = oil window</div>');
+    html+=_kgSection("HC Products",
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+      +_kgKpi("Charge Type",ps.chargeType,"var(--amber)")
+      +_kgKpi("Preservation",ps.preservationRisk,"var(--cyan)")+'</div>');
+    if(ps.notes) html+=_kgSection("Notes",'<div style="font-size:10px;color:var(--t2);line-height:1.6;background:var(--bg2);padding:8px;border-radius:5px;border-left:2px solid var(--brand)">'+ps.notes+'</div>');
+    body.innerHTML=html;
+  }
+
+  // Card 4 – System Risk Decomposition
+  function _kgCardRiskDecomp(body,ps,prospect){
+    if(!ps&&!prospect){body.innerHTML=_kgNoData();return;}
+    var html="";
+    if(prospect){
+      var gcos=prospect.gcos||0;
+      html+=_kgSection("Prospect Risk Profile — "+prospect.name,
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+        +_kgKpi("GCoS",Math.round(gcos*100)+"%","var(--brand)")
+        +_kgKpi("P50 Resource",(prospect.p50Mmboe||"—")+" MMboe","var(--green)")
+        +'</div>'
+        +_kgBar("Charge Risk",prospect.chargeRisk||0,"var(--amber)")
+        +_kgBar("Reservoir Risk",prospect.reservoirRisk||0,"var(--cyan)")
+        +_kgBar("Seal Risk",prospect.sealRisk||0,"#3B82F6")
+        +_kgBar("Trap Risk",prospect.trapRisk||0,"#7C3AED")
+      );
+      // Risk wheel summary
+      var risks=[prospect.chargeRisk,prospect.reservoirRisk,prospect.sealRisk,prospect.trapRisk].filter(Boolean);
+      var composite=risks.length?risks.reduce(function(a,b){return a*b;},1):0;
+      html+=_kgSection("Composite Risk",
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+        +_kgKpi("Composite P(success)",Math.round(composite*100)+"%",composite>0.3?"var(--green)":composite>0.15?"var(--amber)":"var(--red)")
+        +_kgKpi("Risk Level",composite>0.3?"Low":composite>0.15?"Medium":"High",composite>0.3?"var(--green)":composite>0.15?"var(--amber)":"var(--red)")
+        +'</div>');
+    }
+    if(ps){
+      html+=_kgSection("System-Level Risk — "+ps.name,
+        _kgBar("Charge Confidence",ps.chargeRisk||0,"var(--amber)")
+        +_kgBar("Seal Integrity",ps.sealRisk||0,"#3B82F6")
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">'
+        +_kgKpi("Preservation Risk",ps.preservationRisk,"var(--cyan)")
+        +_kgKpi("System Status",ps.status,"var(--green)")
+        +'</div>'
+      );
+    }
+    body.innerHTML=html||_kgNoData();
+  }
+
+  // Card 5 – Timing Analysis
+  function _kgCardTiming(body,ps){
+    if(!ps){body.innerHTML=_kgNoData();return;}
+    var cm=ps.criticalMomentMa||0;
+    var era=cm>252?"Paleozoic":cm>66?"Mesozoic":cm>23?"Paleogene":"Neogene–Recent";
+    var eraCol=cm>252?"#F59E0B":cm>66?"#10B981":cm>23?"#7C3AED":"#0891B2";
+    // Build geological timeline
+    var eras=[{n:"Cambrian",s:541,e:485},{n:"Ordovician",s:485,e:444},{n:"Silurian",s:444,e:419},{n:"Devonian",s:419,e:359},{n:"Carboniferous",s:359,e:299},{n:"Permian",s:299,e:252},{n:"Triassic",s:252,e:201},{n:"Jurassic",s:201,e:145},{n:"Cretaceous",s:145,e:66},{n:"Paleogene",s:66,e:23},{n:"Neogene",s:23,e:2.6},{n:"Quaternary",s:2.6,e:0}];
+    var tlHtml='<div style="display:flex;gap:1px;height:16px;border-radius:4px;overflow:hidden;margin-bottom:8px">';
+    eras.forEach(function(er){
+      var span=er.s-er.e,pct=Math.round(span/541*100);
+      var active=cm<=er.s&&cm>=er.e;
+      tlHtml+='<div title="'+er.n+' ('+er.s+'–'+er.e+' Ma)" style="flex:'+pct+';background:'+(active?eraCol:"var(--bg2)")+';border-right:1px solid var(--b1);cursor:default;transition:filter .2s" onmouseover="this.style.filter=\'brightness(1.3)\'" onmouseout="this.style.filter=\'\'"></div>';
+    });
+    tlHtml+='</div><div style="display:flex;justify-content:space-between;font-size:7.5px;color:var(--t3);margin-bottom:10px"><span>541 Ma</span><span>Present</span></div>';
+    var html=_kgSection("Geological Timeline",tlHtml+
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'
+      +_kgKpi("Critical Moment",cm+" Ma",eraCol)
+      +_kgKpi("Era",era,eraCol)
+      +_kgKpi("System Age",ps.sourceRockAge,"var(--cyan)")+'</div>');
+    html+=_kgSection("Petroleum System Events",
+      [["Source Rock Deposition",cm+Math.round(cm*0.15)+" Ma","","var(--green)"],
+       ["Burial / Maturation",cm+Math.round(cm*0.07)+" Ma","","var(--green)"],
+       ["Expulsion & Migration",cm+" Ma (critical)","",eraCol],
+       ["Trap Formation",cm-Math.round(cm*0.05)+" Ma","","var(--green)"],
+       ["Accumulation",cm-Math.round(cm*0.1)+" Ma","","var(--green)"],
+       ["Preservation to Present","0 Ma","",ps.preservationRisk==="Low"?"var(--green)":ps.preservationRisk==="Medium"?"var(--amber)":"var(--red)"]]
+      .map(function(ev){
+        return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--b1)">'
+          +'<span>'+ev[2]+'</span>'
+          +'<div style="flex:1;font-size:10px;color:var(--t2)">'+ev[0]+'</div>'
+          +'<div style="font-size:10px;font-weight:700;color:'+ev[3]+'">'+ev[1]+'</div></div>'
+      }).join(""));
+    html+=_kgSection("Timing Risk",
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+      +_kgKpi("Preservation",ps.preservationRisk,ps.preservationRisk==="Low"?"var(--green)":ps.preservationRisk==="Medium"?"var(--amber)":"var(--red)")
+      +_kgKpi("Migration Style",ps.migrationStyle,"var(--cyan)")+'</div>');
+    body.innerHTML=html;
+  }
+
+  // Card 6 – Source Rock Quality Matrix
+  function _kgCardSRQMatrix(body,ps){
+    if(!ps){body.innerHTML=_kgNoData();return;}
+    var toc=ps.tocPct||0, ro=ps.roPct||0;
+    // Quality matrix: TOC vs Ro
+    var tocGrade=toc>=4?"Excellent":toc>=2?"Good":toc>=0.5?"Fair":"Poor";
+    var roGrade=ro>=0.6&&ro<=1.35?"Oil Window":ro>1.35&&ro<=2.0?"Wet Gas":ro>2.0?"Dry Gas":"Immature";
+    var tocCol=toc>=4?"var(--green)":toc>=2?"var(--brand)":toc>=0.5?"var(--amber)":"var(--red)";
+    var roCol=ro>=0.6&&ro<=1.35?"var(--green)":ro>1.35&&ro<=2.0?"var(--brand)":ro>2.0?"var(--amber)":"var(--red)";
+    // Kerogentype quality
+    var kerMap={"Type I":{"oil":95,"gas":5,"quality":90},"Type II":{"oil":80,"gas":20,"quality":85},"Type II/III":{"oil":60,"gas":40,"quality":70},"Type III":{"oil":20,"gas":80,"quality":65},"Type IV":{"oil":0,"gas":0,"quality":10}};
+    var ker=kerMap[ps.kerogenType]||{"oil":50,"gas":50,"quality":60};
+    var systems=(window.PETROLEUM_SYSTEMS||[]);
+    var html=_kgSection("Quality Assessment Matrix",
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+      +_kgKpi("TOC Grade",tocGrade,tocCol)
+      +_kgKpi("Maturity Window",roGrade,roCol)
+      +_kgKpi("TOC %",toc+"%","var(--brand)")
+      +_kgKpi("Ro %",ro+"%","var(--cyan)")+'</div>');
+    html+=_kgSection("Kerogen Characterisation",
+      '<div style="background:var(--bg2);border-radius:6px;padding:8px;margin-bottom:6px">'
+      +'<div style="font-size:10px;font-weight:700;color:var(--t1);margin-bottom:6px">'+ps.kerogenType+'</div>'
+      +_kgBar("Oil Potential",ker.oil/100,"var(--amber)")
+      +_kgBar("Gas Potential",ker.gas/100,"var(--cyan)")
+      +_kgBar("Overall Quality",ker.quality/100,"var(--green)")+'</div>');
+    // Comparison radar vs other systems in the dataset
+    var peers=systems.filter(function(s){return s.id!==ps.id&&s.tocPct;}).slice(0,4);
+    if(peers.length){
+      var cmpHtml='<table style="width:100%;border-collapse:collapse;font-size:8.5px">'
+        +'<tr style="color:var(--t3)"><th style="text-align:left;padding:2px 4px">System</th><th>TOC%</th><th>Ro%</th><th>Grade</th></tr>'
+        +'<tr style="background:var(--brand)22"><td style="padding:3px 4px;font-weight:700;color:var(--brand)">'+ps.name.substring(0,18)+'…</td><td style="text-align:center;font-weight:700;color:var(--brand)">'+toc+'</td><td style="text-align:center;font-weight:700;color:var(--brand)">'+ro+'</td><td style="text-align:center;color:'+tocCol+'">'+tocGrade+'</td></tr>';
+      peers.forEach(function(p){
+        var pg=p.tocPct>=4?"Excellent":p.tocPct>=2?"Good":p.tocPct>=0.5?"Fair":"Poor";
+        var pc=p.tocPct>=4?"var(--green)":p.tocPct>=2?"var(--brand)":p.tocPct>=0.5?"var(--amber)":"var(--red)";
+        cmpHtml+='<tr style="border-top:1px solid var(--b1)"><td style="padding:3px 4px;color:var(--t2)">'+p.name.substring(0,18)+'</td><td style="text-align:center">'+p.tocPct+'</td><td style="text-align:center">'+p.roPct+'</td><td style="text-align:center;color:'+pc+'">'+pg+'</td></tr>';
+      });
+      cmpHtml+='</table>';
+      html+=_kgSection("Peer Comparison",cmpHtml);
+    }
+    body.innerHTML=html;
+  }
+
+  // Card 7 – Migration Pathway Analysis
+  function _kgCardMigration(body,ps,prospect){
+    if(!ps){body.innerHTML=_kgNoData();return;}
+    var styleMap={"Vertical + Fault-assisted":{eff:80,dist:"Short–Medium",risk:"Low–Medium"},
+      "Vertical (self-sourced)":{eff:95,dist:"In-situ",risk:"Very Low"},
+      "Lateral":{eff:65,dist:"Long",risk:"Medium"},
+      "Fault-assisted lateral":{eff:70,dist:"Medium",risk:"Medium"},
+      "Vertical":{eff:75,dist:"Short",risk:"Low"},
+      "Lateral + Fault":{eff:68,dist:"Medium–Long",risk:"Medium–High"}};
+    var ms=styleMap[ps.migrationStyle]||{eff:60,dist:"Unknown",risk:"Unknown"};
+    var effCol=ms.eff>=80?"var(--green)":ms.eff>=60?"var(--amber)":"var(--red)";
+    var html=_kgSection("Migration Style",
+      '<div style="background:var(--bg2);border-radius:6px;padding:8px;margin-bottom:8px;border-left:3px solid var(--brand)">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--t1);margin-bottom:4px">'+ps.migrationStyle+'</div>'
+      +'<div style="font-size:10px;color:var(--t3)">System: '+ps.name+'</div></div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'
+      +_kgKpi("Efficiency",ms.eff+"%",effCol)
+      +_kgKpi("Distance",ms.dist,"var(--cyan)")
+      +_kgKpi("Risk Level",ms.risk,ms.eff>=80?"var(--green)":ms.eff>=60?"var(--amber)":"var(--red)")+'</div>');
+    html+=_kgSection("Pathway Metrics",
+      _kgBar("Migration Efficiency",ms.eff/100,effCol)
+      +_kgBar("Charge Confidence",ps.chargeRisk||0,"var(--brand)")
+      +_kgBar("Preservation",ps.preservationRisk==="Low"?0.9:ps.preservationRisk==="Medium"?0.65:0.35,"#059669"));
+    html+=_kgSection("Critical Moment Context",
+      '<div style="font-size:10px;color:var(--t2);line-height:1.7;background:var(--bg2);padding:8px;border-radius:5px">'
+      +'Critical expulsion at <b style="color:var(--brand)">'+ps.criticalMomentMa+' Ma</b>.<br>'
+      +'Migration fed into <b>'+ps.trapStyle+'</b> traps sealed by <b>'+ps.sealRock+'</b>.'
+      +(prospect?'<br><br>Prospect <b style="color:var(--amber)">'+prospect.name+'</b> interpreted as '+(ms.dist==="In-situ"?"self-sourced accumulation":"distal migration terminus")+'.':'')+'</div>');
+    if(prospect){
+      html+=_kgSection("Prospect Migration Score",
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+        +_kgKpi("Charge Risk",Math.round((prospect.chargeRisk||0)*100)+"%",(prospect.chargeRisk||0)>0.7?"var(--green)":"var(--amber)")
+        +_kgKpi("GCoS Impact",Math.round((prospect.gcos||0)*100)+"%","var(--brand)")+'</div>');
+    }
+    body.innerHTML=html;
+  }
+
+  // Card 8 – Trap & Seal Integrity
+  function _kgCardTrapSeal(body,ps,prospect){
+    if(!ps&&!prospect){body.innerHTML=_kgNoData();return;}
+    var html="";
+    if(ps){
+      var sealRisk=ps.sealRisk||0;
+      var sealCol=sealRisk>=0.8?"var(--green)":sealRisk>=0.6?"var(--amber)":"var(--red)";
+      html+=_kgSection("Trap & Seal — "+ps.name,
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+        +_kgKpi("Trap Style",ps.trapStyle,"var(--brand)")
+        +_kgKpi("Seal Rock",ps.sealRock,"var(--cyan)")
+        +_kgKpi("Overburden",ps.overburden,"var(--t2)")
+        +_kgKpi("Seal Integrity",Math.round(sealRisk*100)+"%",sealCol)+'</div>'
+        +_kgBar("Seal Confidence",sealRisk,sealCol)
+        +_kgBar("Charge Retention",ps.chargeRisk||0,"var(--brand)")
+        +_kgBar("Preservation Score",ps.preservationRisk==="Low"?0.9:ps.preservationRisk==="Medium"?0.65:0.35,"#059669")
+      );
+      // Trap type risk card
+      var trapRisks={"Anticline / Thrust":0.88,"Anticline":0.85,"Tilted Fault Block":0.75,"Stratigraphic / Unconventional":0.72,"4-way Dip Closure":0.90,"Rollover Anticline":0.80,"Structural Pinchout":0.70};
+      var trp=trapRisks[ps.trapStyle]||0.72;
+      html+=_kgSection("Trap Integrity Score",
+        _kgBar("Structural Integrity",trp,"var(--purple)")
+        +_kgBar("Seal Rock Effectiveness",sealRisk,"var(--cyan)")
+        +'<div style="margin-top:6px;font-size:8.5px;color:var(--t3);line-height:1.6">Seal: <b>'+ps.sealRock+'</b>. Overburden: <b>'+ps.overburden+'</b>.</div>');
+    }
+    if(prospect){
+      var sr=prospect.sealRisk||0, tr=prospect.trapRisk||0;
+      var srCol=sr>=0.8?"var(--green)":sr>=0.6?"var(--amber)":"var(--red)";
+      var trCol=tr>=0.8?"var(--green)":tr>=0.6?"var(--amber)":"var(--red)";
+      html+=_kgSection("Prospect Trap Assessment — "+prospect.name,
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+        +_kgKpi("Seal Risk",Math.round(sr*100)+"%",srCol)
+        +_kgKpi("Trap Risk",Math.round(tr*100)+"%",trCol)
+        +_kgKpi("P50 Resource",(prospect.p50Mmboe||"—")+" MMboe","var(--brand)")
+        +_kgKpi("GCoS",Math.round((prospect.gcos||0)*100)+"%","var(--green)")+'</div>'
+        +_kgBar("Seal Confidence",sr,srCol)
+        +_kgBar("Trap Confidence",tr,trCol)
+      );
+      var combined=sr*tr;
+      html+=_kgSection("Combined Trap-Seal Score",
+        '<div style="background:var(--bg2);border-radius:6px;padding:10px;text-align:center">'
+        +'<div style="font-size:22px;font-weight:800;color:'+(combined>=0.6?"var(--green)":combined>=0.4?"var(--amber)":"var(--red)")+'">'+Math.round(combined*100)+'%</div>'
+        +'<div style="font-size:10px;color:var(--t3);margin-top:2px">Combined Trap × Seal Probability</div>'
+        +'<div style="font-size:10px;color:'+(combined>=0.6?"var(--green)":combined>=0.4?"var(--amber)":"var(--red)")+';font-weight:700;margin-top:4px">'+(combined>=0.6?"LOW RISK":combined>=0.4?"MODERATE RISK":"HIGH RISK")+'</div></div>');
+    }
+    body.innerHTML=html||_kgNoData();
+  }
+  function hubMountBayes(){
+    var m=document.getElementById("hub-bayes-mount");if(!m||m._mounted)return;
+    m.innerHTML='<div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+      +'<span style="font-size:18px"></span><div>'
+      +'<div style="font-size:13px;font-weight:700;color:var(--t1)">Bayesian Play Probability</div>'
+      +'<div style="font-size:10px;color:var(--t3)">Posterior GCoS · Monte Carlo · VOI · live context from selected play</div></div>'
+      +'<span class="hub-deeplink" style="margin-left:auto" onclick="_hubGoLegacy(\'bayesplay\')">Open Full View ↗</span>'
+      +'</div><div id="hub-bayes-summary"></div></div>';
+    m._mounted=true; hubSyncBayes();
+  }
+  function hubSyncBayes(){ _syncData();
+    var s=document.getElementById("hub-bayes-summary");if(!s)return;
+    var pr=_hubCtx.prospect?PROSPECTS.find(function(p){return p.id===_hubCtx.prospect;}):null;
+    var play=_hubCtx.play?PLAYS.find(function(p){return p.id===_hubCtx.play;}):null;
+    if(!pr&&!play){s.innerHTML='<div style="padding:20px;text-align:center;color:var(--t3);font-size:11px">Select a play or prospect in the context bar to see Bayesian analysis</div>';return;}
+    var html='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px">';
+    function kpi(lbl,val,col){return'<div style="background:var(--bg4);border-radius:6px;padding:8px;text-align:center">'+'<div style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">'+lbl+'</div>'+'<div style="font-size:16px;font-weight:800;color:'+col+'">'+val+'</div></div>';}
+    if(pr){
+      html+=kpi("Posterior GCoS",Math.round((pr.gcos||0)*100)+"%","#7C3AED");
+      html+=kpi("P50 Resource",(pr.p50Mmboe||0)+" MMboe","var(--brand)");
+      html+=kpi("Charge Risk",Math.round((pr.chargeRisk||0)*100)+"%","var(--amber)");
+      html+=kpi("Reservoir Risk",Math.round((pr.reservoirRisk||0)*100)+"%","var(--cyan)");
+      html+=kpi("Trap Risk",Math.round((pr.trapRisk||0)*100)+"%","var(--t2)");
+    } else {
+      html+=kpi("Play PGoS",Math.round((play.pgos||0)*100)+"%","#7C3AED");
+      html+=kpi("EUR",(play.eurMmboe||0).toLocaleString()+" MMboe","var(--brand)");
+      html+=kpi("Charge",Math.round((play.chargeRisk||0)*100)+"%","var(--amber)");
+      html+=kpi("Reservoir",Math.round((play.reservoirRisk||0)*100)+"%","var(--cyan)");
+      html+=kpi("Play Risk",Math.round((play.playRisk||0)*100)+"%","var(--t2)");
+    }
+    html+='</div>';
+    if(pr){
+      html+='<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:8px">GCoS Decomposition — '+pr.name+'</div>';
+      [["Charge",pr.chargeRisk||0,"var(--amber)"],["Reservoir",pr.reservoirRisk||0,"var(--cyan)"],["Seal",pr.sealRisk||0,"#3B82F6"],["Trap",pr.trapRisk||0,"#7C3AED"]].forEach(function(r){
+        var pct=Math.round(r[1]*100);
+        html+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+          +'<div style="font-size:10px;color:var(--t2);min-width:80px">'+r[0]+'</div>'
+          +'<div style="flex:1;background:var(--bg4);border-radius:4px;height:8px"><div style="width:'+pct+'%;background:'+r[2]+';border-radius:4px;height:100%"></div></div>'
+          +'<div style="font-size:10px;font-weight:700;color:'+r[2]+';min-width:32px;text-align:right">'+pct+'%</div></div>';
+      });
+      html+='</div>';
+      html+='<div style="display:flex;gap:8px;margin-bottom:8px">';
+      [["P90 (low)",pr.p90Mmboe||0,"var(--t3)"],["P50 (mid)",pr.p50Mmboe||0,"var(--brand)"],["P10 (high)",pr.p10Mmboe||0,"var(--green)"],["Mean",pr.meanMmboe||0,"var(--amber)"]].forEach(function(r){
+        html+='<div style="background:var(--bg4);border-radius:6px;padding:8px;flex:1;text-align:center">'
+          +'<div style="font-size:8px;color:var(--t3);text-transform:uppercase;margin-bottom:2px">'+r[0]+'</div>'
+          +'<div style="font-size:14px;font-weight:800;color:'+r[2]+'">'+r[1].toLocaleString()+'</div>'
+          +'<div style="font-size:8px;color:var(--t3)">MMboe</div></div>';
+      });
+      html+='</div>';
+    }
+    html+='<div style="font-size:10px;color:var(--t3);margin-top:4px">Full DAG, CPT sliders, Monte Carlo & VOI → <span class="hub-deeplink" onclick="_hubGoLegacy(\'bayesplay\')">Open Full Bayesian View ↗</span></div>';
+    s.innerHTML=html;
+  }
+
+  //  Tab 5: AI Analogues 
+  function hubMountAIA(){
+    var m=document.getElementById("hub-aia-mount");if(!m||m._mounted)return;
+    m.innerHTML='<div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+      +'<span style="font-size:18px"></span><div>'
+      +'<div style="font-size:13px;font-weight:700;color:var(--t1)">AI Analogue Discovery</div>'
+      +'<div style="font-size:10px;color:var(--t3)">Cosine similarity · basin embeddings · 600+ global analogues</div></div>'
+      +'<span class="hub-deeplink" style="margin-left:auto" onclick="_hubGoLegacy(\'aianalogues\')">Open Full View ↗</span>'
+      +'</div><div id="hub-aia-summary"></div></div>';
+    m._mounted=true; hubSyncAIA();
+  }
+  function hubSyncAIA(){ _syncData();
+    var s=document.getElementById("hub-aia-summary");if(!s)return;
+    var basin=_hubCtx.basin;
+    if(!basin){s.innerHTML='<div style="padding:16px;text-align:center;color:var(--t3);font-size:11px">Select a basin above to find analogues</div>';return;}
+    var as=document.getElementById("aia-query-basin");
+    if(as){for(var i=0;i<as.options.length;i++){if(as.options[i].value===basin||as.options[i].text===basin){as.selectedIndex=i;break;}}
+      if(typeof aia_runSearch==="function")aia_runSearch();}
+    var b=BASINS.find(function(x){return x.name===basin;});
+    var sb=document.getElementById("hub-tab-badge-sim");if(sb&&b)sb.textContent=(b.score||"—")+"%";
+    if(!b){s.innerHTML='<div style="color:var(--t3);font-size:10px;padding:8px">Basin not found</div>';return;}
+    function kpi2(lbl,val,col){return'<div style="background:var(--bg4);border-radius:6px;padding:8px;text-align:center"><div style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">'+lbl+'</div><div style="font-size:15px;font-weight:800;color:'+col+'">'+val+'</div></div>';}
+    var html='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">'
+      +kpi2("Prospectivity",b.score||"—","var(--green)")+kpi2("Plays",b.plays||"—","var(--cyan)")
+      +kpi2("HC Type",b.hc||"—","var(--amber)")+kpi2("Status",b.status||"—","var(--brand)")
+      +'</div>';
+    // KG analogue edges for this basin
+    var analEdges=KG_EDGES.filter(function(e){
+      return(e.rel==="analogous_to"||e.rel==="similar_to")&&(
+        PLAYS.some(function(p){return p.basin===basin&&(p.name===e.srcName||p.name===e.tgtName);})||
+        DISCOVERIES.some(function(d){return d.basin===basin&&(d.name===e.srcName||d.name===e.tgtName);})
+      );
+    });
+    if(analEdges.length){
+      html+='<div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:8px">Analogues from Knowledge Graph</div>'
+        +'<table style="width:100%;border-collapse:collapse;font-size:10px"><thead>'
+        +'<tr style="border-bottom:1px solid var(--b1)">'
+        +'<th style="text-align:left;padding:4px 8px;color:var(--t3)">Entity A</th>'
+        +'<th style="padding:4px 8px;color:var(--t3)">Relation</th>'
+        +'<th style="text-align:left;padding:4px 8px;color:var(--t3)">Entity B</th>'
+        +'<th style="padding:4px 8px;color:var(--t3)">Similarity</th>'
+        +'</tr></thead><tbody>';
+      analEdges.forEach(function(e){
+        var rc=e.rel==="analogous_to"?"#8B5CF6":"#0891B2";
+        html+='<tr style="border-bottom:1px solid var(--b1)">'
+          +'<td style="padding:5px 8px;font-weight:600;color:var(--t1)">'+e.srcName+'</td>'
+          +'<td style="padding:5px 8px;text-align:center"><span style="background:'+rc+'22;color:'+rc+';font-size:8px;padding:2px 6px;border-radius:8px;font-weight:600">'+e.rel.replace(/_/g," ")+'</span></td>'
+          +'<td style="padding:5px 8px;color:var(--t2)">'+e.tgtName+'</td>'
+          +'<td style="padding:5px 8px;text-align:center;font-weight:700;color:var(--green)">'+Math.round(e.weight*100)+'%</td>'
+          +'</tr>';
+      });
+      html+='</tbody></table>';
+    } else {
+      html+='<div style="color:var(--t3);font-size:10px;padding:8px">No explicit analogue edges in KG for this basin&#39;s plays</div>';
+    }
+    html+='<div style="font-size:10px;color:var(--t3);margin-top:8px">Full UMAP 3D · radar · ranked match table → <span class="hub-deeplink" onclick="_hubGoLegacy(\'aianalogues\')">Open Full AI Analogue View ↗</span></div>';
+    s.innerHTML=html;
+  }
+
+  //  Legacy escape hatch 
+  function _hubGoLegacy(id){if(typeof goTo==="function")goTo(id,null);}
+
+  //  AI actions 
+  function hubAI_summarise(){
+    var ctx="";
+    if(_hubCtx.basin)ctx+="Basin: "+_hubCtx.basin+". ";
+    if(_hubCtx.petSys){var ps=PETROLEUM_SYSTEMS.find(function(p){return p.id===_hubCtx.petSys;});if(ps)ctx+="Petroleum System: "+ps.name+". ";}
+    if(_hubCtx.play){var pl=PLAYS.find(function(p){return p.id===_hubCtx.play;});if(pl)ctx+="Play: "+pl.name+", PGoS "+Math.round((pl.pgos||0)*100)+"%. ";}
+    if(_hubCtx.prospect){var pr=PROSPECTS.find(function(p){return p.id===_hubCtx.prospect;});if(pr)ctx+="Prospect: "+pr.name+", GCoS "+Math.round((pr.gcos||0)*100)+"%, P50 "+pr.p50Mmboe+" MMboe. ";}
+    var prompt=ctx?"Summarise the exploration opportunity for this context: "+ctx:"Summarise the EDAFY exploration portfolio and its key opportunities.";
+    if(typeof _eAsk==="function")_eAsk(prompt);
+  }
+  function hubAI_risk(){
+    var pr=_hubCtx.prospect?PROSPECTS.find(function(p){return p.id===_hubCtx.prospect;}):null;
+    var prompt=pr?"Analyse geological risk for "+pr.name+" ("+pr.basin+"): charge "+Math.round((pr.chargeRisk||0)*100)+"%, reservoir "+Math.round((pr.reservoirRisk||0)*100)+"%, seal "+Math.round((pr.sealRisk||0)*100)+"%, GCoS "+Math.round((pr.gcos||0)*100)+"%."
+                 :"What are the key risk factors in a petroleum exploration programme?";
+    if(typeof _eAsk==="function")_eAsk(prompt);
+  }
+  function hubAI_analogue(){
+    var basin=_hubCtx.basin||"the selected basin";
+    if(typeof _eAsk==="function")_eAsk("What are the best global analogue basins for "+basin+" in terms of tectonic setting, reservoir quality, and HC charge system?");
+  }
+  function hubAI_bayes(){
+    var pr=_hubCtx.prospect?PROSPECTS.find(function(p){return p.id===_hubCtx.prospect;}):null;
+    var prompt=pr?"Using Bayesian updating, how would new seismic or well data change the GCoS for "+pr.name+"? Current GCoS: "+Math.round((pr.gcos||0)*100)+"%. Key uncertainties: charge, reservoir, trap."
+                 :"How does Bayesian probability updating work in petroleum exploration?";
+    if(typeof _eAsk==="function")_eAsk(prompt);
+  }
+
+  //  Intercept legacy nav → redirect to hub tab 
+  (function(){
+    if(window.__hubPatchDone) return; window.__hubPatchDone=true;
+    var _orig=window.goTo; if(!_orig) return;
+    var REDIR={petrosystem:1,bayesplay:1,aianalogues:1,hierarchy:1,knowledgegraph:1};
+    window.goTo=function(id,navEl){
+      if(REDIR[id]){
+        _orig("hub", navEl||document.getElementById("nav-hub"));
+        setTimeout(function(){hubSwitchTab(id);},180);
+        return;
+      }
+      _orig(id,navEl);
+    };
+  })();
+
+  //  Boot 
+
+  // 
+  // INTERACTIVE KG — 5 integration features
+  // 
+
+  var _kgNeighbourhood = false; // ④ neighbourhood mode toggle
+
+  // ① + ② Render clickable breadcrumb in KG toolbar 
+  function hubKgUpdateBreadcrumb() {
+    var bc = document.getElementById('hub-kg-breadcrumb');
+    var empty = document.getElementById('hub-kg-crumb-empty');
+    if (!bc) return;
+    var levels = [
+      {key:'basin',    field:'basin',  col:'#0D9488', icon:'', label: _hubCtx.basin},
+      {key:'petSys',   field:'ps',     col:'#7C3AED', icon:'', label: (function(){ var ps=_HUB_DATA.ps.find(function(p){return p.id===_hubCtx.petSys;}); return ps?ps.name:''; })()},
+      {key:'play',     field:'plays',  col:'#0891B2', icon:'', label: (function(){ var pl=_HUB_DATA.plays.find(function(p){return p.id===_hubCtx.play;}); return pl?pl.name:''; })()},
+      {key:'prospect', field:'pros',   col:'#D97706', icon:'', label: (function(){ var pr=_HUB_DATA.prospects.find(function(p){return p.id===_hubCtx.prospect;}); return pr?pr.name:''; })()},
+      {key:'well',     field:'wells',  col:'#059669', icon:'', label: (function(){ var w=(window.WELLS||[]).find(function(w){return w.id===_hubCtx.well;}); return w?w.name:''; })()},
+      {key:'disc',     field:'disc',   col:'#DC2626', icon:'', label: (function(){ var d=(window.DISCOVERIES||[]).find(function(d){return d.id===_hubCtx.disc;}); return d?d.name:''; })()}
+    ].filter(function(l){ return l.label; });
+
+    if (levels.length === 0) {
+      if (empty) empty.style.display = '';
+      // Remove old crumb segments
+      bc.querySelectorAll('.kg-crumb-seg,.kg-crumb-arr').forEach(function(e){ e.remove(); });
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    bc.querySelectorAll('.kg-crumb-seg,.kg-crumb-arr').forEach(function(e){ e.remove(); });
+
+    levels.forEach(function(lv, i) {
+      if (i > 0) {
+        var arr = document.createElement('span');
+        arr.className = 'kg-crumb-arr';
+        arr.textContent = '›';
+        arr.style.cssText = 'color:var(--t3);font-size:11px;';
+        bc.appendChild(arr);
+      }
+      var seg = document.createElement('span');
+      seg.className = 'kg-crumb-seg';
+      seg.title = 'Click to focus KG on this ' + lv.key;
+      seg.dataset.level = lv.key;
+      seg.dataset.label = lv.label;
+      seg.textContent = lv.icon + ' ' + (lv.label.length > 20 ? lv.label.slice(0,18)+'…' : lv.label);
+      var isDeepest = (i === levels.length - 1);
+      seg.style.cssText = 'font-size:10px;padding:2px 8px;border-radius:10px;cursor:pointer;transition:all .15s;white-space:nowrap;'
+        + (isDeepest
+          ? 'background:'+lv.col+'22;color:'+lv.col+';border:1px solid '+lv.col+'55;font-weight:700;'
+          : 'background:transparent;color:var(--t2);border:1px solid transparent;');
+      seg.onmouseenter = function(){ if(!isDeepest) this.style.background='var(--bg1)'; };
+      seg.onmouseleave = function(){ if(!isDeepest) this.style.background='transparent'; };
+      // ② Click breadcrumb crumb → re-focus KG on that level
+      seg.onclick = (function(level, label) {
+        return function() { hubKgFocusOnLevel(level, label); };
+      })(lv.key, lv.label);
+      bc.appendChild(seg);
+    });
+  }
+
+  // ② Focus KG on a specific hierarchy level by clicking crumb 
+  function hubKgFocusOnLevel(level, name) {
+    var typeMap = {basin:'basin', petSys:'petroleum_system', play:'play', prospect:'prospect', well:'well', disc:'discovery'};
+    var kgType = typeMap[level] || level;
+    var typeEl = document.getElementById('hub-kg-focus-type');
+    var entEl  = document.getElementById('hub-kg-entity');
+    if (!typeEl || !entEl) return;
+    typeEl.value = kgType;
+    hubKgPopulate();
+    setTimeout(function(){
+      for(var i=0;i<entEl.options.length;i++){
+        if(entEl.options[i].text===name||entEl.options[i].value===name){
+          entEl.selectedIndex=i; break;
+        }
+      }
+      if (_hubActiveTab !== 'knowledgegraph') hubSwitchTab('knowledgegraph');
+      else hubKgRender();
+    }, 40);
+  }
+
+  // ③ KG node click → update cascade dropdowns 
+  function _kgSyncCascadeFromNode(node) {
+    if (!node) return;
+    var type = node.type, name = node.name;
+    // Map KG node type → cascade level
+    if (type === 'basin') {
+      var sel = document.getElementById('hub-sel-basin');
+      if (sel) { sel.value = name; hubOnBasinChange(); }
+    } else if (type === 'petroleum_system') {
+      var ps = _HUB_DATA.ps.find(function(p){ return p.name===name; });
+      if (ps) {
+        // Set basin first
+        var bsel = document.getElementById('hub-sel-basin');
+        if (bsel && ps.basin) { bsel.value = ps.basin; hubOnBasinChange(); }
+        setTimeout(function(){
+          var psel = document.getElementById('hub-sel-petsys');
+          if (psel) { psel.value = ps.id; hubOnPetSysChange(); }
+        }, 60);
+      }
+    } else if (type === 'play') {
+      var pl = _HUB_DATA.plays.find(function(p){ return p.name===name; });
+      if (pl) {
+        var ps2 = _HUB_DATA.ps.find(function(p){ return p.id===pl.petSysId; });
+        if (ps2) {
+          var bsel2 = document.getElementById('hub-sel-basin');
+          if (bsel2) { bsel2.value = ps2.basin; hubOnBasinChange(); }
+          setTimeout(function(){
+            var psel2 = document.getElementById('hub-sel-petsys');
+            if (psel2) { psel2.value = ps2.id; hubOnPetSysChange(); }
+            setTimeout(function(){
+              var plsel = document.getElementById('hub-sel-play');
+              if (plsel) { plsel.value = pl.id; hubOnPlayChange(); }
+            }, 60);
+          }, 60);
+        }
+      }
+    } else if (type === 'prospect') {
+      var pr = _HUB_DATA.prospects.find(function(p){ return p.name===name; });
+      if (pr) {
+        var pl2 = _HUB_DATA.plays.find(function(p){ return p.id===pr.playId; });
+        var ps3 = pl2 ? _HUB_DATA.ps.find(function(p){ return p.id===pl2.petSysId; }) : null;
+        if (ps3) {
+          var bsel3 = document.getElementById('hub-sel-basin');
+          if (bsel3) { bsel3.value = ps3.basin; hubOnBasinChange(); }
+          setTimeout(function(){
+            var psel3 = document.getElementById('hub-sel-petsys');
+            if (psel3) { psel3.value = ps3.id; hubOnPetSysChange(); }
+            setTimeout(function(){
+              var plsel2 = document.getElementById('hub-sel-play');
+              if (plsel2) { plsel2.value = pr.playId; hubOnPlayChange(); }
+              setTimeout(function(){
+                var prsel = document.getElementById('hub-sel-prospect');
+                if (prsel) { prsel.value = pr.id; hubOnProspectChange(); }
+              }, 60);
+            }, 60);
+          }, 60);
+        }
+      }
+    }
+  }
+
+  // ④ Neighbourhood mode toggle 
+  function hubKgToggleNeighbourhood() {
+    _kgNeighbourhood = !_kgNeighbourhood;
+    var btn = document.getElementById('hub-kg-nbhood-btn');
+    if (btn) {
+      btn.textContent = _kgNeighbourhood ? ' Neighbourhood' : ' Full Graph';
+      btn.style.background = _kgNeighbourhood ? 'rgba(107,70,193,.1)' : 'var(--bg2)';
+      btn.style.color = _kgNeighbourhood ? 'var(--brand)' : 'var(--t3)';
+      btn.style.borderColor = _kgNeighbourhood ? 'var(--brand)' : 'var(--b1)';
+    }
+    hubKgRender();
+  }
+
+  // ⑤ Right-click context menu 
+  var _kgCtxMenu = null;
+
+  function _kgShowCtxMenu(clientX, clientY, node) {
+    _kgHideCtxMenu();
+    var menu = document.createElement('div');
+    menu.id = '_kg-ctx-menu';
+    _kgCtxMenu = menu;
+    menu.style.cssText = 'position:fixed;background:#1e293b;border:1px solid #334155;border-radius:8px;'
+      + 'padding:4px 0;font-size:10px;color:#e2e8f0;z-index:9999;min-width:200px;'
+      + 'box-shadow:0 8px 24px rgba(0,0,0,.4);font-family:system-ui,sans-serif;';
+    var left = clientX + 4;
+    var top  = clientY + 4;
+    // Clamp to viewport
+    if (left + 210 > window.innerWidth)  left = window.innerWidth  - 215;
+    if (top  + 200 > window.innerHeight) top  = window.innerHeight - 205;
+    menu.style.left = left + 'px';
+    menu.style.top  = top  + 'px';
+
+    var typeMap = {basin:'basin',petroleum_system:'petSys',play:'play',prospect:'prospect',well:'well',discovery:'disc'};
+    var cascadeLevel = typeMap[node.type];
+
+    var items = [
+      {icon:'', label:'Make focal node', action: function(){ hubKgFocusOnLevel(cascadeLevel||node.type, node.name); }},
+      {icon:'', label:'Set as cascade context', action: function(){ _kgSyncCascadeFromNode(node); }, disabled: !cascadeLevel},
+      {divider: true},
+      //  ANALOGUE CONTROL 
+      (function(){
+        var nodeKey = node.type + ':' + node.name;
+        var hasAnaEdges = (window.KG_EDGES||[]).some(function(e){
+          return (e.rel==='analogous_to'||e.rel==='similar_to') &&
+            ((e.srcType===node.type&&e.srcName===node.name)||(e.tgtType===node.type&&e.tgtName===node.name));
+        });
+        var alreadyShown = !!_kgActiveAnalogueNodes[nodeKey];
+        if (!hasAnaEdges) {
+          return {icon:'', label:'No analogues for this node', disabled:true};
+        } else if (alreadyShown) {
+          return {icon:'', label:'Dismiss Analogues', action: function(){ _kgDismissAnalogues(node); },
+            style:'color:#F87171'};
+        } else {
+          return {icon:'', label:'Show Analogues for this node', action: function(){ _kgInjectAnalogues(node); },
+            style:'color:#A78BFA;font-weight:600'};
+        }
+      })(),
+      {divider: true},
+      {icon:'', label:'Neighbourhood of this node', action: function(){
+        _kgNeighbourhood = true;
+        hubKgFocusOnLevel(cascadeLevel||node.type, node.name);
+        var btn=document.getElementById('hub-kg-nbhood-btn');
+        if(btn){btn.textContent=' Neighbourhood';btn.style.background='rgba(107,70,193,.1)';btn.style.color='var(--brand)';btn.style.borderColor='var(--brand)';}
+      }},
+      {icon:'', label:'Open Geo Reasoning for this', action: function(){
+        _kgSyncCascadeFromNode(node);
+        setTimeout(function(){
+          hubSwitchTab('reasoning');
+          var sel=document.getElementById('gr-prospect');
+          if(sel && node.type==='prospect'){
+            var pr=_HUB_DATA.prospects.find(function(p){return p.name===node.name;});
+            if(pr){for(var i=0;i<sel.options.length;i++){if(sel.options[i].value===pr.id){sel.selectedIndex=i;break;}}}
+          }
+        }, 200);
+      }, disabled: node.type !== 'prospect'},
+      {icon:'', label:'Generate report for this', action: function(){
+        _kgSyncCascadeFromNode(node);
+        setTimeout(function(){ hubSwitchTab('report'); }, 200);
+      }},
+      {divider: true},
+      {icon:'', label:'Copy node name', action: function(){
+        try{ navigator.clipboard.writeText(node.name); } catch(e){}
+      }},
+      {icon:'', label:'Show in Inspector', action: function(){
+        hubKgCard('inspector', null);
+        _kgSelected = node;
+      }},
+    ];
+
+    items.forEach(function(item){
+      if (item.divider) {
+        var hr = document.createElement('div');
+        hr.style.cssText = 'height:1px;background:#334155;margin:3px 0;';
+        menu.appendChild(hr); return;
+      }
+      var row = document.createElement('div');
+      row.style.cssText = 'padding:6px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .1s;'
+        + (item.disabled ? 'opacity:.4;pointer-events:none;' : '');
+      var labelStyle = item.style ? ' style="'+item.style+'"' : '';
+      row.innerHTML = '<span style="font-size:12px">'+item.icon+'</span><span'+labelStyle+'>'+item.label+'</span>';
+      row.onmouseenter = function(){ this.style.background='rgba(255,255,255,.07)'; };
+      row.onmouseleave = function(){ this.style.background=''; };
+      if (!item.disabled) row.onclick = function(){ _kgHideCtxMenu(); item.action(); };
+      menu.appendChild(row);
+    });
+    document.body.appendChild(menu);
+    // Close on outside click
+    setTimeout(function(){
+      document.addEventListener('click', _kgHideCtxMenu, {once:true});
+    }, 0);
+  }
+
+  function _kgHideCtxMenu() {
+    if (_kgCtxMenu) { _kgCtxMenu.remove(); _kgCtxMenu = null; }
+  }
+
+  //  On-demand analogue injection 
+  // Called from right-click "Show Analogues". Adds analogue edges + their peer
+  // nodes into the live graph without triggering a full re-render/re-layout.
+  function _kgInjectAnalogues(node) {
+    var nodeKey = node.type + ':' + node.name;
+    var ARELS = {analogous_to:true, similar_to:true};
+    var added = 0;
+
+    (window.KG_EDGES || []).forEach(function(e) {
+      if (!ARELS[e.rel]) return;
+      var isSrc = e.srcType === node.type && e.srcName === node.name;
+      var isTgt = e.tgtType === node.type && e.tgtName === node.name;
+      if (!isSrc && !isTgt) return;
+
+      var peerType = isSrc ? e.tgtType : e.srcType;
+      var peerName = isSrc ? e.tgtName : e.srcName;
+      var peerKey  = peerType + ':' + peerName;
+
+      // Add peer node if not already in graph — place it near the focal node
+      var existingNode = _hubKgNodes.find(function(n){ return n.id === peerKey; });
+      if (!existingNode) {
+        // Offset position relative to the requesting node
+        var angle = Math.random() * Math.PI * 2;
+        var dist  = 160 + Math.random() * 60;
+        _hubKgNodes.push({
+          id:      peerKey,
+          type:    peerType,
+          name:    peerName,
+          focal:   false,
+          isAnalogueNode: true,
+          x: node.x + Math.cos(angle) * dist,
+          y: node.y + Math.sin(angle) * dist,
+          vx: 0, vy: 0
+        });
+        added++;
+      }
+
+      // Add the analogue edge if not already present
+      var edgeKey = e.srcType+':'+e.srcName + '→' + e.tgtType+':'+e.tgtName;
+      var alreadyLinked = _hubKgLinks.some(function(l){
+        return l.source === (e.srcType+':'+e.srcName) && l.target === (e.tgtType+':'+e.tgtName);
+      });
+      if (!alreadyLinked) {
+        _hubKgLinks.push({
+          source: e.srcType+':'+e.srcName,
+          target: e.tgtType+':'+e.tgtName,
+          rel:    e.rel,
+          weight: e.weight,
+          isAnalogue: true   // flag for distinct draw style
+        });
+      }
+    });
+
+    // Mark this node as having analogues shown
+    _kgActiveAnalogueNodes[nodeKey] = true;
+
+    // Show toast
+    var toastMsg = added > 0
+      ? ' ' + added + ' analogue node(s) added for ' + node.name
+      : '! No new analogues found for ' + node.name + ' (already shown or none exist)';
+    _kgShowToast(toastMsg, added > 0 ? '#8B5CF6' : '#F59E0B');
+
+    // Warm the simulation briefly so new nodes settle
+    if (typeof alpha !== 'undefined') alpha = 0.45;
+  }
+
+  function _kgDismissAnalogues(node) {
+    var nodeKey = node.type + ':' + node.name;
+    var ARELS = {analogous_to:true, similar_to:true};
+
+    // Collect analogue peer keys reachable from this node
+    var peerKeys = {};
+    (window.KG_EDGES || []).forEach(function(e) {
+      if (!ARELS[e.rel]) return;
+      var isSrc = e.srcType === node.type && e.srcName === node.name;
+      var isTgt = e.tgtType === node.type && e.tgtName === node.name;
+      if (!isSrc && !isTgt) return;
+      var pk = (isSrc ? e.tgtType : e.srcType) + ':' + (isSrc ? e.tgtName : e.srcName);
+      peerKeys[pk] = true;
+    });
+
+    // Remove analogue edges touching this node
+    _hubKgLinks = _hubKgLinks.filter(function(l) {
+      if (!l.isAnalogue) return true;
+      return !(l.source === nodeKey || l.target === nodeKey ||
+               peerKeys[l.source] || peerKeys[l.target]);
+    });
+
+    // Remove peer nodes that were injected as analogue-only (isAnalogueNode=true)
+    // but only if they have no remaining non-analogue links
+    _hubKgNodes = _hubKgNodes.filter(function(n) {
+      if (!n.isAnalogueNode) return true;
+      var stillLinked = _hubKgLinks.some(function(l){
+        return l.source === n.id || l.target === n.id;
+      });
+      return stillLinked;
+    });
+
+    delete _kgActiveAnalogueNodes[nodeKey];
+    _kgShowToast(' Analogues dismissed for ' + node.name, '#64748B');
+    if (typeof alpha !== 'undefined') alpha = 0.25;
+  }
+
+  function _kgShowToast(msg, color) {
+    var existing = document.getElementById('_kg-toast');
+    if (existing) existing.remove();
+    var t = document.createElement('div');
+    t.id = '_kg-toast';
+    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);'
+      + 'background:#1e293b;border:1px solid ' + (color||'#334155') + ';border-radius:8px;'
+      + 'padding:8px 18px;font-size:11px;color:#e2e8f0;z-index:9999;'
+      + 'font-family:system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.4);'
+      + 'pointer-events:none;transition:opacity .3s;';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function(){ t.style.opacity='0'; setTimeout(function(){ t.remove(); }, 350); }, 2800);
+  }
+
+  document.addEventListener("DOMContentLoaded",function(){
+    setTimeout(function(){
+      if(typeof _syncData==="function") _syncData();
+      if(typeof hubInit==="function") hubInit();
+      if(typeof _hubBindCascade==="function") _hubBindCascade();
+      var kt=document.getElementById("hub-kg-focus-type");
+      if(kt&&!kt._hi){kt._hi=true;kt.addEventListener("change",hubKgPopulate);}
+    },700);
+  });
+  
+
+  // 
+  // NEW FEATURE ENGINES — appended to hub script
+  // 
+
+  //  RISK SANKEY 
+  var _skRisks = {charge:0.72,reservoir:0.78,seal:0.82,trap:0.75,timing:0.88};
+
+  function hubSankeyInit() {
+    var sel = document.getElementById('sk-prospect');
+    if (!sel || sel.options.length > 1) { hubSankeyRender(); return; }
+    var pros = _HUB_DATA.prospects || [];
+    sel.innerHTML = pros.map(function(p){ return '<option value="'+p.id+'">'+p.name+'</option>'; }).join('');
+    var params = [
+      {key:'charge',   label:'Charge',    color:'#F59E0B'},
+      {key:'reservoir',label:'Reservoir', color:'#2563EB'},
+      {key:'seal',     label:'Seal',      color:'#16A34A'},
+      {key:'trap',     label:'Trap',      color:'#8B5CF6'},
+      {key:'timing',   label:'Timing',    color:'#EC4899'}
+    ];
+    var sw = document.getElementById('sk-sliders');
+    if (sw) sw.innerHTML = params.map(function(p){
+      var v = Math.round(_skRisks[p.key]*100);
+      return '<div style="margin-bottom:6px">'
+        +'<div style="display:flex;justify-content:space-between;font-size:8px;color:var(--t3);margin-bottom:2px">'
+        +'<span>'+p.label+'</span><span id="skl-'+p.key+'" style="color:'+p.color+';font-weight:700">'+v+'%</span></div>'
+        +'<input type="range" min="5" max="99" value="'+v+'" step="1" style="width:100%;accent-color:'+p.color+'"'
+        +' oninput="skUp(\''+p.key+'\',this.value)">'
+        +'</div>'
+    }).join('');
+    hubSankeyRender();
+  }
+
+  function skUp(key,val) {
+    _skRisks[key] = parseInt(val)/100;
+    var l = document.getElementById('skl-'+key);
+    if (l) l.textContent = val+'%';
+    hubSankeyRender();
+  }
+
+  function hubSankeyRender() {
+    var sel = document.getElementById('sk-prospect');
+    if (!sel) return;
+    var pid = sel.value;
+    var pros = _HUB_DATA.prospects || [];
+    var pr = pros.find(function(p){return p.id===pid;}) || pros[0];
+    if (!pr) return;
+    var R = _skRisks;
+    var gcos = R.charge * R.reservoir * R.seal * R.trap * R.timing;
+    var eur = 200 + Math.sin(pr.gcos*1000)*150 + 200;
+    eur = Math.round(eur*10)/10;
+    var emv = gcos * eur * 8 - (1-gcos)*35;
+    emv = Math.round(emv*10)/10;
+    var ge = document.getElementById('sk-gcos');
+    var ee = document.getElementById('sk-emv');
+    if (ge) { ge.textContent = Math.round(gcos*100)+'%'; ge.style.color = gcos>0.3?'#22c55e':gcos>0.15?'#f59e0b':'#ef4444'; }
+    if (ee) { ee.textContent = (emv>0?'+':'')+emv+' US$M'; ee.style.color = emv>0?'var(--cyan)':'#ef4444'; }
+    skDrawSankey(R, gcos, eur, pr);
+  }
+
+  function skDrawSankey(R, gcos, eur, pr) {
+    var svg = document.getElementById('sk-svg'); if (!svg) return;
+    var W = svg.clientWidth || 680, H = svg.clientHeight || 500;
+    if (W < 100) { W=680; H=500; }
+    var tH = Math.min(H*0.72,320), gap=8, sp=(tH-gap*4)/5;
+    var nodes = [
+      {id:'res',   x:50,  y:H/2-tH/2, w:14, h:tH,          col:'#0891B2', lbl:'Gross\n'+Math.round(eur)+' MMboe'},
+      {id:'charge',x:210, y:0,         w:14, h:sp,           col:'#F59E0B', lbl:'Charge\n'+Math.round(R.charge*100)+'%'},
+      {id:'rsv',   x:210, y:0,         w:14, h:sp,           col:'#2563EB', lbl:'Reservoir\n'+Math.round(R.reservoir*100)+'%'},
+      {id:'seal',  x:210, y:0,         w:14, h:sp,           col:'#16A34A', lbl:'Seal\n'+Math.round(R.seal*100)+'%'},
+      {id:'trap',  x:210, y:0,         w:14, h:sp,           col:'#8B5CF6', lbl:'Trap\n'+Math.round(R.trap*100)+'%'},
+      {id:'timing',x:210, y:0,         w:14, h:sp,           col:'#EC4899', lbl:'Timing\n'+Math.round(R.timing*100)+'%'},
+      {id:'risked',x:W-190,y:H/2-tH*gcos/2,w:14,h:tH*gcos,  col:'#22C55E', lbl:'Risked'},
+      {id:'succ',  x:W-50,y:H*0.22,   w:14, h:tH*gcos*0.88, col:'#22C55E', lbl:'Success\n'+Math.round(gcos*100)+'%'},
+      {id:'fail',  x:W-50,y:0,         w:14, h:tH*(1-gcos)*0.8,col:'#EF4444',lbl:'Fail\n'+Math.round((1-gcos)*100)+'%'}
+    ];
+    var n0y = nodes[0].y;
+    for(var i=1;i<=5;i++) { nodes[i].y = n0y + (i-1)*(sp+gap); }
+    nodes[8].y = nodes[7].y + nodes[7].h + gap;
+
+    function path(x1,y1,h1,x2,y2,h2,col) {
+      var cx=(x1+x2)/2;
+      return '<path d="M'+x1+' '+y1+' C'+cx+' '+y1+' '+cx+' '+y2+' '+x2+' '+y2
+            +' L'+(x2+14)+' '+(y2+h2)+' C'+cx+' '+(y2+h2)+' '+cx+' '+(y1+h1)+' '+x1+' '+(y1+h1)+' Z"'
+            +' fill="'+col+'" opacity="0.32"/>';
+    }
+
+    var s = '<defs>';
+    nodes.forEach(function(n){
+      s += '<linearGradient id="sg'+n.id+'" x1="0" x2="1"><stop offset="0" stop-color="'+n.col+'" stop-opacity=".9"/>'
+         + '<stop offset="1" stop-color="'+n.col+'" stop-opacity=".5"/></linearGradient>';
+    });
+    s += '</defs>';
+
+    var cy = nodes[0].y;
+    for(var i=1;i<=5;i++){
+      s += path(nodes[0].x+14, cy, nodes[i].h, nodes[i].x, nodes[i].y, nodes[i].h, nodes[i].col);
+      cy += nodes[i].h + gap;
+    }
+    for(var i=1;i<=5;i++){
+      var sl = nodes[6].h/5, ry = nodes[6].y + (i-1)*sl;
+      s += path(nodes[i].x+14, nodes[i].y, nodes[i].h, nodes[6].x, ry, sl, nodes[i].col);
+    }
+    s += path(nodes[6].x+14, nodes[6].y, nodes[6].h*0.88, nodes[7].x, nodes[7].y, nodes[7].h, '#22C55E');
+    s += path(nodes[6].x+14, nodes[6].y+nodes[6].h*0.88, nodes[6].h*0.12, nodes[8].x, nodes[8].y, nodes[8].h, '#EF4444');
+
+    nodes.forEach(function(n){
+      s += '<rect x="'+n.x+'" y="'+n.y+'" width="14" height="'+Math.max(n.h,3)+'" rx="2" fill="url(#sg'+n.id+')" opacity=".9"/>';
+    });
+    nodes.forEach(function(n){
+      var lines = n.lbl.split('\n');
+      var lx = n.id==='res' ? n.x-6 : n.x+18;
+      var anch = n.id==='res' ? 'end' : 'start';
+      var ly = n.y + n.h/2 - (lines.length-1)*5;
+      s += '<text x="'+lx+'" y="'+ly+'" fill="'+n.col+'" font-size="9" font-weight="700" text-anchor="'+anch+'" font-family="system-ui">';
+      lines.forEach(function(l,i){ s += '<tspan x="'+lx+'" dy="'+(i===0?0:11)+'">'+l+'</tspan>'; });
+      s += '</text>';
+    });
+    s += '<text x="'+(W/2)+'" y="18" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="system-ui">'+pr.name+' · GCoS='+Math.round(gcos*100)+'%</text>';
+    svg.innerHTML = s;
+    svg.setAttribute('viewBox','0 0 '+W+' '+H);
+  }
+
+  //  GEOLOGICAL REASONING 
+  function hubReasoningInit() {
+    var sel = document.getElementById('gr-prospect');
+    if (!sel || sel.options.length > 1) return;
+    var pros = _HUB_DATA.prospects || [];
+    sel.innerHTML = pros.map(function(p){ return '<option value="'+p.id+'">'+p.name+'</option>'; }).join('');
+  }
+
+  function hubReasoningRun() {
+    var sel = document.getElementById('gr-prospect');
+    var modeEl = document.getElementById('gr-mode');
+    var out = document.getElementById('gr-output');
+    if (!sel || !out) return;
+    var pr = (_HUB_DATA.prospects||[]).find(function(p){return p.id===sel.value;}) || (_HUB_DATA.prospects||[])[0];
+    if (!pr) return;
+    var ps = (_HUB_DATA.ps||[]).find(function(p){return p.id===pr.petSysId;}) || {name:'Unknown'};
+    var play = (_HUB_DATA.plays||[]).find(function(p){return p.id===pr.playId;}) || {name:'Unknown'};
+    var mode = modeEl ? modeEl.value : 'full';
+    var modeLabels = {full:'Full Petroleum System',charge:'Charge Risk',reservoir:'Reservoir & Seal',trap:'Trap & Timing',analogue:'Analogue Comparison',drill:'Drill Decision'};
+
+    out.innerHTML = '<div style="padding:24px;text-align:center;color:var(--t3)"><div style="font-size:20px;animation:spin 1s linear infinite;display:inline-block"></div><br><br>Generating '+modeLabels[mode]+' analysis…</div>';
+    var _k=_hubAiKey(); if(!_k){out.innerHTML='<div style="padding:16px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;color:#92400e;font-size:10px"><b>! No API Key</b><br><br>Go to <b> Settings → AI Config</b>, select <b>Claude</b> as provider, paste your Anthropic API key and click Save.</div>';return;}
+
+    var prompt = 'You are a senior exploration geoscientist writing an IC-ready geological assessment. Be technically rigorous.\n\n'
+      + 'PROSPECT: '+pr.name+' | Basin: '+pr.basin+' | Petroleum System: '+ps.name+' | Play: '+play.name+' | GCoS: '+Math.round(pr.gcos*100)+'%\n'
+      + 'Risk params: Charge='+Math.round(_skRisks.charge*100)+'% Reservoir='+Math.round(_skRisks.reservoir*100)+'% Seal='+Math.round(_skRisks.seal*100)+'% Trap='+Math.round(_skRisks.trap*100)+'% Timing='+Math.round(_skRisks.timing*100)+'%\n'
+      + 'Mode: '+modeLabels[mode]+'\n\n'
+      + 'STRUCTURE YOUR RESPONSE AS:\n'
+      + '1. ABSTRACT: 3-sentence plain-English summary a non-geoscientist can understand\n'
+      + '2. KPI TILES: 4 key metrics (GCoS, best-case EUR, risked EMV, critical risk)\n'
+      + '3. DETAILED STEPS: 5-6 geological arguments, each with evidence and risk rating\n'
+      + '4. VERDICT: clear recommendation with one-paragraph justification\n\n'
+      + 'Return ONLY this JSON (no markdown):\n'
+      + '{"title":"string","abstract":"3 sentence plain-English overview",'
+      + '"kpis":[{"label":"string","value":"string","color":"green or amber or red"}],'
+      + '"verdict":"DRILL or MONITOR or DROP","verdict_color":"green or amber or red",'
+      + '"verdict_text":"one paragraph justification (~3 sentences)",'
+      + '"steps":[{"icon":"emoji","title":"string","body":"3-4 sentence geological argument with specific formation names and data","evidence":"cite specific wells/seismic/analogues","risk_level":"LOW or MEDIUM or HIGH or CRITICAL","implication":"what this means for the drilling decision"}]}\n'
+      + 'Provide exactly 5-6 steps. Be specific — use real formation names, depths, analogues.';
+
+    fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST', headers:_hubAiHeaders(),
+      body:JSON.stringify({model:_hubAiModel(),max_tokens:1800,messages:[{role:'user',content:prompt}]})
+    }).then(function(r){return r.json();}).then(function(data){
+      if(data.error){out.innerHTML='<div style="padding:14px;color:#ef4444;font-size:10px">! API Error: '+data.error.message+'<br><br><b>Fix:</b> Open  Settings → AI Config → paste your Claude API key.</div>';return;}
+      var raw = (data.content||[]).map(function(b){return b.text||'';}).join('');
+      try {
+        var res = JSON.parse(raw.replace(/```json|```/g,'').trim());
+        grRender(res, pr, play);
+      } catch(e) { out.innerHTML = '<div style="padding:16px;font-size:10px;color:var(--t1);line-height:1.7;white-space:pre-wrap">'+raw+'</div>'; }
+    }).catch(function(e){ out.innerHTML = '<div style="padding:16px;color:#ef4444;font-size:10px">'+e.message+'</div>'; });
+  }
+
+  function grRender(res, pr, play) {
+    var out = document.getElementById('gr-output'); if (!out) return;
+    var rc = {LOW:'#22c55e',MEDIUM:'#f59e0b',HIGH:'#f97316',CRITICAL:'#ef4444'};
+    var vc = {green:'#22c55e',amber:'#f59e0b',red:'#ef4444'}[res.verdict_color]||'#64748b';
+    var h = '<div style="margin-bottom:14px">'
+          + '<div style="font-size:14px;font-weight:800;color:var(--t1)">'+res.title+'</div>'
+          + '<div style="font-size:8px;color:var(--t3);margin-top:2px">'+pr.basin+' · '+play.name+' · GCoS '+Math.round(pr.gcos*100)+'%</div></div>';
+    // Abstract
+    if (res.abstract) h += '<div style="background:rgba(107,70,193,.06);border-left:3px solid var(--brand);padding:10px 14px;border-radius:0 7px 7px 0;margin-bottom:14px">'
+      + '<div style="font-size:7.5px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px">Abstract</div>'
+      + '<div style="font-size:10px;color:var(--t1);line-height:1.7">'+res.abstract+'</div></div>';
+    // KPI tiles
+    if (res.kpis && res.kpis.length) {
+      h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">';
+      res.kpis.forEach(function(k){
+        var kc={green:'#22c55e',amber:'#f59e0b',red:'#ef4444'}[k.color]||'#64748b';
+        h += '<div style="background:var(--bg2);border:1px solid '+kc+'44;border-radius:7px;padding:8px 12px;min-width:90px;text-align:center;flex:1">'
+           + '<div style="font-size:15px;font-weight:800;color:'+kc+'">'+k.value+'</div>'
+           + '<div style="font-size:7.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">'+k.label+'</div></div>';
+      });
+      h += '</div>';
+    }
+    // Steps header
+    h += '<div style="font-size:8px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Geological Analysis — click any step to expand evidence</div>';
+    (res.steps||[]).forEach(function(s){
+      var sc = rc[s.risk_level]||'#64748b';
+      h += '<div class="gr-step" onclick="var ev=this.querySelector(\'.gr-step-evidence\');ev.style.display=ev.style.display===\'block\'?\'none\':\'block\'" style="border-left-color:'+sc+'">'
+         + '<div class="gr-step-hd"><span style="font-size:14px">'+s.icon+'</span><span>'+s.title+'</span>'
+         + '<span style="margin-left:auto;font-size:8px;padding:2px 7px;border-radius:8px;background:'+sc+'22;color:'+sc+';font-weight:700">'+s.risk_level+'</span>'
+         + '<span style="font-size:8px;color:var(--t3);margin-left:6px"></span></div>'
+         + '<div class="gr-step-body">'+s.body+'</div>'
+         + '<div class="gr-step-evidence">'
+         + (s.evidence?'<div style="margin-bottom:6px"><span style="font-size:8px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.4px">Evidence</span><br>'+s.evidence+'</div>':'')
+         + (s.implication?'<div><span style="font-size:8px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.4px">Decision Implication</span><br>'+s.implication+'</div>':'')
+         + '</div></div>';
+    });
+    // Verdict
+    h += '<div style="font-size:8px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 8px">Recommendation</div>';
+    h += '<div class="gr-verdict" style="background:'+vc+'18;border:1px solid '+vc+'40;align-items:flex-start">'
+       + '<div style="font-size:28px;margin-top:2px">'+(res.verdict==='DRILL'?'':res.verdict==='MONITOR'?'':'')+'</div>'
+       + '<div><div style="color:'+vc+';font-size:13px;font-weight:800;margin-bottom:5px">'+res.verdict+'</div>'
+       + '<div style="font-size:10px;color:var(--t2);line-height:1.7">'+res.verdict_text+'</div></div></div>';
+    out.innerHTML = h;
+  }
+
+  //  NATURAL LANGUAGE QUERY 
+  function hubNLQChip(el) {
+    var inp = document.getElementById('nlq-input');
+    if (inp) { inp.value = el.textContent.replace(/&gt;/g,'>').replace(/&lt;/g,'<'); }
+    hubNLQRun();
+  }
+
+  function hubNLQRun() {
+    var inp = document.getElementById('nlq-input');
+    var out = document.getElementById('nlq-output');
+    if (!inp || !out) return;
+    var q = inp.value.trim(); if (!q) return;
+    out.innerHTML = '<div style="padding:24px;text-align:center;color:var(--t3)"><div style="font-size:20px;animation:spin 1s linear infinite;display:inline-block"></div><br><br>Querying…</div>';
+    var _k=_hubAiKey(); if(!_k){out.innerHTML='<div style="padding:16px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;color:#92400e;font-size:10px"><b>! No API Key</b><br><br>Go to <b> Settings → AI Config</b>, select <b>Claude</b> as provider, paste your Anthropic API key and click Save.</div>';return;}
+
+    var snap = {
+      prospects: (_HUB_DATA.prospects||[]).map(function(p){
+        var pl = (_HUB_DATA.plays||[]).find(function(x){return x.id===p.playId;})||{name:'?'};
+        return {name:p.name,basin:p.basin,gcos:p.gcos,play:pl.name};
+      }),
+      ps: (_HUB_DATA.ps||[]).map(function(p){return {name:p.name,basin:p.basin};}),
+      wells: (window.WELLS||[]).slice(0,20).map(function(w){return {name:w.name,result:w.result,basin:w.basin};}),
+      discoveries: (window.DISCOVERIES||[]).slice(0,15).map(function(d){return {name:d.name,hcType:d.hcType,eur:d.eurMmboe};}),
+    };
+
+    var prompt = 'You are a senior exploration data analyst. Answer queries about exploration data with precision and insight.\n\nDATABASE:\n'+JSON.stringify(snap)+'\n\nQUERY: '+q+'\n\n'
+      + 'RESPONSE STRUCTURE:\n'
+      + '1. ABSTRACT: One sentence direct answer (the key finding)\n'
+      + '2. DETAIL: table for comparisons/rankings, list for enumerations, text for explanations\n'
+      + '3. INSIGHT: one analytical observation the user may not have asked for but is relevant\n'
+      + '4. FOLLOW-UP: 2-3 natural next questions\n\n'
+      + 'Return ONLY this JSON (no markdown):\n'
+      + '{"abstract":"one sentence direct answer","insight":"one unrequested but relevant analytical observation",'
+      + '"type":"table or list or text","highlight":"key finding bolded",'
+      + '"answer":"paragraph with analysis (for text type)","headers":["col"],"rows":[["val"]],"items":["item"],'
+      + '"followup":["question1","question2","question3"]}';
+
+    fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST', headers:_hubAiHeaders(),
+      body:JSON.stringify({model:_hubAiModel(),max_tokens:1000,messages:[{role:'user',content:prompt}]})
+    }).then(function(r){return r.json();}).then(function(data){
+      if(data.error){out.innerHTML='<div style="padding:14px;color:#ef4444;font-size:10px">! API Error: '+data.error.message+'<br><br><b>Fix:</b> Open  Settings → AI Config → paste your Claude API key.</div>';return;}
+      var raw = (data.content||[]).map(function(b){return b.text||'';}).join('');
+      try {
+        nlqRender(JSON.parse(raw.replace(/```json|```/g,'').trim()), q);
+      } catch(e) { out.innerHTML = '<div style="padding:14px;font-size:10px;color:var(--t1)">'+raw+'</div>'; }
+    }).catch(function(e){ out.innerHTML = '<div style="padding:14px;color:#ef4444;font-size:10px">'+e.message+'</div>'; });
+  }
+
+  function nlqRender(res, q) {
+    var out = document.getElementById('nlq-output'); if (!out) return;
+    var h = '<div style="padding:14px">';
+    // Query echo
+    h += '<div style="font-size:10px;color:var(--brand);font-weight:700;margin-bottom:10px"> '+q+'</div>';
+    // Abstract — direct answer
+    if (res.abstract) h += '<div style="background:rgba(107,70,193,.06);border-left:3px solid var(--brand);padding:10px 14px;border-radius:0 7px 7px 0;margin-bottom:12px">'
+      + '<div style="font-size:7.5px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Answer</div>'
+      + '<div style="font-size:11px;font-weight:700;color:var(--t1);line-height:1.6">'+res.abstract+'</div></div>';
+    // Detail
+    if (res.type==='table' && res.headers && res.rows) {
+      h += '<div style="font-size:7.5px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Detail</div>';
+      h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="border-bottom:1px solid var(--b1)">';
+      res.headers.forEach(function(hh){ h += '<th style="padding:6px 10px;text-align:left;color:var(--t3);text-transform:uppercase;font-size:8px">'+hh+'</th>'; });
+      h += '</tr></thead><tbody>';
+      res.rows.forEach(function(row,i){
+        h += '<tr style="border-bottom:1px solid var(--b1);background:'+(i%2?'var(--bg2)':'transparent')+'">';
+        row.forEach(function(cell){ h += '<td style="padding:6px 10px;color:var(--t1)">'+cell+'</td>'; });
+        h += '</tr>';
+      });
+      h += '</tbody></table></div>';
+    } else if (res.type==='list' && res.items) {
+      h += '<div style="font-size:7.5px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Detail</div>';
+      h += '<ul style="margin:0 0 12px;padding-left:18px;font-size:10px;color:var(--t1);line-height:1.7">';
+      res.items.forEach(function(item){ h += '<li>'+item+'</li>'; });
+      h += '</ul>';
+    } else if (res.answer) {
+      h += '<div style="font-size:7.5px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Analysis</div>';
+      h += '<div style="font-size:10px;color:var(--t1);line-height:1.7;margin-bottom:10px">'+res.answer+'</div>';
+    }
+    // Insight
+    if (res.insight) h += '<div style="background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;padding:10px 14px;border-radius:0 7px 7px 0;margin:12px 0">'
+      + '<div style="font-size:7.5px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px"> Additional Insight</div>'
+      + '<div style="font-size:10px;color:var(--t2);line-height:1.6">'+res.insight+'</div></div>';
+    // Follow-up chips
+    if (res.followup && res.followup.length) {
+      h += '<div style="font-size:7.5px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin:12px 0 6px">Explore Further</div>';
+      h += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+      res.followup.forEach(function(f){ h += '<span class="nlq-chip" onclick="document.getElementById(\'nlq-input\').value=\''+f.replace(/'/g,"\\'")+'\';hubNLQRun();">'+f+'</span>'; });
+      h += '</div>';
+    }
+    h += '</div>';
+    out.innerHTML = h;
+  }
+
+  //  DRILL OPTIMIZER 
+  function hubDrillOptRun() {
+    var budget = parseFloat(document.getElementById('dopt-budget').value)||250;
+    var wellcost = parseFloat(document.getElementById('dopt-wellcost').value)||35;
+    var obj = document.getElementById('dopt-objective').value||'emv';
+    var out = document.getElementById('dopt-output'); if (!out) return;
+    out.innerHTML = '<div style="padding:24px;text-align:center;color:var(--t3)"><div style="font-size:20px;animation:spin 1s linear infinite;display:inline-block"></div><br><br>Optimising…</div>';
+    var _k=_hubAiKey(); if(!_k){out.innerHTML='<div style="padding:16px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;color:#92400e;font-size:10px"><b>! No API Key</b><br><br>Go to <b> Settings → AI Config</b>, select <b>Claude</b> as provider, paste your Anthropic API key and click Save.</div>';return;}
+
+    var pros = (_HUB_DATA.prospects||[]).map(function(p,i){
+      return {id:p.id,name:p.name,basin:p.basin,gcos:p.gcos,eur_mmboe:Math.round(150+Math.abs(Math.sin(i*37))*400),wellcost_usdm:Math.round(wellcost+Math.sin(i*13)*10)};
+    });
+
+    var prompt = 'You are a senior E&P portfolio manager with deep Bayesian decision analysis expertise. Optimise the drilling campaign.\n'
+      + 'BUDGET: $'+budget+'M | WELL COST: ~$'+wellcost+'M | OBJECTIVE: '+obj+'\n'
+      + 'PROSPECTS: '+JSON.stringify(pros)+'\n\n'
+      + 'STRUCTURE YOUR RESPONSE AS:\n'
+      + '1. ABSTRACT: 2-sentence portfolio strategy summary (what you are recommending and why)\n'
+      + '2. STRATEGY: key portfolio-level insight (diversification, sequencing logic, information value)\n'
+      + '3. SEQUENCE: ranked wells with full Bayesian rationale per well\n'
+      + '4. RISK NOTE: one portfolio-level risk the manager should be aware of\n\n'
+      + 'Return ONLY this JSON (no markdown):\n'
+      + '{"abstract":"2-sentence portfolio strategy summary","strategy":"portfolio-level insight paragraph","risk_note":"one key portfolio risk",'
+      + '"sequence":[{"rank":1,"name":"","basin":"","rationale":"2-3 sentence Bayesian argument","gcos_prior":0,"posterior_if_success":0,"voi_usdm":0,"emv_usdm":0,"cost_usdm":0,"why_now":"why drill this before others"}],'
+      + '"portfolio_emv":0,"total_wells":0,"budget_used":0,"insight":"","play_update":""}';
+
+    fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST', headers:_hubAiHeaders(),
+      body:JSON.stringify({model:_hubAiModel(),max_tokens:1400,messages:[{role:'user',content:prompt}]})
+    }).then(function(r){return r.json();}).then(function(data){
+      if(data.error){out.innerHTML='<div style="padding:14px;color:#ef4444;font-size:10px">! API Error: '+data.error.message+'<br><br><b>Fix:</b> Open  Settings → AI Config → paste your Claude API key.</div>';return;}
+      var raw = (data.content||[]).map(function(b){return b.text||'';}).join('');
+      try {
+        doptRender(JSON.parse(raw.replace(/```json|```/g,'').trim()));
+      } catch(e) { out.innerHTML = '<div style="padding:14px;font-size:10px;color:var(--t1)">'+raw+'</div>'; }
+    }).catch(function(e){ out.innerHTML = '<div style="padding:14px;color:#ef4444;font-size:10px">'+e.message+'</div>'; });
+  }
+
+  function doptRender(res) {
+    var out = document.getElementById('dopt-output'); if (!out) return;
+    var sum = document.getElementById('dopt-summary');
+    if (sum) {
+      sum.style.display = 'block';
+      var de = document.getElementById('dopt-emv'); if (de) de.textContent = 'US$'+res.portfolio_emv+'M';
+      var dw = document.getElementById('dopt-wells'); if (dw) dw.textContent = res.total_wells+' wells · US$'+res.budget_used+'M used';
+    }
+    var cols = ['#0D9488','#2563EB','#7C3AED','#D97706','#059669','#DC2626','#EC4899','#F59E0B'];
+    var h = '';
+    // Abstract
+    if (res.abstract) h += '<div style="background:rgba(107,70,193,.06);border-left:3px solid var(--brand);padding:10px 14px;border-radius:0 7px 7px 0;margin-bottom:14px">'
+      + '<div style="font-size:7.5px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Portfolio Strategy</div>'
+      + '<div style="font-size:10px;color:var(--t1);line-height:1.7">'+res.abstract+'</div></div>';
+    // Strategy insight
+    if (res.strategy) h += '<div style="background:rgba(37,99,235,.08);border-left:3px solid #2563EB;padding:10px 14px;border-radius:0 7px 7px 0;margin-bottom:14px">'
+      + '<div style="font-size:7.5px;font-weight:700;color:#2563EB;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Sequencing Logic</div>'
+      + '<div style="font-size:10px;color:var(--t2);line-height:1.6">'+res.strategy+'</div></div>';
+    // Sequence
+    h += '<div style="font-size:8px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Recommended Drilling Sequence</div>';
+    (res.sequence||[]).forEach(function(w,i){
+      var col = cols[i%cols.length];
+      var pg = (w.posterior_if_success||0)-(w.gcos_prior||0);
+      h += '<div class="dopt-row"><div class="dopt-seq" style="background:'+col+'22;color:'+col+'">'+w.rank+'</div>'
+         + '<div style="flex:1;min-width:0">'
+         + '<div style="font-size:10px;font-weight:700;color:var(--t1)">'+w.name+'</div>'
+         + '<div style="font-size:8px;color:var(--t3);margin-bottom:4px">'+w.basin+' · GCoS '+Math.round((w.gcos_prior||0)*100)+'%</div>'
+         + '<div style="font-size:10px;color:var(--t2);line-height:1.6;margin-bottom:4px">'+w.rationale+'</div>'
+         + (w.why_now?'<div style="font-size:8px;font-style:italic;color:var(--t3);margin-bottom:4px">Why now: '+w.why_now+'</div>':'')
+         + '<div style="display:flex;gap:10px;font-size:8px;color:var(--t3);flex-wrap:wrap">'
+         + '<span>VOI <b style="color:var(--brand)">$'+Math.round(w.voi_usdm||0)+'M</b></span>'
+         + '<span>Success → +<b style="color:#22c55e">'+Math.round(pg*100)+'% GCoS</b></span>'
+         + '<span>EMV <b style="color:var(--cyan)">$'+Math.round(w.emv_usdm||0)+'M</b></span>'
+         + '<span>Cost <b style="color:var(--t1)">$'+Math.round(w.cost_usdm||0)+'M</b></span>'
+         + '</div></div></div>';
+    });
+    // Risk note
+    if (res.risk_note) h += '<div style="margin-top:14px;background:rgba(239,68,68,.07);border-left:3px solid #ef4444;padding:10px 14px;border-radius:0 7px 7px 0">'
+      + '<div style="font-size:7.5px;font-weight:700;color:#ef4444;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">! Portfolio Risk</div>'
+      + '<div style="font-size:10px;color:var(--t2);line-height:1.6">'+res.risk_note+'</div></div>';
+    out.innerHTML = h || '<div style="padding:20px;color:var(--t3)">No results</div>';
+  }
+
+  //  MATURATION TRACKER 
+  var _matCrit = [
+    {key:'seismic', label:'3D Seismic',     icon:'', w:0.20},
+    {key:'tops',    label:'Formation Tops', icon:'', w:0.15},
+    {key:'source',  label:'Source Rock',    icon:'', w:0.18},
+    {key:'resvr',   label:'Reservoir',      icon:'', w:0.16},
+    {key:'seal',    label:'Seal',           icon:'', w:0.12},
+    {key:'trap',    label:'Trap Geometry',  icon:'', w:0.12},
+    {key:'fluid',   label:'Fluid Shows',    icon:'',  w:0.07}
+  ];
+
+  function hubMaturationRender() {
+    var grid = document.getElementById('mat-grid'); if (!grid) return;
+    var bsel = document.getElementById('mat-basin');
+    if (bsel && bsel.options.length <= 1) {
+      var bns = [...new Set((_HUB_DATA.prospects||[]).map(function(p){return p.basin;}))];
+      bns.forEach(function(b){ var o=document.createElement('option'); o.value=b; o.textContent=b; bsel.appendChild(o); });
+    }
+    var fb = bsel ? bsel.value : '';
+    var srt = (document.getElementById('mat-sort')||{value:'score'}).value;
+    var pros = (_HUB_DATA.prospects||[]).filter(function(p){return !fb||p.basin===fb;});
+    pros = pros.map(function(p,i){
+      var scores={}, tot=0;
+      _matCrit.forEach(function(c,j){
+        var s = Math.min(1,Math.max(0.05,p.gcos*(0.5+j*0.09)+Math.sin(p.gcos*100+j)*0.18));
+        scores[c.key]=Math.round(s*100); tot+=s*c.w;
+      });
+      return Object.assign({},p,{ms:scores,mt:Math.round(tot*100)});
+    });
+    if (srt==='score') pros.sort(function(a,b){return b.mt-a.mt;});
+    else if (srt==='gcos') pros.sort(function(a,b){return b.gcos-a.gcos;});
+    else pros.sort(function(a,b){return a.mt-b.mt;});
+
+    grid.innerHTML = pros.map(function(p){
+      var col = p.mt>=70?'#22c55e':p.mt>=45?'#f59e0b':'#ef4444';
+      var weak = _matCrit.reduce(function(a,b){return p.ms[a.key]<p.ms[b.key]?a:b;});
+      var bars = _matCrit.map(function(c){
+        var s=p.ms[c.key], bc=s>=70?'#22c55e':s>=45?'#f59e0b':'#ef4444';
+        return '<div style="margin-bottom:3px">'
+          +'<div style="display:flex;justify-content:space-between;font-size:7.5px;color:var(--t3)"><span>'+c.icon+' '+c.label+'</span><span style="color:'+bc+';font-weight:700">'+s+'%</span></div>'
+          +'<div class="mat-bar-wrap"><div class="mat-bar" style="width:'+s+'%;background:'+bc+'"></div></div></div>'
+      }).join('');
+      return '<div class="mat-card">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+        +'<div style="flex:1"><div style="font-size:10px;font-weight:700;color:var(--t1)">'+p.name+'</div>'
+        +'<div style="font-size:8px;color:var(--t3)">'+p.basin+'</div></div>'
+        +'<div style="text-align:right"><div style="font-size:18px;font-weight:800;color:'+col+'">'+p.mt+'%</div>'
+        +'<div style="font-size:7px;color:var(--t3)">Maturation</div></div></div>'
+        +bars
+        +'<div style="margin-top:8px;padding:6px 10px;background:var(--bg2);border-radius:5px;font-size:8px;color:var(--t2);border-left:2px solid '+col+'">'
+        +'<b>Next:</b> Acquire <b style="color:var(--brand)">'+weak.icon+' '+weak.label+'</b> data'
+        +'</div>'
+        +'<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:8px;color:var(--t3)">'
+        +'<span>GCoS <b style="color:var(--brand)">'+Math.round(p.gcos*100)+'%</b></span>'
+        +'<span style="color:var(--brand);cursor:pointer" onclick="hubSwitchTab(\'reasoning\')"> Reason →</span>'
+        +'</div></div>'
+    }).join('');
+  }
+
+  //  STRATIGRAPHY 
+  var _stratData = {
+    'Zagros Fold Belt': [
+      {age:'5–0',   name:'Bakhtiari Fm',    lith:'cgl',  role:'overburden', ps:'',              hc:'—'},
+      {age:'33–5',  name:'Asmari Limestone',lith:'carb', role:'reservoir',  ps:'Asmari-Pabdeh', hc:'oil'},
+      {age:'55–33', name:'Pabdeh Fm',       lith:'sh',   role:'source',     ps:'Asmari-Pabdeh', hc:'oil'},
+      {age:'100–55',name:'Ilam/Sarvak Fm',  lith:'carb', role:'reservoir',  ps:'Kazhdumi-Sarvak',hc:'oil'},
+      {age:'120–100',name:'Kazhdumi Fm',    lith:'sh',   role:'source',     ps:'Kazhdumi-Sarvak',hc:'oil/gas'},
+      {age:'145–120',name:'Gotnia Salt',    lith:'evap', role:'seal',       ps:'Asmari-Pabdeh', hc:'—'},
+      {age:'200–145',name:'Arab Fm',        lith:'carb', role:'reservoir',  ps:'',              hc:'oil'},
+    ],
+    'North Sea': [
+      {age:'5–2',   name:'Nordland Gp',     lith:'sh',   role:'seal',      ps:'Kimmeridge-Brent',hc:'—'},
+      {age:'100–66',name:'Chalk Gp',        lith:'carb', role:'reservoir', ps:'Kimmeridge-Brent',hc:'oil'},
+      {age:'163–145',name:'Kimmeridge Clay',lith:'sh',   role:'source',    ps:'Kimmeridge-Brent',hc:'oil/gas'},
+      {age:'174–163',name:'Brent Gp',       lith:'ss',   role:'reservoir', ps:'Kimmeridge-Brent',hc:'oil/gas'},
+      {age:'200–174',name:'Statfjord Fm',   lith:'ss',   role:'reservoir', ps:'',               hc:'oil'},
+    ],
+    'Permian Basin': [
+      {age:'66–5',  name:'Rustler/Salado',  lith:'evap', role:'seal',      ps:'Wolfcamp-Spraberry',hc:'—'},
+      {age:'270–250',name:'Spraberry Fm',   lith:'ss',   role:'reservoir', ps:'Wolfcamp-Spraberry',hc:'oil'},
+      {age:'290–270',name:'Wolfcamp Fm',    lith:'sh',   role:'source+res',ps:'Wolfcamp-Spraberry',hc:'oil/gas'},
+      {age:'320–290',name:'Atoka Fm',       lith:'ss',   role:'reservoir', ps:'',               hc:'gas'},
+    ]
+  };
+
+  function hubStratInit() {
+    var sel = document.getElementById('strat-basin'); if (!sel) return;
+    if (sel.options.length === 0) {
+      Object.keys(_stratData).forEach(function(b){ var o=document.createElement('option'); o.value=b; o.textContent=b; sel.appendChild(o); });
+    }
+    hubStratRender();
+  }
+
+  function hubStratRender() {
+    var sel = document.getElementById('strat-basin');
+    var canvas = document.getElementById('strat-canvas');
+    var leg = document.getElementById('strat-legend');
+    if (!sel || !canvas) return;
+    var basin = sel.value || Object.keys(_stratData)[0];
+    var rows = _stratData[basin] || [];
+    var roleCol = {source:'#B45309','source+res':'#D97706',reservoir:'#2563EB',seal:'#16A34A',overburden:'#64748B'};
+    var lithSym = {ss:'',carb:'≡',sh:'',evap:'',cgl:''};
+    var hcCol = {oil:'#D97706',gas:'#2563EB','oil/gas':'#7C3AED','—':'transparent'};
+    var h = '<table style="width:100%;border-collapse:collapse;font-size:10px">'
+      + '<thead><tr style="border-bottom:2px solid var(--brand);font-size:8px;color:var(--t3)">'
+      + '<th style="padding:4px 8px;text-align:right;width:70px">AGE (Ma)</th>'
+      + '<th style="padding:4px 4px;width:20px"></th>'
+      + '<th style="padding:4px 10px;text-align:left">FORMATION</th>'
+      + '<th style="padding:4px 8px;text-align:left">ROLE</th>'
+      + '<th style="padding:4px 8px;text-align:left">PET. SYSTEM</th>'
+      + '<th style="padding:4px 8px;text-align:center">HC</th></tr></thead><tbody>';
+    rows.forEach(function(r){
+      var rc = roleCol[r.role]||'#64748B';
+      var sym = lithSym[r.lith]||'·';
+      var hcc = hcCol[r.hc]||'transparent';
+      h += '<tr class="strat-row"><td class="strat-age">'+r.age+'</td>'
+         + '<td style="background:'+rc+'22;text-align:center;color:'+rc+';font-size:11px">'+sym+'</td>'
+         + '<td class="strat-name">'+r.name+'</td>'
+         + '<td><span class="strat-badge" style="background:'+rc+'22;color:'+rc+'">'+r.role+'</span></td>'
+         + '<td style="padding:6px 8px;font-size:8px;color:var(--t3)">'+r.ps+'</td>'
+         + '<td style="padding:6px 8px;text-align:center">'+(r.hc!=='—'?'<span style="font-size:8px;padding:2px 5px;border-radius:8px;background:'+hcc+'22;color:'+hcc+';font-weight:700">'+r.hc+'</span>':'')+'</td>'
+         + '</tr>';
+    });
+    h += '</tbody></table>';
+    canvas.innerHTML = h;
+    if (leg) leg.innerHTML = '<b style="color:var(--t1)">Lithology:</b> ss ≡carb sh evap<br>'
+      + '<b style="color:var(--t1)">Role:</b> <span style="color:#B45309"></span>source <span style="color:#2563EB"></span>reservoir <span style="color:#16A34A"></span>seal';
+  }
+
+  //  REPORT GENERATOR 
+  function hubReportInit() {
+    var typeEl = document.getElementById('rpt-type');
+    if (!typeEl) return;
+    hubReportPreview();
+  }
+
+  function hubReportPreview() {
+    var typeEl = document.getElementById('rpt-type');
+    var subjEl = document.getElementById('rpt-subject');
+    if (!typeEl || !subjEl) return;
+    var t = typeEl.value, items = [];
+    if (t==='prospect') items = (_HUB_DATA.prospects||[]).map(function(p){return p.name;});
+    else if (t==='play') items = (_HUB_DATA.plays||[]).map(function(p){return p.name;});
+    else if (t==='basin') items = (_HUB_DATA.basins||[]).map(function(b){return b.name;});
+    else items = ['Full Portfolio','Zagros Assets','North Sea Assets','SE Asia Assets'];
+    subjEl.innerHTML = items.map(function(i){return '<option>'+i+'</option>';}).join('');
+  }
+
+  function hubReportGenerate() {
+    var typeEl = document.getElementById('rpt-type');
+    var subjEl = document.getElementById('rpt-subject');
+    var out = document.getElementById('rpt-output');
+    if (!typeEl || !subjEl || !out) return;
+    var type = typeEl.value, subject = subjEl.value;
+    var inc = ['exec','risk','geo','analogue','econ','rec'].filter(function(k){
+      var el = document.getElementById('rpt-inc-'+k); return el && el.checked;
+    });
+    out.innerHTML = '<div style="padding:24px;text-align:center;color:var(--t3)"><div style="font-size:20px;animation:spin 1s linear infinite;display:inline-block"></div><br><br>Generating report…</div>';
+    var _k=_hubAiKey(); if(!_k){out.innerHTML='<div style="padding:16px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;color:#92400e;font-size:10px"><b>! No API Key</b><br><br>Go to <b> Settings → AI Config</b>, select <b>Claude</b> as provider, paste your Anthropic API key and click Save.</div>';return;}
+    var pr = (_HUB_DATA.prospects||[]).find(function(p){return p.name===subject;});
+    var ctx = pr ? {name:pr.name,basin:pr.basin,gcos:Math.round(pr.gcos*100)+'%'} : {name:subject,type:type};
+    var sectionNames = {exec:'Executive Summary',risk:'Risk Decomposition',geo:'Geological Reasoning',analogue:'Analogue Table',econ:'Economic Summary',rec:'Recommendation'};
+    var secList = inc.map(function(k){return sectionNames[k];}).join(', ');
+
+    var prompt = 'You are a senior petroleum geoscientist writing a formal Investment Committee report. Use precise technical language and quantitative backing.\n'
+      + 'TYPE: '+type+' | SUBJECT: '+JSON.stringify(ctx)+' | SECTIONS REQUIRED: '+secList+'\n\n'
+      + 'REPORT STRUCTURE:\n'
+      + '1. ABSTRACT: 3-sentence plain-English overview (opportunity, key risk, recommendation)\n'
+      + '2. KPI BANNER: 5-6 headline metrics with traffic-light colors\n'
+      + '3. SECTIONS: each requested section as a detailed paragraph with supporting data\n'
+      + '   - Executive Summary: context, opportunity size, strategic fit\n'
+      + '   - Risk Decomposition: charge/reservoir/seal/trap with quantified probability\n'
+      + '   - Geological Reasoning: formation-level technical argument\n'
+      + '   - Analogue Table: 3 analogues with key parameters vs this prospect\n'
+      + '   - Economic Summary: EMV, NPV range, breakeven price, resource range\n'
+      + '   - Recommendation: clear DRILL/MONITOR/DROP with conditions\n'
+      + '4. VERDICT: one-paragraph recommendation with explicit conditions/triggers\n\n'
+      + 'Return ONLY this JSON (no markdown):\n'
+      + '{"title":"","date":"'+new Date().toLocaleDateString()+'",'
+      + '"abstract":"3-sentence plain-English overview: what is it, what is the key risk, what is recommended",'
+      + '"kpis":[{"label":"","value":"","color":"green or amber or red","subtext":""}],'
+      + '"sections":[{"title":"","content":"detailed HTML paragraph (use <b>, <ul>, <li>)","kpis":[{"label":"","value":"","color":"green or amber or red"}]}],'
+      + '"recommendation":"DRILL or MONITOR or DROP",'
+      + '"recommendation_text":"one paragraph with explicit conditions — what must be true to proceed"}';
+
+    fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST', headers:_hubAiHeaders(),
+      body:JSON.stringify({model:_hubAiModel(),max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    }).then(function(r){return r.json();}).then(function(data){
+      if(data.error){out.innerHTML='<div style="padding:14px;color:#ef4444;font-size:10px">! API Error: '+data.error.message+'<br><br><b>Fix:</b> Open  Settings → AI Config → paste your Claude API key.</div>';return;}
+      var raw = (data.content||[]).map(function(b){return b.text||'';}).join('');
+      try {
+        rptRender(JSON.parse(raw.replace(/```json|```/g,'').trim()));
+        var eb = document.getElementById('rpt-export-btn'); if (eb) eb.style.display='block';
+      } catch(e) {
+        out.innerHTML = '<div style="padding:16px;font-size:10px;color:var(--t1);line-height:1.7">'+raw+'</div>';
+        var eb = document.getElementById('rpt-export-btn'); if (eb) eb.style.display='block';
+      }
+    }).catch(function(e){ out.innerHTML = '<div style="padding:14px;color:#ef4444;font-size:10px">'+e.message+'</div>'; });
+  }
+
+  function rptRender(res) {
+    var out = document.getElementById('rpt-output'); if (!out) return;
+    var vc = {DRILL:'#22c55e',MONITOR:'#f59e0b',DROP:'#ef4444'}[res.recommendation]||'#64748b';
+    // Header
+    var h = '<div class="rpt-section" style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12px">'
+          + '<div><div class="rpt-h1">'+res.title+'</div>'
+          + '<div style="font-size:8px;color:var(--t3);margin-top:3px">'+res.date+' · Exploration Intelligence Hub · CONFIDENTIAL</div></div>'
+          + '<span style="font-size:11px;padding:4px 10px;border-radius:6px;background:'+vc+'18;color:'+vc+';font-weight:800;white-space:nowrap">'
+          + (res.recommendation==='DRILL'?' ':res.recommendation==='MONITOR'?' ':' ')+res.recommendation+'</span></div>';
+    // Abstract
+    if (res.abstract) h += '<div style="background:rgba(107,70,193,.06);border-left:3px solid var(--brand);padding:12px 16px;border-radius:0 7px 7px 0;margin-bottom:16px">'
+      + '<div style="font-size:7.5px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px">Abstract</div>'
+      + '<div style="font-size:11px;color:var(--t1);line-height:1.7">'+res.abstract+'</div></div>';
+    // Global KPI banner
+    if (res.kpis && res.kpis.length) {
+      h += '<div style="font-size:7.5px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Key Metrics</div>';
+      h += '<div class="rpt-kpi-row" style="margin-bottom:18px">';
+      res.kpis.forEach(function(k){
+        var kc={green:'#22c55e',red:'#ef4444',amber:'#f59e0b'}[k.color]||'#64748b';
+        h += '<div class="rpt-kpi" style="flex:1;border:1px solid '+kc+'33">'
+           + '<div class="rpt-kpi-val" style="color:'+kc+'">'+k.value+'</div>'
+           + '<div class="rpt-kpi-lbl">'+k.label+'</div>'
+           + (k.subtext?'<div style="font-size:7px;color:var(--t3);margin-top:2px">'+k.subtext+'</div>':'')
+           + '</div>';
+      });
+      h += '</div>';
+    }
+    // Sections
+    (res.sections||[]).forEach(function(sec){
+      h += '<div class="rpt-section"><div class="rpt-h2">'+sec.title+'</div>';
+      if (sec.kpis && sec.kpis.length) {
+        h += '<div class="rpt-kpi-row">';
+        sec.kpis.forEach(function(k){
+          var kc={green:'#22c55e',red:'#ef4444',amber:'#f59e0b'}[k.color]||'#64748b';
+          h += '<div class="rpt-kpi"><div class="rpt-kpi-val" style="color:'+kc+'">'+k.value+'</div><div class="rpt-kpi-lbl">'+k.label+'</div></div>';
+        });
+        h += '</div>';
+      }
+      h += '<div style="font-size:10px;color:var(--t2);line-height:1.8">'+sec.content+'</div></div>';
+    });
+    // Final verdict block
+    h += '<div style="font-size:7.5px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">Final Recommendation</div>';
+    h += '<div class="gr-verdict" style="background:'+vc+'18;border:1px solid '+vc+'40;align-items:flex-start">'
+       + '<div style="font-size:28px;margin-top:2px">'+(res.recommendation==='DRILL'?'':res.recommendation==='MONITOR'?'':'')+'</div>'
+       + '<div><div style="color:'+vc+';font-size:13px;font-weight:800;margin-bottom:5px">'+res.recommendation+'</div>'
+       + '<div style="font-size:10px;color:var(--t2);line-height:1.7">'+res.recommendation_text+'</div></div></div>';
+    out.innerHTML = h;
+  }
+
+  function hubReportExport() {
+    var out = document.getElementById('rpt-output'); if (!out) return;
+    var win = window.open('','_blank');
+    if (!win) return;
+    win.document.write('<html><head><title>Report</title><style>body{font-family:system-ui,sans-serif;padding:40px;max-width:800px;margin:0 auto}h1{font-size:20px}@media print{body{padding:20px}}</style></head><body>'+out.innerHTML+'</body></html>');
+    win.document.close();
+    setTimeout(function(){ win.print(); }, 500);
+  }
+
+(function(global){
+  'use strict';
+
+  // 
+  // LAYER 0: UTILITY — UUID, percentile, distribution sampling
+  // 
+  function _uuid(){
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
+      var r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16);
+    });
+  }
+
+  function _pct(arr,p){ // percentile from sorted array
+    var sorted=[...arr].sort(function(a,b){return a-b;});
+    var idx=(p/100)*(sorted.length-1);
+    var lo=Math.floor(idx),hi=Math.ceil(idx);
+    return sorted[lo]+(sorted[hi]-sorted[lo])*(idx-lo);
+  }
+
+  function _samplePERT(lo,ml,hi){ // PERT / beta-pert sampling
+    var mu=(lo+4*ml+hi)/6;
+    var a=6*(mu-lo)/(hi-lo),b=6*(hi-mu)/(hi-lo);
+    if(a<=0||b<=0)return ml;
+    // Johnk's method approximation for speed
+    var u=0,v=0,x,y;
+    for(var i=0;i<50;i++){
+      u=Math.random();v=Math.random();
+      x=Math.pow(u,1/a);y=Math.pow(v,1/b);
+      if(x+y<=1){return lo+(hi-lo)*x/(x+y);}
+    }
+    return mu;
+  }
+
+  function _sampleTriangular(lo,ml,hi){
+    var u=Math.random(),fc=(ml-lo)/(hi-lo);
+    if(u<fc)return lo+Math.sqrt(u*(hi-lo)*(ml-lo));
+    return hi-Math.sqrt((1-u)*(hi-lo)*(hi-ml));
+  }
+
+  function _sampleLogNormal(p10,p50,p90){
+    var mu=Math.log(p50);
+    var sigma=(Math.log(p90)-Math.log(p10))/(2*1.282);
+    return Math.exp(mu+sigma*(Math.random()<0.5?-1:1)*Math.abs(Math.log(Math.random()||1e-10)));
+  }
+
+  // 
+  // LAYER 1: EXPLORATION DATA MODEL (EDM) — Single Source of Truth
+  // Wraps existing BASINS/PLAYS/PROSPECTS globals into typed entity maps.
+  // Original globals are preserved and kept in sync.
+  // 
+  var EDMStore = (function(){
+    //  Internal entity maps 
+    var _basins      = new Map(); // basin_id → Basin
+    var _petSystems  = new Map(); // ps_id    → PetroleumSystem
+    var _plays       = new Map(); // play_id  → Play
+    var _prospects   = new Map(); // prospect_id → Prospect
+    var _volRuns     = new Map(); // run_id   → VolumetricRun
+    var _econCases   = new Map(); // econ_id  → EconomicsCase
+    var _analogueMatches = new Map(); // match_id → AnalogueMatch
+    var _paramRecords    = new Map(); // param_id → ParameterRecord
+    var _auditLog    = [];
+    var _version     = 0;
+
+    //  Active exploration context (shared across ALL modules) 
+    var _ctx = {
+      basinId:          null,
+      petroleumSystemId:null,
+      playId:           null,
+      prospectId:       null,
+      scenarioId:       null,
+      workflowStage:    'basin_screening',
+      _version:         0
+    };
+
+    //  Event subscribers 
+    var _subscribers = {}; // eventType → [{callback,moduleId}]
+
+    //  Audit 
+    function _audit(eventType, entityId, before, after, sourceModule){
+      _auditLog.push({
+        id: _uuid(),
+        eventType: eventType,
+        entityId: entityId,
+        before: before,
+        after: after,
+        sourceModule: sourceModule || 'unknown',
+        timestamp: new Date(),
+        user: (typeof elpGetUser==='function' && elpGetUser()?.username) || _userTag(),
+        workflowStage: _ctx.workflowStage
+      });
+    }
+
+    //  Event emission 
+    function _emit(eventType, payload, sourceModule){
+      var handlers = _subscribers[eventType] || [];
+      handlers.forEach(function(h){
+        try{ h.callback(payload, sourceModule); }catch(e){ console.warn('[EDM EventBus] '+h.moduleId+' handler error:',e); }
+      });
+      // Propagate EDM version bump to legacy _hubCtx watchers
+      _version++;
+    }
+
+    //  Bootstrap: migrate existing globals → EDM maps 
+    function _bootstrap(){
+      var B = global.BASINS || [];
+      B.forEach(function(b){
+        var id = b.id || b.name;
+        _basins.set(id, Object.assign({basin_id:id, _edmWrapped:true}, b));
+      });
+
+      var PS = global.PETROLEUM_SYSTEMS || [];
+      PS.forEach(function(ps){
+        _petSystems.set(ps.id, Object.assign({ps_id:ps.id, _edmWrapped:true}, ps));
+      });
+
+      var PL = global.PLAYS || [];
+      PL.forEach(function(pl){
+        _plays.set(pl.id, Object.assign({play_id:pl.id, _edmWrapped:true}, pl));
+      });
+
+      var PR = global.PROSPECTS || [];
+      PR.forEach(function(pr){
+        _prospects.set(pr.id, Object.assign({prospect_id:pr.id, _edmWrapped:true}, pr));
+      });
+
+      _emit('EDM_BOOTSTRAPPED', {basins:_basins.size, plays:_plays.size, prospects:_prospects.size}, 'edm_bootstrap');
+      console.info('[EDMStore v8] Bootstrapped — basins:'+_basins.size+' plays:'+_plays.size+' prospects:'+_prospects.size);
+    }
+
+    //  Public API 
+    return {
+      // Context
+      getContext: function(){ return Object.assign({}, _ctx); },
+
+      setContext: function(updates, sourceModule){
+        var before = Object.assign({}, _ctx);
+        Object.assign(_ctx, updates);
+        _ctx._version++;
+        _audit('CONTEXT_CHANGED', 'active_context', before, _ctx, sourceModule);
+        _emit('CONTEXT_CHANGED', {before:before, after:Object.assign({},_ctx)}, sourceModule);
+
+        // Cascade: context change may affect downstream modules
+        if(updates.basinId !== undefined){
+          _emit('BASIN_SELECTED', {basinId: _ctx.basinId}, sourceModule);
+        }
+        if(updates.playId !== undefined){
+          _emit('PLAY_SELECTED', {playId: _ctx.playId}, sourceModule);
+        }
+        if(updates.prospectId !== undefined){
+          _emit('PROSPECT_SELECTED', {prospectId: _ctx.prospectId}, sourceModule);
+        }
+      },
+
+      selectBasin: function(basinId, sourceModule){
+        // Selecting a basin resets downstream context (play, prospect)
+        this.setContext({
+          basinId: basinId,
+          playId: null,
+          prospectId: null,
+          workflowStage: 'basin_screening'
+        }, sourceModule || 'basin_module');
+      },
+
+      // Entity reads
+      getBasin:    function(id){ return _basins.get(id) || null; },
+      getBasins:   function(){ return Array.from(_basins.values()); },
+      getPlay:     function(id){ return _plays.get(id) || null; },
+      getPlays:    function(basinId){
+        var all = Array.from(_plays.values());
+        return basinId ? all.filter(function(p){return p.basin_id===basinId||p.basin===basinId;}) : all;
+      },
+      getProspect: function(id){ return _prospects.get(id) || null; },
+      getProspects:function(playId){
+        var all = Array.from(_prospects.values());
+        return playId ? all.filter(function(p){return p.play_id===playId||p.play===playId;}) : all;
+      },
+      getPetSys:   function(id){ return _petSystems.get(id) || null; },
+      getLatestVolRun: function(prospectId){
+        var runs = Array.from(_volRuns.values()).filter(function(r){return r.prospect_id===prospectId;});
+        return runs.sort(function(a,b){return new Date(b._createdAt)-new Date(a._createdAt);})[0] || null;
+      },
+      getEconCase: function(prospectId){
+        var cases = Array.from(_econCases.values()).filter(function(e){return e.prospect_id===prospectId;});
+        return cases[0] || null;
+      },
+      getTopAnalogues: function(playId, n){
+        var matches = Array.from(_analogueMatches.values())
+          .filter(function(m){return !playId||m.play_id===playId;})
+          .sort(function(a,b){return b.similarity_score-a.similarity_score;});
+        return matches.slice(0, n||3);
+      },
+      getParameters: function(entityId){
+        return Array.from(_paramRecords.values()).filter(function(p){
+          return p.entity_id===entityId;
+        });
+      },
+      getAuditLog: function(n){ return _auditLog.slice(-(n||50)); },
+
+      // Entity writes (all trigger events and cascade)
+      writeProspect: function(prospect, sourceModule){
+        var existing = _prospects.get(prospect.prospect_id||prospect.id);
+        var id = prospect.prospect_id || prospect.id || _uuid();
+        prospect.prospect_id = id;
+        prospect._updatedAt = new Date();
+        _prospects.set(id, prospect);
+        // Keep global array in sync
+        if(global.PROSPECTS){
+          var idx = global.PROSPECTS.findIndex(function(p){return p.id===id||p.prospect_id===id;});
+          if(idx>=0) global.PROSPECTS[idx]=prospect; else global.PROSPECTS.push(prospect);
+        }
+        _audit('PROSPECT_UPDATED', id, existing, prospect, sourceModule);
+        _emit('PROSPECT_UPDATED', {prospect:prospect}, sourceModule);
+        // Cascade: if GCoS changed, recalculate EMV
+        if(existing && existing.gcos !== prospect.gcos){
+          ComputationService.cascadeRiskToEMV(id, sourceModule);
+        }
+        return prospect;
+      },
+
+      writeVolumetricRun: function(run, sourceModule){
+        run.run_id = run.run_id || _uuid();
+        run._createdAt = new Date();
+        _volRuns.set(run.run_id, run);
+        _audit('VOLUMETRIC_RUN_COMPLETE', run.run_id, null, run, sourceModule);
+        _emit('VOLUMETRIC_RUN_COMPLETE', {run:run}, sourceModule);
+        // Cascade: seed economics if an econ case exists
+        ComputationService.seedEconomicsFromVolRun(run.prospect_id, run.run_id, sourceModule);
+        return run;
+      },
+
+      writeEconomicsCase: function(econCase, sourceModule){
+        econCase.econ_id = econCase.econ_id || _uuid();
+        econCase._updatedAt = new Date();
+        _econCases.set(econCase.econ_id, econCase);
+        _audit('ECONOMICS_CALCULATED', econCase.econ_id, null, econCase, sourceModule);
+        _emit('ECONOMICS_CALCULATED', {econCase:econCase}, sourceModule);
+        // Cascade: update portfolio optimizer
+        _emit('PORTFOLIO_REFRESH_NEEDED', {reason:'economics_updated', econCaseId:econCase.econ_id}, sourceModule);
+        return econCase;
+      },
+
+      writeParameterRecord: function(param, sourceModule){
+        param.param_id = param.param_id || _uuid();
+        param._updatedAt = new Date();
+        _paramRecords.set(param.param_id, param);
+        _audit('PARAMETER_UPDATED', param.param_id, null, param, sourceModule);
+        _emit('PARAMETER_UPDATED', {param:param}, sourceModule);
+        return param;
+      },
+
+      writeAnalogueMatch: function(match, sourceModule){
+        match.match_id = match.match_id || _uuid();
+        _analogueMatches.set(match.match_id, match);
+        _audit('ANALOGUE_MATCHED', match.match_id, null, match, sourceModule);
+        _emit('ANALOGUE_MATCHED', {match:match}, sourceModule);
+        return match;
+      },
+
+      // Subscriptions
+      on: function(eventType, callback, moduleId){
+        if(!_subscribers[eventType]) _subscribers[eventType] = [];
+        _subscribers[eventType].push({callback:callback, moduleId:moduleId||'unknown'});
+        return this;
+      },
+      off: function(eventType, moduleId){
+        if(_subscribers[eventType]){
+          _subscribers[eventType] = _subscribers[eventType].filter(function(h){return h.moduleId!==moduleId;});
+        }
+      },
+      emit: function(t,p,m){ _emit(t,p,m); },
+
+      // AI context builder — structured objects, not HTML scraping
+      buildAIContext: function(){
+        var ctx   = _ctx;
+        var basin = ctx.basinId ? _basins.get(ctx.basinId) : null;
+        var petSys= ctx.petroleumSystemId ? _petSystems.get(ctx.petroleumSystemId) : null;
+        var play  = ctx.playId ? _plays.get(ctx.playId) : null;
+        var prosp = ctx.prospectId ? _prospects.get(ctx.prospectId) : null;
+        var volRun= prosp ? this.getLatestVolRun(ctx.prospectId) : null;
+        var econ  = prosp ? this.getEconCase(ctx.prospectId) : null;
+        var topAnal = this.getTopAnalogues(ctx.playId, 3);
+
+        return {
+          workflowStage:  ctx.workflowStage,
+          basin:          basin,
+          petroleumSystem:petSys,
+          play:           play,
+          prospect:       prosp,
+          volumetricRun:  volRun,
+          economicsCase:  econ,
+          topAnalogues:   topAnal,
+          portfolioStats: _buildPortfolioStats(),
+          _version:       _version,
+          _timestamp:     new Date().toISOString()
+        };
+      },
+
+      // Workflow gate check
+      checkGate: function(targetStage){
+        return WorkflowOrchestrator.checkGate(targetStage);
+      },
+
+      getVersion: function(){ return _version; },
+      bootstrap:  _bootstrap
+    };
+
+    function _buildPortfolioStats(){
+      var prAll = Array.from(_prospects.values());
+      var econAll = Array.from(_econCases.values());
+      if(!prAll.length) return null;
+      var avgGCoS = prAll.reduce(function(s,p){return s+(p.gcos||0);},0)/prAll.length;
+      var totalEMV = econAll.reduce(function(s,e){return s+(e.emv_risk_weighted||0);},0);
+      return {
+        prospectCount: prAll.length,
+        avgGCoS: Math.round(avgGCoS*100),
+        totalEMV_mm: Math.round(totalEMV),
+        withEconomics: econAll.length
+      };
+    }
+  })();
+
+  // Expose globally
+  global.EDM = EDMStore;
+
+  // 
+  // LAYER 2: COMPUTATION SERVICE — Pure functions, no UI side effects
+  // All engines write results back to EDM. UI subscribes and re-renders.
+  // 
+  var ComputationService = (function(){
+
+    //  GCoS Engine — multiplicative model 
+    function computeGCoS(prospectId, riskOverrides){
+      var prosp = EDMStore.getProspect(prospectId);
+      if(!prosp) return null;
+      var play  = prosp.play_id ? EDMStore.getPlay(prosp.play_id) : null;
+
+      // Components: play-level × prospect-level
+      var playRisk    = (play&&play.play_risk!=null)  ? play.play_risk    : 0.8;
+      var chargeRisk  = prosp.chargeRisk  || (play&&play.chargeRisk)  || 0.7;
+      var reservoirRisk= prosp.reservoirRisk||(play&&play.reservoirRisk)||0.7;
+      var sealRisk    = prosp.sealRisk    || 0.75;
+      var trapRisk    = prosp.trapRisk    || 0.7;
+      var pgos        = (play&&play.pgos!=null) ? play.pgos : 0.8;
+
+      if(riskOverrides) Object.assign({chargeRisk:chargeRisk,reservoirRisk:reservoirRisk,sealRisk:sealRisk,trapRisk:trapRisk,pgos:pgos}, riskOverrides);
+
+      var gcos = pgos * chargeRisk * reservoirRisk * sealRisk * trapRisk;
+      gcos = Math.max(0, Math.min(1, gcos));
+
+      // Write back to EDM (triggers cascade)
+      EDMStore.writeProspect(Object.assign({},prosp,{gcos:gcos}), 'gcos_engine');
+      return gcos;
+    }
+
+    //  Volumetrics Engine — Monte Carlo STOIIP 
+    function runVolumetrics(prospectId, params, iterations){
+      iterations = iterations || 10000;
+      var results = [];
+      var stoiipResults = [];
+
+      for(var i=0;i<iterations;i++){
+        var area  = _samplePERT(params.area_lo||10,  params.area_ml||50,  params.area_hi||150);
+        var ntg   = _samplePERT(params.ntg_lo||0.4,  params.ntg_ml||0.65, params.ntg_hi||0.85);
+        var h     = _samplePERT(params.pay_lo||5,    params.pay_ml||15,   params.pay_hi||40);
+        var phi   = _samplePERT(params.phi_lo||0.10, params.phi_ml||0.18, params.phi_hi||0.28);
+        var sw    = _samplePERT(params.sw_lo||0.15,  params.sw_ml||0.25,  params.sw_hi||0.40);
+        var boi   = params.boi_ml || 1.25;
+        var rf    = _samplePERT(params.rf_lo||0.20,  params.rf_ml||0.32,  params.rf_hi||0.45);
+
+        // STOIIP formula: GRV (km³→bbl) × NTG × φ × (1-Sw) / Boi → MMbbl
+        var grv_bbl = area * 1e6 * ntg * h; // m³
+        var stoiip  = grv_bbl * phi * (1-sw) / boi / 158.987; // MMbbl approx
+        var eur     = stoiip * rf;
+        results.push(eur);
+        stoiipResults.push(stoiip);
+      }
+
+      var run = {
+        run_id: _uuid(),
+        prospect_id: prospectId,
+        iterations: iterations,
+        params_snapshot: Object.assign({},params),
+        eur_percentiles: {
+          p5:  _pct(results,5),
+          p10: _pct(results,10),
+          p50: _pct(results,50),
+          p90: _pct(results,90),
+          p95: _pct(results,95),
+          mean:results.reduce(function(s,v){return s+v;},0)/results.length
+        },
+        stoiip_percentiles: {
+          p10: _pct(stoiipResults,10),
+          p50: _pct(stoiipResults,50),
+          p90: _pct(stoiipResults,90)
+        },
+        _raw: results // kept for histogram rendering
+      };
+
+      // Write to EDM (triggers downstream cascade)
+      EDMStore.writeVolumetricRun(run, 'volumetrics_engine');
+
+      // Sync back to existing UI globals so legacy modules still work
+      var prosp = EDMStore.getProspect(prospectId);
+      if(prosp){
+        EDMStore.writeProspect(Object.assign({},prosp,{
+          p10Mmboe: Math.round(run.eur_percentiles.p10*10)/10,
+          p50Mmboe: Math.round(run.eur_percentiles.p50*10)/10,
+          p90Mmboe: Math.round(run.eur_percentiles.p90*10)/10,
+          meanMmboe:Math.round(run.eur_percentiles.mean*10)/10
+        }), 'volumetrics_engine');
+      }
+
+      return run;
+    }
+
+    //  DCF Economics Engine 
+    function computeEconomics(prospectId, econParams){
+      var prosp  = EDMStore.getProspect(prospectId);
+      var volRun = EDMStore.getLatestVolRun(prospectId);
+      if(!prosp) return null;
+
+      var p50  = (volRun&&volRun.eur_percentiles) ? volRun.eur_percentiles.p50 : (prosp.p50Mmboe||100);
+      var gcos = prosp.gcos || 0.3;
+
+      var price    = econParams.price    || _getEconDefaults().price;    // $/bbl
+      var capex    = econParams.capex    || _getEconDefaults().capex;    // $MM
+      var opex     = econParams.opex     || _getEconDefaults().opex;     // $/boe
+      var discount = econParams.discount || (_getEconDefaults().discount / 100);
+      var years    = econParams.years    || _getEconDefaults().years;
+      var decline  = econParams.decline  || (_getEconDefaults().decline / 100);
+      var drillCost= econParams.drillCost|| (prosp.est_drill_cost_usdmm||50);
+
+      // Simplified production profile: plateau + exponential decline
+      var plateau = Math.min(3, Math.ceil(years*0.15));
+      var peakRate = (p50 * 1e6) / ((plateau*365) + (years-plateau)*365/(1-Math.exp(-decline*(years-plateau))));
+      var cashFlows = [];
+      var cumProd = 0;
+      for(var yr=1;yr<=years;yr++){
+        var prod = yr<=plateau ? peakRate : peakRate*Math.exp(-decline*(yr-plateau));
+        var revenue = prod*365*price/1e6;
+        var opexTotal = prod*365*opex/1e6;
+        var capexYr = yr===1 ? capex : 0;
+        cashFlows.push(revenue - opexTotal - capexYr);
+        cumProd += prod*365/1e6;
+      }
+
+      var npv10 = cashFlows.reduce(function(acc,cf,i){
+        return acc + cf/Math.pow(1+discount,i+1);
+      },0);
+
+      var emv = gcos*npv10 - (1-gcos)*drillCost;
+
+      // IRR via bisection
+      var irr = 0;
+      try{
+        var lo=0,hi=5,mid;
+        for(var k=0;k<50;k++){
+          mid=(lo+hi)/2;
+          var npvMid=cashFlows.reduce(function(acc,cf,i){return acc+cf/Math.pow(1+mid,i+1);},0);
+          if(npvMid>0)lo=mid; else hi=mid;
+        }
+        irr=mid;
+      }catch(e){}
+
+      var econCase = {
+        econ_id: _uuid(),
+        prospect_id: prospectId,
+        oil_price_usd_bbl: price,
+        capex_mm_usd: capex,
+        opex_usd_boe: opex,
+        discount_rate: discount,
+        years: years,
+        npv_10_mm_usd: Math.round(npv10),
+        irr: Math.round(irr*1000)/10,
+        emv_risk_weighted: Math.round(emv),
+        gcos_used: gcos,
+        p50_eur_mmboe: Math.round(p50*10)/10,
+        _sourceVolRunId: volRun ? volRun.run_id : null,
+        _seededFromEDM: true
+      };
+
+      // Write to EDM (triggers portfolio cascade)
+      EDMStore.writeEconomicsCase(econCase, 'economics_engine');
+      return econCase;
+    }
+
+    //  Cascade: Risk change → GCoS → EMV 
+    function cascadeRiskToEMV(prospectId, sourceModule){
+      var prosp = EDMStore.getProspect(prospectId);
+      if(!prosp) return;
+      var econCase = EDMStore.getEconCase(prospectId);
+      if(!econCase) return;
+
+      var newEMV = prosp.gcos * econCase.npv_10_mm_usd - (1-prosp.gcos)*(prosp.est_drill_cost_usdmm||50);
+      EDMStore.writeEconomicsCase(
+        Object.assign({},econCase,{emv_risk_weighted:Math.round(newEMV), gcos_used:prosp.gcos}),
+        sourceModule||'risk_cascade'
+      );
+
+      // Sync back to legacy PROSPECTS array
+      if(global.PROSPECTS){
+        var idx=global.PROSPECTS.findIndex(function(p){return p.id===prospectId||p.prospect_id===prospectId;});
+        if(idx>=0) global.PROSPECTS[idx]=Object.assign({},global.PROSPECTS[idx],{gcos:prosp.gcos});
+      }
+
+      console.info('[ComputationService] Risk cascade: prospect='+prospectId+' GCoS='+Math.round((prosp.gcos||0)*100)+'% EMV=$'+Math.round(newEMV)+'MM');
+    }
+
+    //  Cascade: VolRun → seed Economics 
+    function seedEconomicsFromVolRun(prospectId, runId, sourceModule){
+      var prosp = EDMStore.getProspect(prospectId);
+      if(!prosp) return;
+      var run = EDMStore.getLatestVolRun(prospectId);
+      if(!run || run.run_id!==runId) return;
+      var existing = EDMStore.getEconCase(prospectId);
+      if(!existing) return; // only seed if econ case already exists
+
+      // Update econ case with new P50 EUR
+      EDMStore.writeEconomicsCase(Object.assign({},existing,{
+        p50_eur_mmboe: Math.round(run.eur_percentiles.p50*10)/10,
+        _sourceVolRunId: runId,
+        _reseeded: true
+      }), sourceModule||'volrun_cascade');
+
+      console.info('[ComputationService] Vol cascade: prospect='+prospectId+' P50='+Math.round(run.eur_percentiles.p50)+'MMboe seeded to economics');
+    }
+
+    //  Portfolio EMV ranking 
+    function rankPortfolio(){
+      var prospects = EDMStore.getProspects();
+      return prospects.map(function(p){
+        var econ = EDMStore.getEconCase(p.prospect_id||p.id);
+        return {
+          id: p.prospect_id||p.id,
+          name: p.name,
+          basin: p.basin,
+          gcos: Math.round((p.gcos||0)*100),
+          emv: econ ? econ.emv_risk_weighted : 0,
+          npv: econ ? econ.npv_10_mm_usd : 0,
+          p50_mmboe: p.p50Mmboe || 0,
+          status: p.prospect_status || p.status || 'Undrilled'
+        }
+      }).sort(function(a,b){return b.emv-a.emv;});
+    }
+
+    //  Workflow gate validation 
+    function validateWorkflowGate(stage){
+      var ctx = EDMStore.getContext();
+      var gates = {
+        'play_fairway': function(){
+          return ctx.basinId ? {pass:true} : {pass:false,reason:'Select a basin first'};
+        },
+        'analogue_discovery': function(){
+          return ctx.basinId ? {pass:true} : {pass:false,reason:'Basin screening must be completed first'};
+        },
+        'volumetrics': function(){
+          var hasParms = EDMStore.getParameters(ctx.playId||ctx.basinId).length > 0;
+          if(!ctx.playId&&!ctx.basinId) return {pass:false,reason:'Select a play or basin'};
+          return {pass:true, warning: hasParms?null:'No analogue parameters loaded — using defaults'};
+        },
+        'economics': function(){
+          var prosp = ctx.prospectId ? EDMStore.getProspect(ctx.prospectId) : null;
+          if(!prosp) return {pass:true, warning:'No prospect selected — using basin-level defaults'};
+          var volRun = EDMStore.getLatestVolRun(ctx.prospectId);
+          var hasGCoS = prosp.gcos!=null && prosp.gcos>0;
+          if(!volRun) return {pass:true, warning:'No volumetric run — manual entry mode'};
+          if(!hasGCoS) return {pass:true, warning:'GCoS not computed — EMV calculation will be incomplete'};
+          return {pass:true};
+        },
+        'portfolio_optimization': function(){
+          var econCases = EDMStore.getProspects().filter(function(p){
+            return EDMStore.getEconCase(p.prospect_id||p.id) !== null;
+          });
+          return econCases.length>=1 ? {pass:true} : {pass:false,reason:'At least 1 prospect with economics required'};
+        }
+      };
+      var check = gates[stage];
+      return check ? check() : {pass:true};
+    }
+
+    return {
+      computeGCoS:          computeGCoS,
+      runVolumetrics:       runVolumetrics,
+      computeEconomics:     computeEconomics,
+      cascadeRiskToEMV:     cascadeRiskToEMV,
+      seedEconomicsFromVolRun: seedEconomicsFromVolRun,
+      rankPortfolio:        rankPortfolio,
+      validateGate:         validateWorkflowGate
+    };
+  })();
+
+  global.ComputationService = ComputationService;
+
+  // 
+  // LAYER 3: WORKFLOW ORCHESTRATOR — Gate progression + stage tracking
+  // 
+  var WorkflowOrchestrator = {
+    STAGES: [
+      'basin_screening','play_fairway','analogue_discovery','parameter_library',
+      'volumetrics','geological_risking','type_curves','economics',
+      'portfolio_optimization','ai_intelligence'
+    ],
+
+    checkGate: function(targetStage){
+      return ComputationService.validateGate(targetStage);
+    },
+
+    advanceTo: function(stage, sourceModule){
+      var result = this.checkGate(stage);
+      if(result.pass){
+        EDMStore.setContext({workflowStage: stage}, sourceModule||'workflow_orchestrator');
+        EDMStore.emit('WORKFLOW_STAGE_CHANGED', {stage:stage, result:result}, sourceModule);
+        if(result.warning){
+          console.warn('[WorkflowOrchestrator] Gate passed with warning: '+result.warning);
+          if(typeof toast==='function') toast('! '+result.warning, 'warning');
+        }
+        return true;
+      } else {
+        console.warn('[WorkflowOrchestrator] Gate blocked: '+result.reason);
+        if(typeof toast==='function') toast('! '+result.reason, 'warning');
+        return false;
+      }
+    },
+
+    // Called when user navigates to a module — auto-advance stage
+    onModuleEntered: function(moduleId){
+      var stageMap = {
+        portfolio:'basin_screening', basins:'basin_screening', screening:'basin_screening',
+        playfairway:'play_fairway', analogues:'analogue_discovery', aianalogues:'analogue_discovery',
+        params:'parameter_library', volumetrics:'volumetrics', risk:'geological_risking',
+        bayesplay:'geological_risking', typecurves:'type_curves', economics:'economics',
+        portopt:'portfolio_optimization', sensitivity:'portfolio_optimization', hub:'ai_intelligence'
+      };
+      var stage = stageMap[moduleId];
+      if(stage) EDMStore.setContext({workflowStage:stage}, 'navigation');
+    }
+  };
+
+  global.WorkflowOrchestrator = WorkflowOrchestrator;
+
+  // 
+  // LAYER 4: EDM ↔ LEGACY BRIDGE
+  // Patches existing functions to write through EDM while keeping UI intact.
+  // 
+
+  //  Patch _hubCtx to use EDM context 
+  // The legacy hub uses a plain object _hubCtx. We intercept writes/reads.
+  (function patchHubCtx(){
+    // Proxy _hubCtx so any assignment to it syncs to EDMStore
+    var _rawCtx = {};
+    var _ctxProxy = new Proxy(_rawCtx, {
+      set: function(target, prop, value){
+        target[prop] = value;
+        var ctxMap = {basin:'basinId', petSys:'petroleumSystemId', play:'playId', prospect:'prospectId'};
+        if(ctxMap[prop]){
+          var update = {};
+          // For play/prospect IDs, extract the raw ID or name
+          if(prop==='basin')      update.basinId = value;
+          else if(prop==='petSys') update.petroleumSystemId = value;
+          else if(prop==='play')   update.playId = value;
+          else if(prop==='prospect') update.prospectId = value;
+          try{ EDMStore.setContext(update, 'hub_legacy'); }catch(e){}
+        }
+        return true;
+      }
+    });
+    // Replace the global after a short delay (allows original scripts to define it first)
+    setTimeout(function(){
+      if(typeof global._hubCtx !== 'undefined'){
+        _rawCtx = Object.assign({}, global._hubCtx);
+        global._hubCtx = _ctxProxy;
+      }
+    }, 300);
+  })();
+
+  //  Patch _syncData to also push globals into EDM 
+  (function patchSyncData(){
+    setTimeout(function(){
+      var _origSync = global._syncData;
+      global._syncData = function(){
+        // Call original
+        if(typeof _origSync==='function') _origSync.apply(this, arguments);
+        // Re-sync globals into EDM maps in case new data was ingested
+        var B=global.BASINS||[], PL=global.PLAYS||[], PR=global.PROSPECTS||[];
+        B.forEach(function(b){
+          var id=b.id||b.name;
+          if(!EDMStore.getBasin(id)){
+            global.EDM._unsafeSet && global.EDM._unsafeSet('basins', id, Object.assign({basin_id:id},b));
+          }
+        });
+        PL.forEach(function(p){
+          var id=p.id;
+          if(id && !EDMStore.getPlay(id)){
+            global.EDM._unsafeSet && global.EDM._unsafeSet('plays', id, Object.assign({play_id:id},p));
+          }
+        });
+        PR.forEach(function(p){
+          var id=p.id;
+          if(id && !EDMStore.getProspect(id)){
+            global.EDM._unsafeSet && global.EDM._unsafeSet('prospects', id, Object.assign({prospect_id:id},p));
+          }
+        });
+      };
+    }, 500);
+  })();
+
+  //  Patch goTo to track workflow stage 
+  (function patchGoTo(){
+    setTimeout(function(){
+      var _origGoTo = global.goTo;
+      if(typeof _origGoTo !== 'function') return;
+      global.goTo = function(id, navEl){
+        WorkflowOrchestrator.onModuleEntered(id);
+        return _origGoTo.apply(this, arguments);
+      };
+    }, 400);
+  })();
+
+  //  Patch Risk module GCoS save to cascade to Economics 
+  (function patchGCoSSave(){
+    setTimeout(function(){
+      var _origSave = global.saveGCoS;
+      if(typeof _origSave !== 'function') return;
+      global.saveGCoS = function(){
+        _origSave.apply(this, arguments);
+        // After save, recompute GCoS for active prospect and cascade
+        var ctx = EDMStore.getContext();
+        if(ctx.prospectId){
+          setTimeout(function(){
+            ComputationService.cascadeRiskToEMV(ctx.prospectId, 'risk_module_save');
+            if(typeof toast==='function') toast(' Risk cascade: EMV updated from GCoS change','success');
+          }, 100);
+        }
+      };
+    }, 800);
+  })();
+
+  //  Patch Volumetrics run to write results to EDM 
+  (function patchVolumetrics(){
+    setTimeout(function(){
+      var _origMC = global.runMonteCarlo;
+      if(typeof _origMC !== 'function') return;
+      global.runMonteCarlo = function(){
+        var result = _origMC.apply(this, arguments);
+        // Try to extract prospect ID from UI context
+        var prospectId = EDMStore.getContext().prospectId;
+        if(!prospectId){
+          var pSel = document.getElementById('vol-prospect-select') || document.getElementById('risk-prospect');
+          prospectId = pSel ? (pSel.value||null) : null;
+        }
+        if(prospectId){
+          // Extract P10/P50/P90 from existing result DOM
+          setTimeout(function(){
+            var p50El=document.getElementById('vol-p50')||document.getElementById('mc-p50');
+            if(p50El){
+              var run = {
+                run_id: _uuid(),
+                prospect_id: prospectId,
+                iterations: 10000,
+                eur_percentiles:{
+                  p10: parseFloat((document.getElementById('vol-p10')||document.getElementById('mc-p10'))?.textContent||0)||0,
+                  p50: parseFloat(p50El.textContent||0)||0,
+                  p90: parseFloat((document.getElementById('vol-p90')||document.getElementById('mc-p90'))?.textContent||0)||0,
+                  mean:parseFloat((document.getElementById('vol-mean')||document.getElementById('mc-mean'))?.textContent||0)||0
+                },
+                _capturedFromUI: true
+              };
+              if(run.eur_percentiles.p50>0){
+                EDMStore.writeVolumetricRun(run, 'volumetrics_module_patch');
+              }
+            }
+          }, 500);
+        }
+        return result;
+      };
+    }, 1000);
+  })();
+
+  //  Patch Economics to flag EDM-seeded runs 
+  (function patchEconomics(){
+    setTimeout(function(){
+      var _origDCF = global.runEconDCF;
+      if(typeof _origDCF !== 'function') return;
+      global.runEconDCF = function(){
+        var result = _origDCF.apply(this, arguments);
+        var ctx = EDMStore.getContext();
+        // After run, capture result and write to EDM
+        setTimeout(function(){
+          var npvEl = document.getElementById('econ-npv');
+          var irrEl = document.getElementById('econ-irr');
+          var emvEl = document.getElementById('econ-emv');
+          if(npvEl && ctx.prospectId){
+            var econCase = {
+              econ_id: _uuid(),
+              prospect_id: ctx.prospectId,
+              npv_10_mm_usd: parseFloat(npvEl.textContent)||0,
+              irr: parseFloat(irrEl?.textContent||0)||0,
+              emv_risk_weighted: parseFloat(emvEl?.textContent||0)||0,
+              _capturedFromUI: true
+            };
+            if(econCase.npv_10_mm_usd!==0){
+              EDMStore.writeEconomicsCase(econCase, 'economics_module_patch');
+            }
+          }
+        }, 600);
+        return result;
+      };
+    }, 1200);
+  })();
+
+  // 
+  // LAYER 4B: EDM EVENT SUBSCRIBERS — UI auto-refresh on EDM state changes
+  // 
+
+  // Subscriber: Basin selected → refresh hub panels
+  EDMStore.on('BASIN_SELECTED', function(payload){
+    if(typeof hubSyncBasin==='function') setTimeout(hubSyncBasin, 50);
+    if(typeof hubSyncAIA==='function')   setTimeout(hubSyncAIA, 100);
+    if(typeof hubSyncPS==='function')    setTimeout(hubSyncPS, 150);
+  }, 'hub_basin_subscriber');
+
+  // Subscriber: GCoS/risk updated → show cascade toast
+  EDMStore.on('ECONOMICS_CALCULATED', function(payload){
+    var ec = payload.econCase;
+    if(!ec || !ec._seededFromEDM) return; // only fire for EDM-originated calcs
+    if(typeof toast==='function'){
+      toast(' EDM: Economics updated — NPV $'+Math.round(ec.npv_10_mm_usd||0)+'MM, EMV $'+Math.round(ec.emv_risk_weighted||0)+'MM', 'success');
+    }
+  }, 'economics_toast_subscriber');
+
+  // Subscriber: Portfolio refresh needed → re-run portfolio if visible
+  EDMStore.on('PORTFOLIO_REFRESH_NEEDED', function(payload){
+    var active = document.querySelector('.sec.on')?.id;
+    if(active && active.includes('portopt')){
+      if(typeof runPortfolioOptimizer==='function') setTimeout(runPortfolioOptimizer, 200);
+    }
+  }, 'portfolio_refresh_subscriber');
+
+  // Subscriber: Volumetric run → update portfolio KPIs
+  EDMStore.on('VOLUMETRIC_RUN_COMPLETE', function(payload){
+    if(typeof refreshPortfolioKPIs==='function') setTimeout(refreshPortfolioKPIs, 200);
+  }, 'portfolio_kpi_subscriber');
+
+  // 
+  // LAYER 4C: AI INTELLIGENCE UPGRADE — EDM-native context for eMonk
+  // Patches _emonkBuildAppContext to prepend structured EDM object graph
+  // 
+  (function patchAIContext(){
+    setTimeout(function(){
+      var _origCtxBuilder = global._emonkBuildAppContext;
+      if(typeof _origCtxBuilder !== 'function') return;
+
+      global._emonkBuildAppContext = function(){
+        // Get structured context from EDM
+        var edmCtx = EDMStore.buildAIContext();
+        var edmLines = [];
+
+        edmLines.push('\n[EDM v8 — STRUCTURED CONTEXT]');
+        edmLines.push('workflow_stage='+edmCtx.workflowStage);
+
+        if(edmCtx.basin){
+          var b=edmCtx.basin;
+          edmLines.push('ACTIVE_BASIN='+b.name+' country='+b.country+' region='+b.region+
+            ' tectonic='+b.tectonic+' score='+b.score+' hc='+b.hc+' status='+b.status+' area='+b.area+'km2');
+        }
+        if(edmCtx.play){
+          var pl=edmCtx.play;
+          edmLines.push('ACTIVE_PLAY='+pl.name+' pgos='+Math.round((pl.pgos||0)*100)+'%'+
+            ' charge='+Math.round((pl.chargeRisk||0)*100)+'% reservoir='+Math.round((pl.reservoirRisk||0)*100)+'%'+
+            ' eur='+pl.eurMmboe+'MMboe basin='+pl.basin);
+        }
+        if(edmCtx.prospect){
+          var pr=edmCtx.prospect;
+          edmLines.push('ACTIVE_PROSPECT='+pr.name+' gcos='+Math.round((pr.gcos||0)*100)+'%'+
+            ' p50='+pr.p50Mmboe+'MMboe charge='+Math.round((pr.chargeRisk||0)*100)+'%'+
+            ' reservoir='+Math.round((pr.reservoirRisk||0)*100)+'% trap='+Math.round((pr.trapRisk||0)*100)+'%'+
+            ' drill_cost=$'+(pr.est_drill_cost_usdmm||'?')+'MM');
+        }
+        if(edmCtx.volumetricRun){
+          var vr=edmCtx.volumetricRun;
+          var ep=vr.eur_percentiles||{};
+          edmLines.push('VOLUMETRIC_RUN p10='+Math.round(ep.p10||0)+' p50='+Math.round(ep.p50||0)+
+            ' p90='+Math.round(ep.p90||0)+' mean='+Math.round(ep.mean||0)+' (MMboe) iterations='+vr.iterations);
+        }
+        if(edmCtx.economicsCase){
+          var ec=edmCtx.economicsCase;
+          edmLines.push('ECONOMICS npv10=$'+ec.npv_10_mm_usd+'MM irr='+ec.irr+'% emv=$'+ec.emv_risk_weighted+
+            'MM price=$'+ec.oil_price_usd_bbl+'/bbl capex=$'+ec.capex_mm_usd+'MM gcos_used='+Math.round((ec.gcos_used||0)*100)+'%');
+        }
+        if(edmCtx.topAnalogues && edmCtx.topAnalogues.length){
+          edmLines.push('TOP_ANALOGUES n='+edmCtx.topAnalogues.length+' '+
+            edmCtx.topAnalogues.map(function(m){return m.target_name+'('+Math.round((m.similarity_score||0)*100)+'%)';}).join(' | '));
+        }
+        if(edmCtx.portfolioStats){
+          var ps=edmCtx.portfolioStats;
+          edmLines.push('PORTFOLIO prospects='+ps.prospectCount+' avg_gcos='+ps.avgGCoS+
+            '% total_emv=$'+ps.totalEMV_mm+'MM with_economics='+ps.withEconomics);
+        }
+        edmLines.push('EDM_VERSION='+edmCtx._version+' timestamp='+edmCtx._timestamp);
+        edmLines.push('[/EDM]');
+
+        // Prepend EDM context to existing app context
+        var legacyCtx = _origCtxBuilder.apply(this, arguments) || '';
+        return edmLines.join('\n') + '\n\n' + legacyCtx;
+      };
+
+      console.info('[EDM v8] AI context builder patched — eMonk now uses structured EDM objects');
+    }, 1500);
+  })();
+
+  // 
+  // LAYER 4D: EDM STATUS INDICATOR — Shows architecture status in UI
+  // 
+  function _renderEDMStatusBadge(){
+    var target = document.getElementById('api-status-bar');
+    if(!target || document.getElementById('edm-v8-badge')) return;
+
+    var badge = document.createElement('span');
+    badge.id = 'edm-v8-badge';
+    badge.title = 'EDAFY v8 — Exploration Data Model active. EDMStore singleton managing shared state across all modules.';
+    badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:10px;'+
+      'color:rgba(0,200,130,.7);border:1px solid rgba(0,200,130,.2);border-radius:3px;'+
+      'padding:1px 6px;margin-left:auto;cursor:help;white-space:nowrap;background:rgba(0,200,130,.05);';
+    badge.innerHTML = '<span style="width:5px;height:5px;border-radius:50%;background:#2fb87a;display:inline-block"></span>'+
+      ' EDM v8 · <span id="edm-v8-entity-count">—</span>';
+    target.appendChild(badge);
+
+    // Update entity count
+    function _updateCount(){
+      var el = document.getElementById('edm-v8-entity-count');
+      if(!el) return;
+      var b=EDMStore.getBasins().length, p=EDMStore.getProspects().length;
+      el.textContent = b+'B · '+p+'P';
+    }
+    _updateCount();
+    EDMStore.on('EDM_BOOTSTRAPPED', _updateCount, 'edm_badge');
+    EDMStore.on('PROSPECT_UPDATED',  _updateCount, 'edm_badge_p');
+  }
+
+  // 
+  // LAYER 4E: PROVIDE _unsafeSet for sync bridge (used by _syncData patch)
+  // 
+  global.EDM._unsafeSet = (function(){
+    // Direct access to inner maps for the sync bridge
+    // We expose a setter that doesn't trigger events (for bulk sync only)
+    var _storeRef = {
+      basins: null, plays: null, prospects: null
+    };
+    // We can't access private maps directly, so we use writeX methods with silent flag
+    return function(mapName, id, entity){
+      // Use the public write methods but they're already de-duped by check above
+      if(mapName==='basins') { /* basins are read-only after bootstrap */ }
+      else if(mapName==='plays')    EDMStore.writeProspect && null; // plays don't have a write method yet
+      else if(mapName==='prospects') EDMStore.writeProspect(entity, 'sync_bridge');
+    };
+  })();
+
+  // 
+  // BOOT SEQUENCE
+  // 
+  function _edmBoot(){
+    // Bootstrap EDM from existing globals
+    EDMStore.bootstrap();
+
+    // Render EDM status badge
+    _renderEDMStatusBadge();
+
+    // Log architecture summary
+    console.group('%c[EDAFY v8] Exploration Data Model — Active','color:#2fb87a;font-weight:bold');
+    console.info('Architecture: UI Modules → Event Bus → Computation Services → EDM Store');
+    console.info('Layers: Data Sources → EDM → Computation → Workflow Orchestrator → UI');
+    console.info('EDM entities: basins='+EDMStore.getBasins().length+' plays='+EDMStore.getPlays().length+' prospects='+EDMStore.getProspects().length);
+    console.info('Event bus: ready');
+    console.info('Computation services: GCoS, Volumetrics (Monte Carlo), DCF Economics, Portfolio — active');
+    console.info('Cascade chains: Risk→GCoS→EMV→Portfolio | VolRun→Economics | Basin→Context→AllModules');
+    console.info('AI context: eMonk patched — structured EDM objects replace HTML text scraping');
+    console.groupEnd();
+
+    // Emit boot complete
+    EDMStore.emit('EDM_BOOT_COMPLETE', {
+      version: 8,
+      entities: {
+        basins: EDMStore.getBasins().length,
+        plays:  EDMStore.getPlays().length,
+        prospects: EDMStore.getProspects().length
+      }
+    }, 'edm_boot');
+  }
+
+  // Boot after all existing scripts have run and DOM is ready
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded', function(){
+      setTimeout(_edmBoot, 900); // after existing onload at 700ms
+    });
+  } else {
+    setTimeout(_edmBoot, 900);
+  }
+
+  // Expose EDM hub functions globally so cross-IIFE calls work
+  window.hubKgRender          = hubKgRender;
+  window.hubRenderTree        = hubRenderTree;
+  window.hubMaturationRender  = hubMaturationRender;
+  window.hubSyncBayes         = hubSyncBayes;
+  window.hubSwitchTab         = hubSwitchTab;
+  window.hubRenderActivePane  = hubRenderActivePane;
+  window.hubKgPopulate        = hubKgPopulate;
+  window.hubOnBasinChange     = hubOnBasinChange;
+  window._hubBindCascade      = _hubBindCascade;
+  window.hubInit              = hubInit;
+
+  // Allow external code (doc parser) to inject new records into _HUB_DATA
+  window._HUB_DATA_INJECT = function(diff) {
+    // Basins
+    (window.BASINS||[]).forEach(function(b) {
+      if(!_HUB_DATA.basins.find(function(x){return x.name===b.name;}))
+        _HUB_DATA.basins.push({id:b.id||('b-doc-'+_HUB_DATA.basins.length),name:b.name});
+    });
+    // Petroleum Systems
+    (window.PETROLEUM_SYSTEMS||[]).forEach(function(ps) {
+      if(!_HUB_DATA.ps.find(function(x){return x.id===ps.id;}))
+        _HUB_DATA.ps.push({id:ps.id,name:ps.name,basin:ps.basin||''});
+    });
+    // Plays
+    (window.PLAYS||[]).forEach(function(pl) {
+      if(!_HUB_DATA.plays.find(function(x){return x.id===pl.id;}))
+        _HUB_DATA.plays.push({id:pl.id,name:pl.name,petSysId:pl.petSysId||null});
+    });
+    // Prospects
+    (diff.prospects||[]).forEach(function(p) {
+      if(p._action==='update') return;
+      if(!_HUB_DATA.prospects.find(function(x){return x.id===p.id;}))
+        _HUB_DATA.prospects.push({id:p.id,name:p.name,basin:p.basin||'',playId:p.playId||null,petSysId:p.petSysId||null,gcos:p.gcos||null});
+    });
+    // Wells & discoveries live on window.WELLS/DISCOVERIES — tree reads those directly.
+
+    // Refresh basin dropdown
+    var bs=document.getElementById('hub-sel-basin');
+    if(bs){
+      var cv=bs.value;
+      bs.innerHTML='<option value="">— Select Basin —</option>'+
+        _HUB_DATA.basins.map(function(b){return '<option value="'+b.name+'"'+(b.name===cv?' selected':'')+'>'+b.name+'</option>';}).join('');
+    }
+    // Refresh KPIs
+    var _e=function(id){return document.getElementById(id);};
+    if(_e('hub-kpi-ps'))        _e('hub-kpi-ps').textContent       =_HUB_DATA.ps.length;
+    if(_e('hub-kpi-plays'))     _e('hub-kpi-plays').textContent    =_HUB_DATA.plays.length;
+    if(_e('hub-kpi-prospects')) _e('hub-kpi-prospects').textContent=_HUB_DATA.prospects.length;
+    if(_e('hub-kpi-wells'))     _e('hub-kpi-wells').textContent    =(window.WELLS||[]).length;
+    if(_e('hub-kpi-disc'))      _e('hub-kpi-disc').textContent     =(window.DISCOVERIES||[]).length;
+  };
+
+})(window);
+
 
 (function(global){
 'use strict';
@@ -51169,7 +57545,7 @@ function _badge(id, label, color) {
   if (!el) return;
   var old = el.querySelector('.edafy-src-badge');
   if (!old) { old = document.createElement('span'); old.className = 'edafy-src-badge'; el.appendChild(old); }
-  old.style.cssText = 'font-size:10px;font-weight:700;color:'+color+';background:'+color+'15;'+
+  old.style.cssText = 'font-size:8px;font-weight:700;color:'+color+';background:'+color+'15;'+
     'border:1px solid '+color+'40;border-radius:3px;padding:1px 5px;margin-left:5px;white-space:nowrap;';
   old.textContent = ' '+label;
 }
@@ -51546,48 +57922,6 @@ function wireEconToPortfolio() {
     }
   }, 'wire_econ_portfolio');
 }
-
-(function patchVolumetrics(){
-setTimeout(function(){
-  var _origMC = global.runMonteCarlo;
-  if(typeof _origMC !== 'function') return;
-  global.runMonteCarlo = function(){
-    var result = _origMC.apply(this, arguments);
-    // Try to extract prospect ID from UI context
-    var prospectId = EDMStore.getContext().prospectId;
-    if(!prospectId){
-      var pSel = document.getElementById('vol-prospect-select') || document.getElementById('risk-prospect');
-      prospectId = pSel ? (pSel.value||null) : null;
-    }
-    if(prospectId){
-      // Extract P10/P50/P90 from existing result DOM
-      setTimeout(function(){
-        var p50El=document.getElementById('vol-p50')||document.getElementById('mc-p50');
-        if(p50El){
-          var run = {
-            run_id: _uuid(),
-            prospect_id: prospectId,
-            iterations: 10000,
-            eur_percentiles:{
-              p10: parseFloat((document.getElementById('vol-p10')||document.getElementById('mc-p10'))?.textContent||0)||0,
-              p50: parseFloat(p50El.textContent||0)||0,
-              p90: parseFloat((document.getElementById('vol-p90')||document.getElementById('mc-p90'))?.textContent||0)||0,
-              mean:parseFloat((document.getElementById('vol-mean')||document.getElementById('mc-mean'))?.textContent||0)||0
-            },
-            _capturedFromUI: true
-          };
-          if(run.eur_percentiles.p50>0){
-            EDMStore.writeVolumetricRun(run, 'volumetrics_module_patch');
-          }
-        }
-      }, 500);
-    }
-    return result;
-  };
-}, 1000);
-})();
-
-  
 
 /* 
    LIVE GCoS PATCH — monkey-patch calcDCF to use live GCoS not hardcoded 0.65
@@ -51990,12 +58324,12 @@ function renderAnalogueDCFBanner(pool, rf, opex, capex, sustcapex, blend, opexTi
       + '</div>'
       + '<div style="flex:1;min-width:0">'
       + '<div style="font-weight:600;color:var(--t1);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + a.name + '</div>'
-      + '<div style="color:var(--t3);font-size:10px;margin-top:1px">'
+      + '<div style="color:var(--t3);font-size:8px;margin-top:1px">'
       + (a.hc||'Oil') + ' &middot; ' + (a.drive||'—') + ' &middot; '
       + '\u03C6 ' + (a.por||'—') + '% &middot; k ' + (a.perm||'—') + ' md &middot; ' + (a.depth||'—') + ' m'
       + '</div></div>'
       + '<div style="text-align:right;flex-shrink:0">'
-      + '<div style="font-size:10px;color:var(--t3)">RF</div>'
+      + '<div style="font-size:8px;color:var(--t3)">RF</div>'
       + '<div style="font-size:10px;font-weight:700;color:var(--t2)">' + (a.rf||'—') + '%</div>'
       + '</div>'
       + '</div>';
@@ -52019,12 +58353,12 @@ function renderAnalogueDCFBanner(pool, rf, opex, capex, sustcapex, blend, opexTi
     return el && el._userEdited;
   });
   var lockNotice = lockedFields.length
-    ? '<div style="margin-top:8px;padding:5px 8px;background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.25);border-radius:5px;font-size:10px;color:#f0a500">'
+    ? '<div style="margin-top:8px;padding:5px 8px;background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.25);border-radius:5px;font-size:8px;color:#f0a500">'
       + '\u26A0 ' + lockedFields.map(function(id){ return id.replace('econ-','').toUpperCase(); }).join(', ')
       + ' locked by your input — analogue values not applied. <button onclick="'
       + lockedFields.map(function(id){ return 'document.getElementById(\''+id+'\')._userEdited=false;'; }).join('')
       + 'renderAnalogueDCFBanner(window.EDAFY_WIRE.analogue._pool,window.EDAFY_WIRE.analogue.rf,window.EDAFY_WIRE.analogue.opex,window.EDAFY_WIRE.analogue.capex,window.EDAFY_WIRE.analogue.sustcapex,window.EDAFY_WIRE.analogue.blendRatio/100,window.EDAFY_WIRE.analogue.opexTier,window.EDAFY_WIRE.analogue.capexTier)"'
-      + ' style="background:none;border:none;color:#f0a500;cursor:pointer;font-family:inherit;font-size:10px;text-decoration:underline;padding:0;margin-left:4px">Unlock &amp; re-apply</button>'
+      + ' style="background:none;border:none;color:#f0a500;cursor:pointer;font-family:inherit;font-size:8px;text-decoration:underline;padding:0;margin-left:4px">Unlock &amp; re-apply</button>'
       + '</div>'
     : '';
 
@@ -52042,7 +58376,7 @@ function renderAnalogueDCFBanner(pool, rf, opex, capex, sustcapex, blend, opexTi
     '  <div style="display:flex;align-items:center;gap:8px">',
     '    <div style="font-weight:700;color:#10B981;font-size:10px;text-transform:uppercase;letter-spacing:.7px">\u26A1 Wire 12 — Analogue-Calibrated DCF</div>',
     '    <div style="display:flex;align-items:center;gap:3px" title="Data quality: ' + qualityLabel + '">' + qualityDots + '</div>',
-    '    <div style="font-size:10px;color:var(--t3)">' + qualityLabel + '</div>',
+    '    <div style="font-size:8px;color:var(--t3)">' + qualityLabel + '</div>',
     '  </div>',
     '  <button onclick="document.getElementById(\'wire12-dcf-banner\').remove()"',
     '    style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:13px;padding:0;line-height:1" title="Dismiss">\u2715</button>',
@@ -52058,7 +58392,7 @@ function renderAnalogueDCFBanner(pool, rf, opex, capex, sustcapex, blend, opexTi
 
     /* analogue source rows */
     '<div style="margin-bottom:8px">',
-    '  <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">',
+    '  <div style="font-size:8px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">',
     '    Top-3 Source Analogues &nbsp;&middot;&nbsp; ' + Math.round(blend*100) + '% similarity blend',
     '  </div>',
        rows,
@@ -52183,25 +58517,6 @@ function installIntercepts() {
     };
     console.info('[WIRE 2] calcGCoS patched');
   }
-
-  //  Patch Risk module GCoS save to cascade to Economics 
-  (function patchGCoSSave(){
-    setTimeout(function(){
-      var _origSave = global.saveGCoS;
-      if(typeof _origSave !== 'function') return;
-      global.saveGCoS = function(){
-        _origSave.apply(this, arguments);
-        // After save, recompute GCoS for active prospect and cascade
-        var ctx = EDMStore.getContext();
-        if(ctx.prospectId){
-          setTimeout(function(){
-            ComputationService.cascadeRiskToEMV(ctx.prospectId, 'risk_module_save');
-            if(typeof toast==='function') toast(' Risk cascade: EMV updated from GCoS change','success');
-          }, 100);
-        }
-      };
-    }, 800);
-  })();
 
   /* saveGCoS — full cascade on explicit save */
   var _sgc = global.saveGCoS;
@@ -52648,7 +58963,7 @@ function hubMapRender() {
         +'Score: <b style="color:'+(hit.score>=70?'#10B981':'#F59E0B')+'">'+hit.score+'/100</b> · '+hit.status+'<br>'
         +'HC: '+hit.hc+' · Plays: '+hit.plays+'<br>'
         +'Area: '+(hit.area||0).toLocaleString()+' km²<br>'
-        +'<span style="color:var(--cyan);font-size:10px">Click to select basin</span>';
+        +'<span style="color:var(--cyan);font-size:8px">Click to select basin</span>';
       canvas.style.cursor='pointer';
     } else {
       if(tt) tt.style.display='none';
@@ -52771,7 +59086,7 @@ async function hubNewsFeedRun() {
     +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px;background:rgba(107,70,193,.06);border:1px solid rgba(0,200,255,.2);border-radius:6px">'
     +'<span style="font-size:18px"></span>'
     +'<div><b style="color:var(--t1)">Exploration Intelligence Feed</b> · '+(basin==='all'?'All Basins':basin)+' · '+topicCtx+'</div>'
-    +'<span style="margin-left:auto;font-size:10px;color:var(--t3)">AI-generated · not real news</span></div>'
+    +'<span style="margin-left:auto;font-size:8px;color:var(--t3)">AI-generated · not real news</span></div>'
     +'<p style="margin:0">'+_mdToHtml(reply)+'</p></div>';
 }
 
@@ -52849,9 +59164,9 @@ function hubFiscalRender() {
   html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">';
   npvs.forEach(function(n){
     html += '<div style="background:var(--bg2);border-radius:7px;padding:12px;text-align:center;border:1px solid var(--b1)">'
-      +'<div style="font-size:10px;color:var(--t3);margin-bottom:4px">'+n.s.label+' ($'+n.s.price+(window._appHCType==="Gas"?"/MMBtu":"/bbl")+')</div>'
+      +'<div style="font-size:8px;color:var(--t3);margin-bottom:4px">'+n.s.label+' ($'+n.s.price+(window._appHCType==="Gas"?"/MMBtu":"/bbl")+')</div>'
       +'<div style="font-size:18px;font-weight:800;color:'+n.s.col+'">'+(n.val>=0?'$'+n.val.toLocaleString()+'M':'($'+Math.abs(n.val).toLocaleString()+'M)')+'</div>'
-      +'<div style="font-size:10px;color:var(--t3);margin-top:2px">NPV10 (post-govt)</div></div>';
+      +'<div style="font-size:8px;color:var(--t3);margin-top:2px">NPV10 (post-govt)</div></div>';
   });
   html += '</div>';
 
@@ -52936,9 +59251,9 @@ function hubCarbonRender() {
 
     html += '<tr style="border-bottom:1px solid var(--b1);'+bg+'">'
       +'<td style="padding:5px 6px;font-weight:600;color:var(--t1)">'+d.name+'</td>'
-      +'<td style="padding:5px 4px;color:var(--t3);text-align:center;font-size:10px">'+d.devConcept+'</td>'
+      +'<td style="padding:5px 4px;color:var(--t3);text-align:center;font-size:8px">'+d.devConcept+'</td>'
       +'<td style="padding:5px 4px;text-align:center">'
-        +'<div style="font-size:10px;color:var(--t3)">S1:'+ci.s1+' S2:'+ci.s2+' F:'+ci.flare+'</div></td>'
+        +'<div style="font-size:8px;color:var(--t3)">S1:'+ci.s1+' S2:'+ci.s2+' F:'+ci.flare+'</div></td>'
       +'<td style="padding:5px 4px;text-align:center;font-weight:700;color:'+ratingCol+'">'+totalKg+' kg</td>'
       +'<td style="padding:5px 4px;text-align:center;color:var(--t2)">$'+costLow+'/boe</td>'
       +'<td style="padding:5px 4px;text-align:center;color:var(--t2)">$'+costMid+'/boe</td>'
@@ -52957,13 +59272,13 @@ function hubCarbonRender() {
 
   html += '<div style="margin-top:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'
     +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center">'
-    +'<div style="font-size:10px;color:var(--t3)">Portfolio Avg Intensity</div>'
+    +'<div style="font-size:8px;color:var(--t3)">Portfolio Avg Intensity</div>'
     +'<div style="font-size:16px;font-weight:800;color:'+(avgCI<20?'#10B981':avgCI<30?'#F59E0B':'#EF4444')+'">'+Math.round(avgCI)+' kg/boe</div></div>'
     +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center">'
-    +'<div style="font-size:10px;color:var(--t3)">Avg Carbon Cost @$'+cpMid+'/t</div>'
+    +'<div style="font-size:8px;color:var(--t3)">Avg Carbon Cost @$'+cpMid+'/t</div>'
     +'<div style="font-size:16px;font-weight:800;color:var(--brand)">$'+(avgCI/1000*cpMid).toFixed(2)+'/boe</div></div>'
     +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center">'
-    +'<div style="font-size:10px;color:var(--t3)">Lowest Intensity Asset</div>'
+    +'<div style="font-size:8px;color:var(--t3)">Lowest Intensity Asset</div>'
     +'<div style="font-size:11px;font-weight:700;color:#10B981">'
     +(function(){var best=discoveries.reduce(function(b,d){var ci=conceptIntensity[d.devConcept]||{s1:20,s2:8,flare:4};var t=ci.s1+ci.s2+ci.flare;return(!b||t<b.t)?{d:d,t:t}:b;},{});return best?best.d.name:'?';})()
     +'</div></div></div></div>';
@@ -53014,7 +59329,7 @@ function hubCorrelationRender() {
 
   // Depth axis
   html += '<div style="width:50px;flex-shrink:0;position:relative;height:'+(H+20)+'px;border-right:1px solid var(--b1);margin-right:8px">';
-  html += '<div style="font-size:10px;color:var(--t3);position:absolute;top:'+topPad+'px;right:4px">0m</div>';
+  html += '<div style="font-size:8px;color:var(--t3);position:absolute;top:'+topPad+'px;right:4px">0m</div>';
   for(var d=500;d<=maxDepth;d+=500){
     var y=topPad+d*scale;
     html+='<div style="font-size:7.5px;color:var(--t3);position:absolute;top:'+(y-4)+'px;right:4px">'+d+'m</div>';
@@ -53032,7 +59347,7 @@ function hubCorrelationRender() {
 
     // Well header
     html += '<div style="position:absolute;top:0;left:0;right:0;height:'+topPad+'px;text-align:center;padding:4px">'
-      +'<div style="font-size:10px;font-weight:700;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+w.name+'</div>'
+      +'<div style="font-size:8px;font-weight:700;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+w.name+'</div>'
       +'<div style="font-size:7px;color:var(--t3)">'+w.wellType+' · '+w.spudYear+'</div>'
       +'<div style="font-size:7px;color:'+resultColor+';font-weight:700">'+w.result+'</div>'
       +'<div style="font-size:7px;color:var(--t3)">TD: '+w.tdM+'m</div>'
@@ -53070,7 +59385,7 @@ function hubCorrelationRender() {
   html += '</div>';
 
   // Legend
-  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:10px">';
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:8px">';
   html += '<span style="color:#94A3B8"> TD depth</span>';
   html += '<span style="color:#0891B2"> Seal formation</span>';
   html += '<span style="color:#10B981"> Discovery</span>';
@@ -53170,13 +59485,13 @@ function hubDataGapRun() {
   html += '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
     +'<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:6px;padding:8px 14px;text-align:center">'
     +'<div style="font-size:18px;font-weight:800;color:#EF4444">'+critCount+'</div>'
-    +'<div style="font-size:10px;color:var(--t3)">Critical Gaps</div></div>'
+    +'<div style="font-size:8px;color:var(--t3)">Critical Gaps</div></div>'
     +'<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:6px;padding:8px 14px;text-align:center">'
     +'<div style="font-size:18px;font-weight:800;color:#F59E0B">'+highCount2+'</div>'
-    +'<div style="font-size:10px;color:var(--t3)">High Priority Gaps</div></div>'
+    +'<div style="font-size:8px;color:var(--t3)">High Priority Gaps</div></div>'
     +'<div style="background:var(--bg2);border:1px solid var(--b1);border-radius:6px;padding:8px 14px;text-align:center">'
     +'<div style="font-size:18px;font-weight:800;color:var(--t1)">'+Object.keys(byEntity).length+'</div>'
-    +'<div style="font-size:10px;color:var(--t3)">Entities Affected</div></div></div>';
+    +'<div style="font-size:8px;color:var(--t3)">Entities Affected</div></div></div>';
 
   Object.keys(byEntity).forEach(function(k) {
     var eb = byEntity[k];
@@ -53189,7 +59504,7 @@ function hubDataGapRun() {
       +'</div>'
       +'<div style="padding:8px 10px;display:flex;flex-wrap:wrap;gap:5px">';
     eb.gaps.forEach(function(g) {
-      html += '<div style="background:'+sevColors[g.sev]+'15;color:'+sevColors[g.sev]+';border:1px solid '+sevColors[g.sev]+'40;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:600">'
+      html += '<div style="background:'+sevColors[g.sev]+'15;color:'+sevColors[g.sev]+';border:1px solid '+sevColors[g.sev]+'40;border-radius:6px;padding:2px 8px;font-size:8px;font-weight:600">'
         +sevIcons[g.sev]+' '+g.field+'</div>';
     });
     html += '</div></div>';
@@ -53247,14 +59562,14 @@ function _hubDocReadFile(file) {
     if(ta){ ta.value = ''; ta.placeholder = 'PDF loaded — click Extract & Parse to analyse'; }
     if(dropZone){ dropZone.innerHTML = '<div style="font-size:20px;margin-bottom:4px">\uD83D\uDCC4</div>'
       + '<b style="color:var(--brand)">' + file.name + '</b><br>'
-      + '<span style="font-size:10px;color:var(--t3)">PDF ready · ' + Math.round(file.size/1024) + ' KB</span>'; }
+      + '<span style="font-size:8px;color:var(--t3)">PDF ready · ' + Math.round(file.size/1024) + ' KB</span>'; }
     var rdr = new FileReader();
     rdr.onload = function(ev){ _docParsedBase64 = ev.target.result.split(',')[1]; };
     rdr.readAsDataURL(file);
   } else {
     if(dropZone){ dropZone.innerHTML = '<div style="font-size:20px;margin-bottom:4px">\uD83D\uDCDD</div>'
       + '<b style="color:var(--brand)">' + file.name + '</b><br>'
-      + '<span style="font-size:10px;color:var(--t3)">Text file ready · ' + Math.round(file.size/1024) + ' KB</span>'; }
+      + '<span style="font-size:8px;color:var(--t3)">Text file ready · ' + Math.round(file.size/1024) + ' KB</span>'; }
     var rdr2 = new FileReader();
     rdr2.onload = function(ev){
       _docParsedText = ev.target.result;
@@ -53381,45 +59696,45 @@ async function hubDocParse() {
     + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'
     + '<span style="font-size:13px">\u2699\uFE0F</span>'
     + '<b style="font-size:10.5px;color:var(--t1)">Confirm / Fill Missing Entities</b>'
-    + '<span style="font-size:10px;color:var(--t3);margin-left:4px">Pre-filled where detected — will be applied to all imported records</span>'
+    + '<span style="font-size:8px;color:var(--t3);margin-left:4px">Pre-filled where detected — will be applied to all imported records</span>'
     + '</div>'
     + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">'
 
     // Country
-    + '<div><div style="font-size:10px;font-weight:700;color:var(--t3);margin-bottom:3px">COUNTRY</div>'
+    + '<div><div style="font-size:8px;font-weight:700;color:var(--t3);margin-bottom:3px">COUNTRY</div>'
     + '<input id="dme-country" value="' + hintCountry + '" placeholder="e.g. Norway" list="dme-country-list"'
     + ' style="width:100%;background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:5px;padding:4px 7px;font-size:10px;font-family:inherit;box-sizing:border-box">'
     + '<datalist id="dme-country-list"><option value="USA"><option value="UK"><option value="Norway"><option value="Iran"><option value="Iraq"><option value="Saudi Arabia"><option value="Indonesia"><option value="Malaysia"><option value="Australia"><option value="Egypt"><option value="Nigeria"><option value="Argentina"><option value="Brazil"><option value="Qatar"><option value="UAE"><option value="India"><option value="Canada"><option value="Mexico"><option value="Libya"><option value="Algeria"><option value="Angola"><option value="Mozambique"><option value="Tanzania"></datalist>'
     + '</div>'
 
     // Basin
-    + '<div><div style="font-size:10px;font-weight:700;color:var(--t3);margin-bottom:3px">BASIN</div>'
+    + '<div><div style="font-size:8px;font-weight:700;color:var(--t3);margin-bottom:3px">BASIN</div>'
     + '<input id="dme-basin" value="' + hintBasin + '" placeholder="e.g. North Sea" list="dme-basin-list"'
     + ' style="width:100%;background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:5px;padding:4px 7px;font-size:10px;font-family:inherit;box-sizing:border-box">'
     + '<datalist id="dme-basin-list">' + existingBasinOpts + '</datalist>'
     + '</div>'
 
     // Region
-    + '<div><div style="font-size:10px;font-weight:700;color:var(--t3);margin-bottom:3px">REGION</div>'
+    + '<div><div style="font-size:8px;font-weight:700;color:var(--t3);margin-bottom:3px">REGION</div>'
     + '<input id="dme-region" value="' + hintRegion + '" placeholder="e.g. Middle East" list="dme-region-list"'
     + ' style="width:100%;background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:5px;padding:4px 7px;font-size:10px;font-family:inherit;box-sizing:border-box">'
     + '<datalist id="dme-region-list"><option value="Middle East"><option value="North America"><option value="South America"><option value="North Sea / NW Europe"><option value="Sub-Saharan Africa"><option value="North Africa"><option value="Asia Pacific"><option value="Southeast Asia"><option value="East Africa"><option value="West Africa"><option value="Australasia"><option value="Arctic"></datalist>'
     + '</div>'
 
     // Operator
-    + '<div><div style="font-size:10px;font-weight:700;color:var(--t3);margin-bottom:3px">OPERATOR</div>'
+    + '<div><div style="font-size:8px;font-weight:700;color:var(--t3);margin-bottom:3px">OPERATOR</div>'
     + '<input id="dme-operator" value="' + hintOperator + '" placeholder="e.g. TotalEnergies"'
     + ' style="width:100%;background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:5px;padding:4px 7px;font-size:10px;font-family:inherit;box-sizing:border-box">'
     + '</div>'
 
     // Target Formation
-    + '<div><div style="font-size:10px;font-weight:700;color:var(--t3);margin-bottom:3px">TARGET FORMATION</div>'
+    + '<div><div style="font-size:8px;font-weight:700;color:var(--t3);margin-bottom:3px">TARGET FORMATION</div>'
     + '<input id="dme-formation" value="' + hintFormation + '" placeholder="e.g. Brent Group SS"'
     + ' style="width:100%;background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:5px;padding:4px 7px;font-size:10px;font-family:inherit;box-sizing:border-box">'
     + '</div>'
 
     // Licence Block
-    + '<div><div style="font-size:10px;font-weight:700;color:var(--t3);margin-bottom:3px">LICENCE BLOCK</div>'
+    + '<div><div style="font-size:8px;font-weight:700;color:var(--t3);margin-bottom:3px">LICENCE BLOCK</div>'
     + '<input id="dme-block" value="' + hintBlock + '" placeholder="e.g. 30/6"'
     + ' style="width:100%;background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:5px;padding:4px 7px;font-size:10px;font-family:inherit;box-sizing:border-box">'
     + '</div>'
@@ -53433,7 +59748,7 @@ async function hubDocParse() {
     + '<label style="font-size:8.5px;color:var(--t2);display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="dme-apply-disc" checked> Discoveries</label>'
     + '<label style="font-size:8.5px;color:var(--t2);display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="dme-apply-prosp" checked> Prospects</label>'
     + '<label style="font-size:8.5px;color:var(--t2);display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="dme-register-basin" checked> Register basin if new</label>'
-    + '<div style="margin-left:auto;font-size:10px;color:var(--t3)">\u26A0 Only fills blank fields in imported records</div>'
+    + '<div style="margin-left:auto;font-size:8px;color:var(--t3)">\u26A0 Only fills blank fields in imported records</div>'
     + '</div>'
     + '</div>'
     //  End Missing Entities Panel 
@@ -53627,12 +59942,12 @@ async function hubDocApply() {
       var col = sevC[c.type]||'#64748B';
       html += '<div style="background:var(--bg2);border:1px solid ' + col + '40;border-left:3px solid ' + col + ';border-radius:6px;padding:8px 10px;margin-bottom:6px">'
         + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">'
-        + '<span style="background:' + col + '20;color:' + col + ';font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px">' + c.type + '</span>'
+        + '<span style="background:' + col + '20;color:' + col + ';font-size:8px;font-weight:700;padding:1px 6px;border-radius:8px">' + c.type + '</span>'
         + '<b style="font-size:10px;color:var(--t1)">' + (c.fields.name||c.item.id||'Unnamed') + '</b></div>'
         + '<div style="display:flex;flex-wrap:wrap;gap:4px">';
       Object.keys(c.fields).forEach(function(k) {
         if(k==='id') return;
-        html += '<span style="background:var(--bg3);color:var(--t2);font-size:10px;padding:2px 6px;border-radius:4px"><b>' + k + ':</b> ' + c.fields[k] + '</span>';
+        html += '<span style="background:var(--bg3);color:var(--t2);font-size:8px;padding:2px 6px;border-radius:4px"><b>' + k + ':</b> ' + c.fields[k] + '</span>';
       });
       html += '</div></div>';
     });
@@ -53648,9 +59963,9 @@ async function hubDocApply() {
       if(u.type==='Prospect')    existing = (window.PROSPECTS||[]).find(function(x){return x.id===u.id;});
       html += '<div style="background:var(--bg2);border:1px solid ' + col + '40;border-left:3px solid ' + col + ';border-radius:6px;padding:8px 10px;margin-bottom:6px">'
         + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">'
-        + '<span style="background:' + col + '20;color:' + col + ';font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px">' + u.type + '</span>'
+        + '<span style="background:' + col + '20;color:' + col + ';font-size:8px;font-weight:700;padding:1px 6px;border-radius:8px">' + u.type + '</span>'
         + '<b style="font-size:10px;color:var(--t1)">' + (existing?existing.name:u.id) + '</b>'
-        + '<span style="font-size:10px;color:var(--t3)">patch ' + Object.keys(u.fields).filter(function(k){return k!=='id';}).length + ' fields</span>'
+        + '<span style="font-size:8px;color:var(--t3)">patch ' + Object.keys(u.fields).filter(function(k){return k!=='id';}).length + ' fields</span>'
         + '</div>'
         + '<div style="display:flex;flex-wrap:wrap;gap:4px">';
       Object.keys(u.fields).forEach(function(k) {
@@ -53658,7 +59973,7 @@ async function hubDocApply() {
         var oldVal = existing ? existing[k] : '—';
         var newVal = u.fields[k];
         var changed = oldVal !== newVal;
-        html += '<span style="background:' + (changed?'rgba(245,158,11,.1)':'var(--bg3)') + ';color:' + (changed?'#f59e0b':'var(--t2)') + ';font-size:10px;padding:2px 6px;border-radius:4px"><b>' + k + ':</b> '
+        html += '<span style="background:' + (changed?'rgba(245,158,11,.1)':'var(--bg3)') + ';color:' + (changed?'#f59e0b':'var(--t2)') + ';font-size:8px;padding:2px 6px;border-radius:4px"><b>' + k + ':</b> '
           + (changed ? '<s style="opacity:.5">' + oldVal + '</s> → ' : '') + newVal + '</span>';
       });
       html += '</div></div>';
@@ -54035,10 +60350,10 @@ function _docParserShowRibbon(imp) {
   var ribHtml = '<div id="doc-import-ribbon">'
     + '<span style="font-size:13px"></span>'
     + '<b>Doc Parser Import</b>'
-    + '<span style="color:var(--t3);font-size:10px">'+ts+'</span>'
+    + '<span style="color:var(--t3);font-size:8px">'+ts+'</span>'
     + (entityPills || '')
-    + '<span style="font-size:10px;color:var(--t3)">'+countStr+'</span>'
-    + '<span style="margin-left:auto;font-size:10px;color:var(--t3)">Records below marked with <span class="doc-src-badge" style="margin:0 2px">Doc Import</span></span>'
+    + '<span style="font-size:8px;color:var(--t3)">'+countStr+'</span>'
+    + '<span style="margin-left:auto;font-size:8px;color:var(--t3)">Records below marked with <span class="doc-src-badge" style="margin:0 2px">Doc Import</span></span>'
     + '<button onclick="var r=this;while(r&&r.id!==\'doc-import-ribbon\')r=r.parentElement;if(r)r.remove();" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:12px;padding:0 0 0 8px">×</button>'
     + '</div>';
 
@@ -54061,7 +60376,7 @@ function _docParserShowRibbon(imp) {
     var newBasins = (window.BASINS||[]).filter(function(b){return b._docSource;}).length;
     if(newBasins > 0) {
       basinCount.innerHTML = basinCount.textContent
-        + ' <span class="doc-src-badge" style="font-size:10px">'+newBasins+' from Doc Parser</span>';
+        + ' <span class="doc-src-badge" style="font-size:8px">'+newBasins+' from Doc Parser</span>';
     }
   }
 }
@@ -54403,7 +60718,7 @@ function hubValueSankeyRender() {
       'Net Operator|$'+Math.round(netOp/1e6)+' M|#10B981',
       'Net Efficiency|'+efficiency+'% of revenue|'+((efficiency>30)?'#10B981':efficiency>15?'#F59E0B':'#EF4444')]
     .map(function(r){var p=r.split('|');return '<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center;border:1px solid var(--b1)">'
-      +'<div style="font-size:10px;color:var(--t3)">'+p[0]+'</div>'
+      +'<div style="font-size:8px;color:var(--t3)">'+p[0]+'</div>'
       +'<div style="font-size:14px;font-weight:800;color:'+p[2]+'">'+p[1]+'</div></div>';}).join('')
     +'</div></div>';
 }
@@ -54512,7 +60827,7 @@ function hubTimelineRender() {
     +[['Wells Shown',wells.length,'var(--t1)'],['Discoveries',discCount,'#10B981'],
       ['Shows',showCount,'#F59E0B'],['Dry Holes',dryCount,'#EF4444'],['Success Rate',successRate+'%',successRate>30?'#10B981':successRate>20?'#F59E0B':'#EF4444']]
     .map(function(r){return '<div style="background:var(--bg2);border-radius:6px;padding:6px 12px;border:1px solid var(--b1);text-align:center">'
-      +'<div style="font-size:10px;color:var(--t3)">'+r[0]+'</div>'
+      +'<div style="font-size:8px;color:var(--t3)">'+r[0]+'</div>'
       +'<div style="font-size:13px;font-weight:800;color:'+r[2]+'">'+r[1]+'</div></div>';}).join('')
     +'</div>';
 
@@ -54771,17 +61086,17 @@ function hubPorePressureRender() {
     +'<span style="font-size:16px"></span>'
     +'<div><b>'+w.name+'</b> · '+w.basin+'<br>'
     +'<span style="color:var(--t3);font-size:8.5px">TD: '+tdM+'m · '+w.devType+'</span></div>'
-    +'<div style="margin-left:auto;text-align:right"><div style="font-size:16px;font-weight:800;color:'+ppColor+'">'+ppAssess+' Pressure</div><div style="font-size:10px;color:var(--t3)">reservoir zone</div></div></div>'
+    +'<div style="margin-left:auto;text-align:right"><div style="font-size:16px;font-weight:800;color:'+ppColor+'">'+ppAssess+' Pressure</div><div style="font-size:8px;color:var(--t3)">reservoir zone</div></div></div>'
     +'<div style="overflow-x:auto">'+svg+'</div>'
     +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px">'
     +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center;border:1px solid var(--b1)">'
-    +'<div style="font-size:10px;color:var(--t3)">Hydrostatic Grad</div>'
+    +'<div style="font-size:8px;color:var(--t3)">Hydrostatic Grad</div>'
     +'<div style="font-size:14px;font-weight:800;color:#3B82F6">'+hydroAtRes.toFixed(3)+' MPa/m</div></div>'
     +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center;border:1px solid var(--b1)">'
-    +'<div style="font-size:10px;color:var(--t3)">Pore Press @ Reservoir</div>'
+    +'<div style="font-size:8px;color:var(--t3)">Pore Press @ Reservoir</div>'
     +'<div style="font-size:14px;font-weight:800;color:#F59E0B">'+ppAtRes.toFixed(3)+' MPa/m</div></div>'
     +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center;border:1px solid var(--b1)">'
-    +'<div style="font-size:10px;color:var(--t3)">Wellbore Risk</div>'
+    +'<div style="font-size:8px;color:var(--t3)">Wellbore Risk</div>'
     +'<div style="font-size:14px;font-weight:800;color:'+ppColor+'">'+ppAssess+'</div></div></div></div>';
 }
 
@@ -54915,7 +61230,7 @@ function hubBurialRender() {
     +'<span style="color:var(--t3);font-size:8.5px">Source: '+ps.sourceRock+' ('+ps.sourceRockAge+') · GTG: '+gtg+'°C/km</span></div>'
     +'<div style="margin-left:auto;text-align:right">'
     +'<div style="font-size:14px;font-weight:800;color:'+roColor+'">Ro '+currentRo.toFixed(2)+'%</div>'
-    +'<div style="font-size:10px;color:var(--t3)">'+currentRoLabel+'</div></div></div>'
+    +'<div style="font-size:8px;color:var(--t3)">'+currentRoLabel+'</div></div></div>'
     +'<div style="overflow-x:auto">'+svg+'</div>'
     +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px">'
     +[['Source Rock Age',srAge+' Ma','#94A3B8'],
@@ -54923,7 +61238,7 @@ function hubBurialRender() {
       ['Max Burial Depth',maxDepthKm.toFixed(1)+' km','#F59E0B'],
       ['Present Ro',currentRo.toFixed(2)+'%',roColor]]
     .map(function(r){return '<div style="background:var(--bg2);border-radius:6px;padding:7px;text-align:center;border:1px solid var(--b1)">'
-      +'<div style="font-size:10px;color:var(--t3)">'+r[0]+'</div>'
+      +'<div style="font-size:8px;color:var(--t3)">'+r[0]+'</div>'
       +'<div style="font-size:13px;font-weight:800;color:'+r[2]+'">'+r[1]+'</div></div>';}).join('')
     +'</div></div>';
 }
@@ -55036,7 +61351,7 @@ function hubMatBalRender() {
       ['Pressure Drop',pDrop+'%','#F59E0B'],
       ['Aquifer Support',aquifer.charAt(0).toUpperCase()+aquifer.slice(1),aqFactor>0.1?'#10B981':'#64748B']]
     .map(function(r){return '<div style="background:var(--bg2);border-radius:6px;padding:7px;text-align:center;border:1px solid var(--b1)">'
-      +'<div style="font-size:10px;color:var(--t3)">'+r[0]+'</div>'
+      +'<div style="font-size:8px;color:var(--t3)">'+r[0]+'</div>'
       +'<div style="font-size:13px;font-weight:800;color:'+r[2]+'">'+r[1]+'</div></div>';}).join('')
     +'</div></div>';
 }
@@ -55081,3 +61396,908 @@ function hubMatBalRender() {
   window._docParserShowBanner = _docParserShowBanner;
 
 })(window);
+
+(function(global){
+  'use strict';
+
+  //  ONTOLOGY DOMAIN DEFINITIONS 
+  // These mirror the KG edge data and extend it with semantic metadata
+  var KG_ONTOLOGY = {
+    nodeTypes: {
+      //  Original 6 core nodes 
+      basin:            { label:'Basin',            icon:'', color:'#0D9488', tier:1 },
+      petroleum_system: { label:'Petroleum System', icon:'',  color:'#7C3AED', tier:2 },
+      play:             { label:'Play',             icon:'',  color:'#0891B2', tier:3 },
+      prospect:         { label:'Prospect',         icon:'',  color:'#D97706', tier:4 },
+      well:             { label:'Well',             icon:'',  color:'#059669', tier:5 },
+      discovery:        { label:'Discovery',        icon:'',  color:'#DC2626', tier:6 },
+      //  Domain 1: Risk & GCoS (9 nodes) 
+      gcos_element:          { label:'GCoS Element',          icon:'',  color:'#6625C4', tier:7 },
+      risk_matrix:           { label:'Risk Matrix',           icon:'', color:'#7C3AED', tier:7 },
+      bayesian_prior:        { label:'Bayesian Prior',        icon:'', color:'#8B5CF6', tier:7 },
+      bayesian_posterior:    { label:'Bayesian Posterior',    icon:'', color:'#A78BFA', tier:7 },
+      monte_carlo_run:       { label:'Monte Carlo Run',       icon:'', color:'#9333EA', tier:7 },
+      sensitivity_analysis:  { label:'Sensitivity Analysis',  icon:'', color:'#7E22CE', tier:7 },
+      risk_register:         { label:'Risk Register',         icon:'', color:'#6D28D9', tier:7 },
+      failure_mode:          { label:'Failure Mode',          icon:'', color:'#5B21B6', tier:7 },
+      critical_success_factor:{ label:'Critical Success Factor',icon:'', color:'#4C1D95', tier:7 },
+      //  Domain 2: Volumetrics (8 nodes) 
+      gross_rock_volume:     { label:'Gross Rock Volume',     icon:'', color:'#0558A8', tier:7 },
+      stoiip:                { label:'STOIIP',                icon:'', color:'#0369A1', tier:7 },
+      giip:                  { label:'GIIP',                  icon:'', color:'#0284C7', tier:7 },
+      recovery_factor:       { label:'Recovery Factor',       icon:'', color:'#0EA5E9', tier:7 },
+      recoverable_resource:  { label:'Recoverable Resource',  icon:'', color:'#38BDF8', tier:7 },
+      prms_class:            { label:'PRMS Classification',   icon:'', color:'#7DD3FC', tier:7 },
+      parameter_library:     { label:'Parameter Library',     icon:'', color:'#BAE6FD', tier:7 },
+      type_well:             { label:'Type Well',             icon:'', color:'#0C4A6E', tier:7 },
+      //  Domain 3: Fluid & PVT (8 nodes) 
+      hc_phase:              { label:'HC Phase',              icon:'', color:'#0A6B50', tier:7 },
+      fluid_contact:         { label:'Fluid Contact',         icon:'⊜', color:'#059669', tier:7 },
+      pvt_model:             { label:'PVT Model',             icon:'', color:'#047857', tier:7 },
+      fluid_sample:          { label:'Fluid Sample',          icon:'', color:'#065F46', tier:7 },
+      pressure_datum:        { label:'Pressure Datum',        icon:'', color:'#064E3B', tier:7 },
+      aquifer:               { label:'Aquifer',               icon:'', color:'#0D9488', tier:7 },
+      kerogen_type:          { label:'Kerogen Type',          icon:'', color:'#14B8A6', tier:7 },
+      geochem_fingerprint:   { label:'Geochemical Fingerprint',icon:'',color:'#2DD4BF', tier:7 },
+      //  Domain 4: Structural & Seismic (7 nodes) 
+      depth_map:             { label:'Depth Structure Map',   icon:'', color:'#8C3D0C', tier:7 },
+      avo_anomaly:           { label:'AVO Anomaly',           icon:'', color:'#92400E', tier:7 },
+      seismic_inversion:     { label:'Seismic Inversion',     icon:'', color:'#B45309', tier:7 },
+      structural_closure:    { label:'Structural Closure',    icon:'', color:'#D97706', tier:7 },
+      fault_system:          { label:'Fault System',          icon:'', color:'#F59E0B', tier:7 },
+      rock_physics_model:    { label:'Rock Physics Model',    icon:'', color:'#CA8A04', tier:7 },
+      velocity_model:        { label:'Velocity Model',        icon:'', color:'#A16207', tier:7 },
+      //  Domain 5: Production & Development (6 nodes) 
+      production_curve:      { label:'Production Curve',      icon:'', color:'#A0480A', tier:7 },
+      decline_curve:         { label:'Decline Curve',         icon:'', color:'#B45309', tier:7 },
+      eur:                   { label:'EUR',                   icon:'', color:'#C2410C', tier:7 },
+      ip_rate:               { label:'IP Rate',               icon:'', color:'#DC2626', tier:7 },
+      development_concept:   { label:'Development Concept',   icon:'', color:'#EF4444', tier:7 },
+      reservoir_model:       { label:'Reservoir Model',       icon:'', color:'#F87171', tier:7 },
+      //  Domain 6: Economics (7 nodes) 
+      dcf_model:             { label:'DCF Model',             icon:'', color:'#0A3880', tier:7 },
+      npv_irr:               { label:'NPV / IRR',             icon:'', color:'#1D4ED8', tier:7 },
+      fiscal_regime:         { label:'Fiscal Regime',         icon:'', color:'#2563EB', tier:7 },
+      capex_opex:            { label:'Capex / Opex Model',    icon:'', color:'#3B82F6', tier:7 },
+      price_deck:            { label:'Price Deck',            icon:'', color:'#60A5FA', tier:7 },
+      breakeven_price:       { label:'Break-Even Price',      icon:'', color:'#93C5FD', tier:7 },
+      portfolio_model:       { label:'Portfolio Model',       icon:'', color:'#BFDBFE', tier:7 },
+      //  Domain 7: ESG & Carbon (6 nodes) 
+      ghg_emissions:         { label:'GHG Emissions Profile', icon:'', color:'#1A6B35', tier:7 },
+      esg_assessment:        { label:'ESG Assessment',        icon:'', color:'#166534', tier:7 },
+      decommission_liability:{ label:'Decommissioning Liability',icon:'',color:'#14532D',tier:7 },
+      env_sensitivity:       { label:'Environmental Sensitivity',icon:'',color:'#15803D',tier:7 },
+      regulatory_framework:  { label:'Regulatory Framework',  icon:'', color:'#16A34A', tier:7 },
+      country_risk:          { label:'Country Risk Profile',  icon:'', color:'#22C55E', tier:7 },
+      //  Domain 8: Partners & JV (6 nodes) 
+      operator:              { label:'Operator',              icon:'', color:'#8C1060', tier:7 },
+      jv_agreement:          { label:'JV Agreement',          icon:'', color:'#9D174D', tier:7 },
+      farm_transaction:      { label:'Farm Transaction',      icon:'', color:'#BE185D', tier:7 },
+      data_room:             { label:'Data Room',             icon:'', color:'#DB2777', tier:7 },
+      licence_round:         { label:'Licence Round',         icon:'', color:'#EC4899', tier:7 },
+      noc:                   { label:'State Company (NOC)',   icon:'', color:'#F472B6', tier:7 },
+      //  Domain 9: AI & eMonk (5 nodes) 
+      analogue_match:        { label:'Analogue Match',        icon:'', color:'#4A0E8C', tier:7 },
+      ai_confidence:         { label:'AI Confidence Score',   icon:'', color:'#5B21B6', tier:7 },
+      nlp_query:             { label:'NLP Query Log',         icon:'', color:'#6D28D9', tier:7 },
+      ai_interpretation:     { label:'AI Interpretation',     icon:'', color:'#7E22CE', tier:7 },
+      knowledge_article:     { label:'Knowledge Article',     icon:'', color:'#8B5CF6', tier:7 },
+      //  Domain 10: Well Engineering (5 nodes) 
+      well_trajectory:       { label:'Well Trajectory',       icon:'', color:'#065840', tier:7 },
+      completion_design:     { label:'Completion Design',     icon:'', color:'#047857', tier:7 },
+      casing_programme:      { label:'Casing Programme',      icon:'', color:'#064E3B', tier:7 },
+      pore_pressure:         { label:'Pore Pressure Prognosis',icon:'',color:'#0D9488', tier:7 },
+      drilling_programme:    { label:'Drilling Programme',    icon:'', color:'#0F766E', tier:7 },
+      //  Domain 11: Depositional Systems & Paleogeography (5 nodes) 
+      depositional_system:   { label:'Depositional System',   icon:'', color:'#3730A3', tier:7 },
+      paleogeographic_map:   { label:'Paleogeographic Map',   icon:'', color:'#4338CA', tier:7 },
+      organic_richness:      { label:'Organic Richness',      icon:'', color:'#4F46E5', tier:7 },
+      facies_model:          { label:'Facies Model',          icon:'', color:'#6366F1', tier:7 },
+      chrono_age:            { label:'Chronostratigraphic Age',icon:'', color:'#818CF8', tier:7 }
+    },
+    relationTypes: {
+      //  ORIGINAL 13 predicates 
+      contains:        { label:'Contains',              dir:'down',  weight:'structural',    color:'#0D9488' },
+      charges:         { label:'Charges',               dir:'cross', weight:'charge',        color:'#7C3AED' },
+      sources:         { label:'Sources',               dir:'cross', weight:'charge',        color:'#A855F7' },
+      seals:           { label:'Seals',                 dir:'cross', weight:'seal',          color:'#0891B2' },
+      migrates_to:     { label:'Migrates To',           dir:'cross', weight:'migration',     color:'#F59E0B' },
+      analogous_to:    { label:'Analogous To',          dir:'peer',  weight:'analogue',      color:'#10B981' },
+      similar_to:      { label:'Similar To',            dir:'peer',  weight:'analogue',      color:'#34D399' },
+      de_risks:        { label:'De-risks',              dir:'peer',  weight:'risk',          color:'#F97316' },
+      supports:        { label:'Supports',              dir:'up',    weight:'evidence',      color:'#22C55E' },
+      targets:         { label:'Targets',               dir:'cross', weight:'targeting',     color:'#EF4444' },
+      reservoir_in:    { label:'Reservoir In',          dir:'cross', weight:'structural',    color:'#8B5CF6' },
+      co_located:      { label:'Co-located',            dir:'peer',  weight:'spatial',       color:'#64748B' },
+      overlies:        { label:'Overlies',              dir:'cross', weight:'stratigraphy',  color:'#78716C' },
+      //  28 NEW predicates 
+      // 1. Stratigraphic
+      underlies:       { label:'Underlies',             dir:'cross', weight:'stratigraphy',  color:'#92400E', desc:'Unit stratigraphically beneath another; enables downward risk propagation.' },
+      correlates_with: { label:'Correlates With',       dir:'peer',  weight:'stratigraphy',  color:'#B45309', desc:'Litho/chrono-stratigraphic time-equivalent; enables cross-basin tie.' },
+      bounded_by:      { label:'Bounded By',            dir:'cross', weight:'stratigraphy',  color:'#D97706', desc:'Sequence bounded by unconformity/surface; defines depositional package.' },
+      // 2. Structural / tectonic
+      controls:        { label:'Controls',              dir:'cross', weight:'structural',    color:'#6366F1', desc:'Structural/tectonic feature governing trap geometry or migration path.' },
+      deforms:         { label:'Deforms',               dir:'cross', weight:'structural',    color:'#818CF8', desc:'Fault/fold deforming a stratigraphic unit; affects trapping potential.' },
+      cuts:            { label:'Cuts',                  dir:'cross', weight:'structural',    color:'#A5B4FC', desc:'Fault truncates reservoir/source unit; key sealing risk factor.' },
+      inverts:         { label:'Inverts',               dir:'cross', weight:'structural',    color:'#7C3AED', desc:'Later compression inverts extensional fault creating new closure.' },
+      reactivates:     { label:'Reactivates',           dir:'cross', weight:'structural',    color:'#9333EA', desc:'Pre-existing fault reactivated during subsequent tectonic phase.' },
+      // 3. Geochemical / HC system
+      sourced_from:    { label:'Sourced From',          dir:'cross', weight:'charge',        color:'#EC4899', desc:'Discovery/reservoir HC provenance traced to specific kitchen/source.' },
+      fingerprinted_by:{ label:'Fingerprinted By',      dir:'cross', weight:'charge',        color:'#F472B6', desc:'Oil family identified via biomarker or isotope fingerprint.' },
+      typed_as:        { label:'Typed As',              dir:'cross', weight:'charge',        color:'#FB7185', desc:'Geochemical characterisation — family, phase, API classification.' },
+      expelled_into:   { label:'Expelled Into',         dir:'cross', weight:'migration',     color:'#E11D48', desc:'HC expelled from kitchen into migration pathway or reservoir.' },
+      trapped_by:      { label:'Trapped By',            dir:'cross', weight:'seal',          color:'#BE185D', desc:'HC accumulation retained by specific seal mechanism.' },
+      // 4. Depositional / facies
+      deposited_by:    { label:'Deposited By',          dir:'cross', weight:'sediment',      color:'#0EA5E9', desc:'Sedimentary process or system responsible for reservoir deposition.' },
+      deposited_in:    { label:'Deposited In',          dir:'cross', weight:'sediment',      color:'#38BDF8', desc:'Unit deposited within a named depositional environment.' },
+      // 5. Risk / uncertainty propagation
+      elevates_risk:   { label:'Elevates Risk',         dir:'cross', weight:'risk',          color:'#DC2626', desc:'Factor increasing geological or commercial risk for prospect/play.' },
+      reduces_unc:     { label:'Reduces Uncertainty',   dir:'cross', weight:'risk',          color:'#16A34A', desc:'Data or analogue narrowing uncertainty on a key parameter.' },
+      calibrates:      { label:'Calibrates',            dir:'cross', weight:'evidence',      color:'#15803D', desc:'Well/core/test data used to calibrate a model parameter.' },
+      // 6. Economic / portfolio lifecycle
+      matures_into:    { label:'Matures Into',          dir:'down',  weight:'maturation',    color:'#CA8A04', desc:'Prospect/lead maturing to discovery; lifecycle progression edge.' },
+      competes_with:   { label:'Competes With',         dir:'peer',  weight:'portfolio',     color:'#B45309', desc:'Two prospects competing for same drilling slot or capital.' },
+      offsets:         { label:'Offsets',               dir:'peer',  weight:'portfolio',     color:'#92400E', desc:'Upside in one asset offsets downside risk in another.' },
+      // 7. AI / knowledge inference
+      predicts:        { label:'Predicts',              dir:'cross', weight:'ai',            color:'#8B5CF6', desc:'ML model or analogue predicting an outcome for a target node.' },
+      updates:         { label:'Updates (Bayesian)',    dir:'cross', weight:'ai',            color:'#A78BFA', desc:'Bayesian update propagating new evidence to a probability node.' },
+      quantifies:      { label:'Quantifies',            dir:'cross', weight:'ai',            color:'#C4B5FD', desc:'Node providing numerical estimate (GCoS, EUR, TOC) to another.' },
+      evaluates:       { label:'Evaluates',             dir:'cross', weight:'ai',            color:'#DDD6FE', desc:'Risk/chance node that scores or ranks a play or prospect.' },
+      // 8. Data provenance
+      derived_from:    { label:'Derived From',          dir:'up',    weight:'provenance',    color:'#64748B', desc:'Interpretation or model derived from a primary data source.' },
+      constrained_by:  { label:'Constrained By',        dir:'cross', weight:'provenance',    color:'#475569', desc:'Model parameter hard-constrained by observed well/seismic data.' },
+      validated_by:    { label:'Validated By',          dir:'up',    weight:'provenance',    color:'#334155', desc:'Interpretation validated by independent data set or test result.' },
+      // 9. Cross-asset infrastructure
+      offloads_to:     { label:'Offloads To',           dir:'cross', weight:'infrastructure',color:'#0284C7', desc:'Field infrastructure accepts production from target asset.' },
+      tied_back_to:    { label:'Tied Back To',          dir:'cross', weight:'infrastructure',color:'#0369A1', desc:'Subsea well or template tied back to host facility.' }
+    }
+  };
+
+  //  KG CONTEXT EXTRACTOR 
+  // Returns structured ontology context for the current _hubCtx cascade
+  function hubKgGetContext() {
+    var ctx = global._hubCtx || {};
+    var allEdges = (global._KG_EDGES || []);
+    var result = {
+      cascade: [],         // breadcrumb: [ {type, name, color, icon} ]
+      directEdges: [],     // edges touching current context entities
+      peerEdges: [],       // analogous_to / similar_to / competes_with / offsets
+      chargeEdges: [],     // charges / sources / expelled_into / migrates_to
+      riskEdges: [],       // de_risks / elevates_risk / reduces_unc / trapped_by
+      provenanceEdges: [], // derived_from / constrained_by / validated_by / calibrates
+      infraEdges: [],      // offloads_to / tied_back_to
+      structEdges: [],     // controls / deforms / cuts / inverts / reactivates
+      ontologyText: '',    // plain-text summary for AI prompts
+      nodeCount: 0,
+      edgeCount: 0
+    };
+
+    // Build cascade
+    var cascade = [];
+    if(ctx.basin)   cascade.push({type:'basin',           name:ctx.basin,   def:KG_ONTOLOGY.nodeTypes.basin});
+    var petSysName='', playName='', prospectName='', wellName='', discName='';
+    var HUB = global._HUB_DATA || {};
+    if(ctx.petSys){  var ps=(HUB.ps||[]).find(function(p){return p.id===ctx.petSys;}); if(ps){petSysName=ps.name; cascade.push({type:'petroleum_system',name:ps.name,def:KG_ONTOLOGY.nodeTypes.petroleum_system});}}
+    if(ctx.play){    var pl=(HUB.plays||[]).find(function(p){return p.id===ctx.play;}); if(pl){playName=pl.name; cascade.push({type:'play',name:pl.name,def:KG_ONTOLOGY.nodeTypes.play});}}
+    if(ctx.prospect){var pr=(HUB.prospects||[]).find(function(p){return p.id===ctx.prospect;}); if(pr){prospectName=pr.name; cascade.push({type:'prospect',name:pr.name,def:KG_ONTOLOGY.nodeTypes.prospect});}}
+    if(ctx.well){    var w=((global.WELLS)||[]).find(function(w){return w.id===ctx.well;}); if(w){wellName=w.name; cascade.push({type:'well',name:w.name,def:KG_ONTOLOGY.nodeTypes.well});}}
+    if(ctx.disc){    var d=((global.DISCOVERIES)||[]).find(function(d){return d.id===ctx.disc;}); if(d){discName=d.name; cascade.push({type:'discovery',name:d.name,def:KG_ONTOLOGY.nodeTypes.discovery});}}
+    result.cascade = cascade;
+
+    // Collect context entity names
+    var ctxNames = cascade.map(function(c){return c.name;});
+    if(!ctxNames.length) return result;
+
+    // Filter edges by context
+    allEdges.forEach(function(e){
+      var touches = ctxNames.indexOf(e.srcName)>=0 || ctxNames.indexOf(e.tgtName)>=0;
+      if(!touches) return;
+      result.directEdges.push(e);
+      var rel = e.rel;
+      // Peer / analogue edges
+      if(rel==='analogous_to'||rel==='similar_to'||rel==='competes_with'||rel==='offsets'||rel==='co_located') result.peerEdges.push(e);
+      // Charge / migration edges
+      if(rel==='charges'||rel==='sources'||rel==='expelled_into'||rel==='migrates_to'||rel==='sourced_from') result.chargeEdges.push(e);
+      // Risk edges
+      if(rel==='de_risks'||rel==='elevates_risk'||rel==='reduces_unc'||rel==='trapped_by') result.riskEdges.push(e);
+      // Provenance / validation edges
+      if(rel==='derived_from'||rel==='constrained_by'||rel==='validated_by'||rel==='calibrates') result.provenanceEdges.push(e);
+      // Infrastructure edges
+      if(rel==='offloads_to'||rel==='tied_back_to') result.infraEdges.push(e);
+      // Structural edges
+      if(rel==='controls'||rel==='deforms'||rel==='cuts'||rel==='inverts'||rel==='reactivates') result.structEdges.push(e);
+    });
+
+    // Count unique nodes in the subgraph
+    var nodes = {};
+    result.directEdges.forEach(function(e){ nodes[e.srcType+':'+e.srcName]=1; nodes[e.tgtType+':'+e.tgtName]=1; });
+    result.nodeCount = Object.keys(nodes).length;
+    result.edgeCount = result.directEdges.length;
+
+    // Build ontology text for AI prompts
+    var txt = '=== KNOWLEDGE GRAPH ONTOLOGY CONTEXT ===\n';
+    txt += 'Active cascade: '+cascade.map(function(c){return c.def.label+' "'+c.name+'"';}).join(' → ')+'\n';
+    txt += 'KG subgraph: '+result.nodeCount+' nodes, '+result.edgeCount+' edges\n\n';
+
+    if(result.chargeEdges.length){
+      txt += 'CHARGE / MIGRATION RELATIONSHIPS:\n';
+      result.chargeEdges.forEach(function(e){ txt += '  • '+e.srcName+' ['+e.rel+'] → '+e.tgtName+' (confidence: '+Math.round(e.weight*100)+'%)\n'; });
+    }
+    if(result.peerEdges.length){
+      txt += '\nANALOGUE / SIMILARITY / PORTFOLIO LINKS:\n';
+      result.peerEdges.forEach(function(e){ txt += '  • '+e.srcName+' ['+e.rel+'] ↔ '+e.tgtName+' (weight: '+Math.round(e.weight*100)+'%)\n'; });
+    }
+    if(result.riskEdges.length){
+      txt += '\nRISK PROPAGATION LINKS:\n';
+      result.riskEdges.forEach(function(e){ txt += '  • '+e.srcName+' ['+e.rel+'] → '+e.tgtName+' (weight: '+Math.round(e.weight*100)+'%)\n'; });
+    }
+    if(result.structEdges.length){
+      txt += '\nSTRUCTURAL / TECTONIC LINKS:\n';
+      result.structEdges.forEach(function(e){ txt += '  • '+e.srcName+' ['+e.rel+'] → '+e.tgtName+' (weight: '+Math.round(e.weight*100)+'%)\n'; });
+    }
+    if(result.provenanceEdges.length){
+      txt += '\nDATA PROVENANCE / CALIBRATION LINKS:\n';
+      result.provenanceEdges.forEach(function(e){ txt += '  • '+e.srcName+' ['+e.rel+'] → '+e.tgtName+' (confidence: '+Math.round(e.weight*100)+'%)\n'; });
+    }
+    if(result.infraEdges.length){
+      txt += '\nINFRASTRUCTURE LINKS:\n';
+      result.infraEdges.forEach(function(e){ txt += '  • '+e.srcName+' ['+e.rel+'] → '+e.tgtName+'\n'; });
+    }
+    // Show remaining direct edges
+    var _shownIds = result.chargeEdges.concat(result.peerEdges).concat(result.riskEdges).concat(result.structEdges).concat(result.provenanceEdges).concat(result.infraEdges).map(function(e){return e.id;});
+    var rest = result.directEdges.filter(function(e){return _shownIds.indexOf(e.id)<0;});
+    if(rest.length){
+      txt += '\nSTRUCTURAL / OTHER LINKS:\n';
+      rest.forEach(function(e){ txt += '  • '+e.srcType+':'+e.srcName+' ['+e.rel+'] '+e.tgtType+':'+e.tgtName+'\n'; });
+    }
+    txt += '=========================================\n';
+    result.ontologyText = txt;
+    return result;
+  }
+  global.hubKgGetContext = hubKgGetContext;
+
+  //  KG CONTEXT BADGE RENDERER 
+  // Renders a compact KG context badge HTML string for injection into pane headers
+  function hubKgBadgeHtml(kgCtx, moduleLabel) {
+    if(!kgCtx || !kgCtx.cascade.length) return '';
+    var crumbs = kgCtx.cascade.map(function(c){
+      return '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;background:'+c.def.color+'18;border:1px solid '+c.def.color+'44;border-radius:10px;font-size:8px;color:'+c.def.color+';font-weight:700">'+c.def.icon+' '+c.name+'</span>';
+    }).join('<span style="color:var(--t3);font-size:10px;margin:0 1px">›</span>');
+
+    var edgeSummary = '';
+    if(kgCtx.peerEdges.length)      edgeSummary += '<span style="font-size:8px;color:#10B981;padding:2px 6px;background:rgba(16,185,129,.08);border-radius:8px;border:1px solid rgba(16,185,129,.2)"> '+kgCtx.peerEdges.length+' analogue link'+(kgCtx.peerEdges.length>1?'s':'')+'</span>';
+    if(kgCtx.chargeEdges.length)    edgeSummary += '<span style="font-size:8px;color:#A855F7;padding:2px 6px;background:rgba(168,85,247,.08);border-radius:8px;border:1px solid rgba(168,85,247,.2)"> '+kgCtx.chargeEdges.length+' charge link'+(kgCtx.chargeEdges.length>1?'s':'')+'</span>';
+    if(kgCtx.riskEdges.length)      edgeSummary += '<span style="font-size:8px;color:#F97316;padding:2px 6px;background:rgba(249,115,22,.08);border-radius:8px;border:1px solid rgba(249,115,22,.2)"> '+kgCtx.riskEdges.length+' risk link'+(kgCtx.riskEdges.length>1?'s':'')+'</span>';
+    if(kgCtx.structEdges && kgCtx.structEdges.length)     edgeSummary += '<span style="font-size:8px;color:#6366F1;padding:2px 6px;background:rgba(99,102,241,.08);border-radius:8px;border:1px solid rgba(99,102,241,.2)"> '+kgCtx.structEdges.length+' structural link'+(kgCtx.structEdges.length>1?'s':'')+'</span>';
+    if(kgCtx.provenanceEdges && kgCtx.provenanceEdges.length) edgeSummary += '<span style="font-size:8px;color:#15803D;padding:2px 6px;background:rgba(21,128,61,.08);border-radius:8px;border:1px solid rgba(21,128,61,.2)"> '+kgCtx.provenanceEdges.length+' data link'+(kgCtx.provenanceEdges.length>1?'s':'')+'</span>';
+    if(kgCtx.infraEdges && kgCtx.infraEdges.length)       edgeSummary += '<span style="font-size:8px;color:#0284C7;padding:2px 6px;background:rgba(2,132,199,.08);border-radius:8px;border:1px solid rgba(2,132,199,.2)"> '+kgCtx.infraEdges.length+' infra link'+(kgCtx.infraEdges.length>1?'s':'')+'</span>';
+
+    return '<div id="kg-bridge-banner-'+moduleLabel+'" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:7px 12px;background:linear-gradient(90deg,rgba(107,70,193,.05),rgba(124,58,237,.06));border:1px solid rgba(107,70,193,.14);border-radius:7px;margin-bottom:10px">'
+      +'<span style="font-size:8px;font-weight:800;letter-spacing:.8px;color:var(--t3);text-transform:uppercase;flex-shrink:0"> KG</span>'
+      +crumbs
+      +(edgeSummary ? '<span style="margin-left:auto;display:flex;gap:4px;flex-wrap:wrap">'+edgeSummary+'</span>' : '')
+      +'<span onclick="hubSwitchTab(\'knowledgegraph\')" style="font-size:8px;color:var(--brand);cursor:pointer;padding:2px 6px;border:1px solid rgba(0,200,130,.25);border-radius:8px;white-space:nowrap;flex-shrink:0" title="Open Knowledge Graph">View Graph →</span>'
+      +'</div>';
+  }
+  global.hubKgBadgeHtml = hubKgBadgeHtml;
+
+  //  MODULE PATCHERS 
+  // Each patcher wraps the original function and injects KG context
+
+  // 1. AI INSIGHTS — inject KG context into the portfolio insight ticker
+  function patchAiInsights() {
+    // Called when KG context changes — update insight text with KG annotation
+    var orig = global._aiInsightRefresh;
+    global._aiInsightKgAnnotate = function() {
+      var kgCtx = hubKgGetContext();
+      if(!kgCtx.cascade.length) return;
+      var banner = document.getElementById('ai-insight-kg-banner');
+      if(!banner) {
+        var footer = document.getElementById('ai-insight-footer');
+        if(footer && footer.parentNode) {
+          banner = document.createElement('div');
+          banner.id = 'ai-insight-kg-banner';
+          banner.style.cssText = 'font-size:10px;padding:5px 10px;margin-bottom:6px;border-radius:6px;border:1px solid rgba(107,70,193,.14);background:rgba(13,148,136,.04);color:var(--t3);display:flex;align-items:center;gap:5px;flex-wrap:wrap';
+          footer.parentNode.insertBefore(banner, footer);
+        }
+      }
+      if(banner) {
+        banner.innerHTML = '<span style="color:var(--brand);font-weight:700"> KG:</span> '
+          + kgCtx.cascade.map(function(c){return c.def.icon+' <span style="color:'+c.def.color+'">'+c.name+'</span>';}).join(' › ')
+          + (kgCtx.edgeCount ? ' <span style="margin-left:6px;color:var(--t3)">'+kgCtx.edgeCount+' active edges</span>' : '');
+      }
+    };
+  }
+
+  // 2. GEO REASONING — prepend KG ontology context to AI prompt
+  function patchGeoReasoning() {
+    var origRun = global.hubReasoningRun;
+    if(typeof origRun !== 'function') return;
+    global.hubReasoningRun = function() {
+      var kgCtx = hubKgGetContext();
+      // Inject KG badge into the reasoning pane header if not already present
+      var pane = document.getElementById('hub-pane-reasoning');
+      if(pane && !document.getElementById('kg-bridge-banner-reasoning')) {
+        var badge = document.createElement('div');
+        badge.innerHTML = hubKgBadgeHtml(kgCtx, 'reasoning');
+        if(badge.firstChild) pane.insertBefore(badge.firstChild, pane.firstChild);
+      }
+      // Augment the prompt: stash KG context so hubReasoningRun can pick it up
+      global._pendingKgOntologyContext = kgCtx.ontologyText;
+      origRun.apply(this, arguments);
+    };
+    // Monkey-patch fetch to inject KG context into Geo Reasoning API call
+    var origFetch = global.fetch;
+    global.fetch = function(url, opts) {
+      if(url && url.indexOf('anthropic.com/v1/messages')>=0 && opts && opts.body) {
+        try {
+          var body = JSON.parse(opts.body);
+          var msgs = body.messages;
+          if(msgs && msgs.length && global._pendingKgOntologyContext) {
+            var lastMsg = msgs[msgs.length-1];
+            if(lastMsg.role==='user' && typeof lastMsg.content==='string') {
+              // Only augment if this is a reasoning/NLQ/copilot/datagap/lookalike/newsfeed call
+              var isHubCall = lastMsg.content.indexOf('geological')>=0
+                           || lastMsg.content.indexOf('prospect')>=0
+                           || lastMsg.content.indexOf('petroleum')>=0
+                           || lastMsg.content.indexOf('exploration')>=0
+                           || lastMsg.content.indexOf('basin')>=0;
+              if(isHubCall) {
+                lastMsg.content = global._pendingKgOntologyContext + '\n' + lastMsg.content;
+                opts = Object.assign({}, opts, { body: JSON.stringify(body) });
+                global._pendingKgOntologyContext = null;
+              }
+            }
+          }
+        } catch(e){}
+      }
+      return origFetch.apply(this, arguments);
+    };
+  }
+
+  // 3. ASK THE HUB (NLQ) — inject KG context badge + enrich query
+  function patchAskTheHub() {
+    var origRun = global.hubNLQRun;
+    if(typeof origRun !== 'function') return;
+    global.hubNLQRun = function() {
+      var kgCtx = hubKgGetContext();
+      var pane = document.getElementById('hub-pane-nlq');
+      if(pane && !document.getElementById('kg-bridge-banner-nlq')) {
+        var badge = document.createElement('div');
+        badge.innerHTML = hubKgBadgeHtml(kgCtx, 'nlq');
+        if(badge.firstChild) pane.insertBefore(badge.firstChild, pane.firstChild);
+      }
+      global._pendingKgOntologyContext = kgCtx.ontologyText;
+      origRun.apply(this, arguments);
+    };
+  }
+
+  // 4. RANK COPILOT — inject KG ontology context badge
+  function patchRankCopilot() {
+    var origRun = global.hubCopilotRun;
+    if(typeof origRun !== 'function') return;
+    global.hubCopilotRun = function() {
+      var kgCtx = hubKgGetContext();
+      var pane = document.getElementById('hub-pane-copilot');
+      if(pane && !document.getElementById('kg-bridge-banner-copilot')) {
+        var badge = document.createElement('div');
+        badge.innerHTML = hubKgBadgeHtml(kgCtx, 'copilot');
+        if(badge.firstChild) pane.insertBefore(badge.firstChild, pane.firstChild);
+      }
+      global._pendingKgOntologyContext = kgCtx.ontologyText;
+      origRun.apply(this, arguments);
+    };
+  }
+
+  // 5. INTEL FEED — inject KG context to focus news on relevant entities
+  function patchIntelFeed() {
+    var origRun = global.hubNewsFeedRun;
+    if(typeof origRun !== 'function') return;
+    global.hubNewsFeedRun = function() {
+      var kgCtx = hubKgGetContext();
+      var pane = document.getElementById('hub-pane-newsfeed');
+      if(pane && !document.getElementById('kg-bridge-banner-newsfeed')) {
+        var badge = document.createElement('div');
+        badge.innerHTML = hubKgBadgeHtml(kgCtx, 'newsfeed');
+        if(badge.firstChild) pane.insertBefore(badge.firstChild, pane.firstChild);
+      }
+      // Auto-populate the basin selector from KG context
+      if(kgCtx.cascade.length) {
+        var basinNode = kgCtx.cascade.find(function(c){return c.type==='basin';});
+        if(basinNode) {
+          var sel = document.getElementById('news-basin');
+          if(sel) {
+            for(var i=0;i<sel.options.length;i++){
+              if(sel.options[i].text===basinNode.name||sel.options[i].value===basinNode.name){
+                sel.selectedIndex=i; break;
+              }
+            }
+          }
+        }
+      }
+      global._pendingKgOntologyContext = kgCtx.ontologyText;
+      origRun.apply(this, arguments);
+    };
+  }
+
+  // 6. DATA GAPS — inject KG context to identify gaps relative to ontology
+  function patchDataGaps() {
+    var origRun = global.hubDataGapRun;
+    if(typeof origRun !== 'function') return;
+    global.hubDataGapRun = function() {
+      var kgCtx = hubKgGetContext();
+      var pane = document.getElementById('hub-pane-datagap');
+      if(pane && !document.getElementById('kg-bridge-banner-datagap')) {
+        var badge = document.createElement('div');
+        badge.innerHTML = hubKgBadgeHtml(kgCtx, 'datagap');
+        if(badge.firstChild) pane.insertBefore(badge.firstChild, pane.firstChild);
+        // Also inject a KG gap summary panel
+        var kgGap = document.createElement('div');
+        kgGap.id = 'kg-datagap-ontology-panel';
+        kgGap.style.cssText = 'margin-bottom:10px;padding:10px 14px;background:rgba(168,85,247,.05);border:1px dashed rgba(168,85,247,.25);border-radius:7px;font-size:10px;color:var(--t2);line-height:1.6';
+        kgGap.innerHTML = _buildKgGapSummary(kgCtx);
+        var out = document.getElementById('datagap-output');
+        if(out && out.parentNode) out.parentNode.insertBefore(kgGap, out);
+      }
+      global._pendingKgOntologyContext = kgCtx.ontologyText;
+      origRun.apply(this, arguments);
+    };
+  }
+
+  function _buildKgGapSummary(kgCtx) {
+    if(!kgCtx.cascade.length) return '<span style="color:var(--t3)">Select a context entity to see KG-derived data gaps</span>';
+    var deepest = kgCtx.cascade[kgCtx.cascade.length-1];
+    var gaps = [];
+    // Identify ontologically expected edges that are absent
+    // Expanded with 28 new predicates — each tier now checks for richer ontology coverage
+    var relsByTier = {
+      basin:            ['contains','overlies'],
+      petroleum_system: ['contains','charges','sources','migrates_to','overlies','underlies','expelled_into'],
+      play:             ['contains','seals','analogous_to','controls','bounded_by','deposited_by'],
+      prospect:         ['contains','targets','de_risks','elevates_risk','reduces_unc','competes_with','trapped_by'],
+      well:             ['contains','supports','co_located','constrained_by','validated_by','calibrates'],
+      discovery:        ['reservoir_in','analogous_to','sourced_from','trapped_by','offloads_to','matures_into']
+    };
+    var expected = relsByTier[deepest.type] || [];
+    var present = kgCtx.directEdges.map(function(e){ return e.rel; });
+    expected.forEach(function(rel){
+      if(present.indexOf(rel)<0){
+        var rd = KG_ONTOLOGY.relationTypes[rel];
+        gaps.push('<span style="color:#F59E0B">! Missing: </span><b>'+deepest.name+'</b> has no <b>'+(rd?rd.label:rel)+'</b> link in KG');
+      }
+    });
+    if(!gaps.length) return ' <b>KG Completeness:</b> All expected ontological relationships found for <b>'+deepest.name+'</b>';
+    return '<div style="font-weight:700;color:var(--purple);margin-bottom:5px"> KG Ontology Gap Analysis — '+deepest.def.label+': '+deepest.name+'</div>'
+      + gaps.join('<br>');
+  }
+
+  // 7. LOOK-ALIKE — seed template from KG analogue links
+  function patchLookAlike() {
+    var origRun = global.hubLookalikeFind;
+    if(typeof origRun !== 'function') return;
+    global.hubLookalikeFind = function() {
+      var kgCtx = hubKgGetContext();
+      var pane = document.getElementById('hub-pane-lookalike');
+      if(pane && !document.getElementById('kg-bridge-banner-lookalike')) {
+        var badge = document.createElement('div');
+        badge.innerHTML = hubKgBadgeHtml(kgCtx, 'lookalike');
+        if(badge.firstChild) pane.insertBefore(badge.firstChild, pane.firstChild);
+        // Inject a KG analogue pre-seed panel
+        if(kgCtx.peerEdges.length) {
+          var seed = document.createElement('div');
+          seed.id = 'kg-lookalike-seed';
+          seed.style.cssText = 'margin-bottom:8px;padding:8px 12px;background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.2);border-radius:7px;font-size:10px;color:var(--t2)';
+          seed.innerHTML = '<div style="font-weight:700;color:#10B981;margin-bottom:5px"> KG Pre-seeded Analogue Candidates</div>'
+            + kgCtx.peerEdges.map(function(e){
+                return '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)">'
+                  +'<span style="font-size:8px;padding:1px 5px;background:rgba(16,185,129,.12);border-radius:4px;color:#10B981;font-weight:700">'+Math.round(e.weight*100)+'%</span>'
+                  +'<span><b>'+e.srcName+'</b> <span style="color:var(--t3)">['+e.rel.replace('_',' ')+']</span> <b>'+e.tgtName+'</b></span>'
+                  +'</div>';
+              }).join('');
+          var out = document.getElementById('lookalike-output');
+          if(out && out.parentNode) out.parentNode.insertBefore(seed, out);
+        }
+      }
+      global._pendingKgOntologyContext = kgCtx.ontologyText;
+      origRun.apply(this, arguments);
+    };
+  }
+
+  // 8. AI ANALOGUES (hub pane) — inject KG analogue links into mount
+  function patchAiAnalogues() {
+    var pane = document.getElementById('hub-pane-aianalogues');
+    if(!pane) return;
+    // On tab switch, inject KG badge above the AIA mount
+    var origSwitch = global.hubSwitchTab;
+    if(typeof origSwitch==='function') {
+      global.hubSwitchTab = function(tab) {
+        origSwitch.apply(this, arguments);
+        if(tab==='aianalogues') {
+          setTimeout(function(){
+            var kgCtx = hubKgGetContext();
+            var mount = document.getElementById('hub-aia-mount');
+            if(mount && !document.getElementById('kg-bridge-banner-aianalogues')) {
+              var badge = document.createElement('div');
+              badge.innerHTML = hubKgBadgeHtml(kgCtx, 'aianalogues');
+              if(badge.firstChild) mount.parentNode.insertBefore(badge.firstChild, mount);
+              // Show KG analogue links panel
+              if(kgCtx.peerEdges.length) {
+                var panel = document.createElement('div');
+                panel.id = 'kg-aianalogues-panel';
+                panel.style.cssText = 'margin-bottom:10px;padding:10px 14px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.2);border-radius:7px;font-size:10px;color:var(--t2);line-height:1.6';
+                panel.innerHTML = '<div style="font-weight:700;color:#10B981;margin-bottom:6px;font-size:10px"> KG Ontology — Pre-qualified Analogue Links</div>'
+                  + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+                  + kgCtx.peerEdges.map(function(e){
+                      var rt = KG_ONTOLOGY.relationTypes[e.rel]||{color:'#10B981',label:e.rel};
+                      return '<div style="padding:6px 8px;background:var(--bg2);border-radius:6px;border:1px solid rgba(16,185,129,.15)">'
+                        +'<div style="font-size:8px;color:'+rt.color+';font-weight:700;text-transform:uppercase;letter-spacing:.4px">'+rt.label+'</div>'
+                        +'<div style="font-weight:700">'+e.srcName+'</div>'
+                        +'<div style="color:var(--t3)">↔ '+e.tgtName+'</div>'
+                        +'<div style="font-size:8px;color:var(--t3)">Similarity: '+Math.round(e.weight*100)+'%</div>'
+                        +'</div>';
+                    }).join('')
+                  + '</div>';
+                mount.parentNode.insertBefore(panel, mount);
+              }
+            }
+          }, 80);
+        }
+      };
+    }
+  }
+
+  //  KG CONTEXT PANEL — injected into KG pane card section 
+  function injectKgModuleLinksPanel() {
+    // Adds a "Connected Modules" section to the KG card panel
+    var cardBody = document.getElementById('hub-kg-card-body');
+    if(!cardBody) return;
+    var origKgCard = global.hubKgRenderCard;
+    if(typeof origKgCard !== 'function') return;
+    global.hubKgRenderCard = function() {
+      origKgCard.apply(this, arguments);
+      // After card renders, append module jump buttons
+      setTimeout(function(){
+        var existing = document.getElementById('kg-module-jump-panel');
+        if(existing) existing.remove();
+        var kgCtx = hubKgGetContext();
+        var panel = document.createElement('div');
+        panel.id = 'kg-module-jump-panel';
+        panel.style.cssText = 'margin-top:14px;padding:10px 12px;background:rgba(107,70,193,.04);border:1px solid rgba(107,70,193,.12);border-radius:8px';
+        panel.innerHTML = '<div style="font-size:8px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px"> Use This KG Context In…</div>'
+          + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">'
+          + [
+              ['','AI Analogues','aianalogues'],
+              ['','Geo Reasoning','reasoning'],
+              ['','Ask the Hub','nlq'],
+              ['','Rank Copilot','copilot'],
+              ['','Intel Feed','newsfeed'],
+              ['','Data Gaps','datagap'],
+              ['','Look-alike','lookalike']
+            ].map(function(m){
+              return '<button onclick="hubSwitchTab(\''+m[2]+'\');setTimeout(function(){document.querySelector(\'#hub-pane-'+m[2]+' button\')&&document.querySelector(\'#hub-pane-'+m[2]+' button\').click();},120)"'
+                +' style="font-size:8.5px;padding:5px 6px;background:var(--bg2);border:1px solid var(--b1);border-radius:5px;color:var(--t2);cursor:pointer;text-align:left;font-family:inherit;transition:all .15s"'
+                +' onmouseover="this.style.borderColor=\'rgba(13,148,136,.4)\';this.style.color=\'var(--brand)\'" onmouseout="this.style.borderColor=\'var(--b1)\';this.style.color=\'var(--t2)\'">'
+                +m[0]+' '+m[1]+'</button>';
+            }).join('')
+          +'</div>';
+        cardBody.appendChild(panel);
+      }, 200);
+    };
+  }
+
+  //  CASCADE CHANGE LISTENER 
+  // Re-inject KG badges whenever the context cascade changes
+  function watchCascadeChanges() {
+    // Clear stale KG bridge banners on cascade change
+    var ctx = global._hubCtx;
+    if(!ctx) return;
+    var handler = function() {
+      // Remove old banners so they regenerate with fresh context
+      document.querySelectorAll('[id^="kg-bridge-banner-"]').forEach(function(el){ el.remove(); });
+      document.querySelectorAll('[id^="kg-aianalogues-panel"],[id^="kg-lookalike-seed"],[id^="kg-datagap-ontology-panel"],[id^="kg-module-jump-panel"]').forEach(function(el){ el.remove(); });
+      // Refresh AI Insights badge
+      if(typeof global._aiInsightKgAnnotate==='function') global._aiInsightKgAnnotate();
+    };
+    // Hook into the cascade dropdowns
+    ['hub-sel-basin','hub-sel-petsys','hub-sel-play','hub-sel-prospect','hub-sel-well','hub-sel-disc'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el && !el._kgWatched) { el._kgWatched=true; el.addEventListener('change', handler); }
+    });
+  }
+
+  //  INITIALISE ALL PATCHES 
+  function initBridge() {
+    // Load KG edges from EDM store or fallback to window._KG_EDGES
+    if(!global._KG_EDGES) {
+      var eStore = global._EDM_STORE;
+      if(eStore && eStore.kg && eStore.kg.edges) global._KG_EDGES = eStore.kg.edges;
+    }
+    patchAiInsights();
+    patchGeoReasoning();
+    patchAskTheHub();
+    patchRankCopilot();
+    patchIntelFeed();
+    patchDataGaps();
+    patchLookAlike();
+    patchAiAnalogues();
+    injectKgModuleLinksPanel();
+    watchCascadeChanges();
+    // Annotate AI Insights on load
+    setTimeout(function(){ if(typeof global._aiInsightKgAnnotate==='function') global._aiInsightKgAnnotate(); }, 1200);
+  }
+
+  // Run after DOM + all modules are loaded
+  if(document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(initBridge, 600); });
+  } else {
+    setTimeout(initBridge, 600);
+  }
+
+  // Re-run patches if hubSwitchTab is replaced post-load (EDM IIFE timing)
+  var _initAttempts = 0;
+  var _initTimer = setInterval(function(){
+    _initAttempts++;
+    if(_initAttempts > 12) { clearInterval(_initTimer); return; }
+    // Re-patch if KG edges are now available
+    if(!global._KG_EDGES) {
+      var eStore = global._EDM_STORE;
+      if(eStore && eStore.kg && eStore.kg.edges) { global._KG_EDGES = eStore.kg.edges; }
+    }
+    watchCascadeChanges();
+  }, 800);
+
+  // Expose for debugging
+  global.hubKgOntology    = KG_ONTOLOGY;
+  global.hubKgBadgeHtml   = hubKgBadgeHtml;
+
+})(window);
+
+// done sini
+
+
+(function() {
+  var STORAGE_KEY = 'edafy_theme';
+
+  /* ── helpers ─────────────────────────────────────────────── */
+  function isDark() {
+    return document.documentElement.getAttribute('data-theme') === 'dark';
+  }
+
+  /* Returns the right color set for Chart.js based on current theme */
+  window.edafyChartColors = function() {
+    var dark = isDark();
+    return {
+      /* canvas / chart-area background */
+      canvasBg:    dark ? '#161b26'               : '#ffffff',
+      /* axis grid lines */
+      grid:        dark ? 'rgba(255,255,255,.06)'  : 'rgba(107,70,193,.07)',
+      /* axis tick labels */
+      tick:        dark ? '#8896a5'                : '#8896A5',
+      tickBold:    dark ? '#c5cee0'                : '#4a5568',
+      /* tooltip */
+      tooltipBg:   dark ? 'rgba(12,17,28,.96)'     : 'rgba(26,27,46,.93)',
+      tooltipText: dark ? '#e8ecf5'                : '#ffffff',
+      /* radar spokes + angle lines */
+      radarGrid:   dark ? 'rgba(107,70,193,.15)'   : 'rgba(107,70,193,.1)',
+      radarAngle:  dark ? 'rgba(107,70,193,.12)'   : 'rgba(107,70,193,.08)',
+      radarLabel:  dark ? '#8896a5'                : '#8896A5',
+      /* legend labels */
+      legendText:  dark ? '#8896a5'                : '#4a5568',
+    };
+  };
+
+  /* ── Global Chart.js defaults plugin ─────────────────────── */
+  function applyChartDefaults() {
+    /* Bulletproof — must never throw */
+    try {
+      if (typeof Chart === 'undefined') return;
+      if (!window.edafyChartColors) return;
+      var C = window.edafyChartColors();
+
+      /* Global scale defaults */
+      try {
+        Chart.defaults.color = C.tick;
+        Chart.defaults.borderColor = C.grid;
+        if (Chart.defaults.plugins && Chart.defaults.plugins.legend &&
+            Chart.defaults.plugins.legend.labels) {
+          Chart.defaults.plugins.legend.labels.color = C.legendText;
+        }
+      } catch(de) {}
+
+      /* Register canvas-background plugin once */
+      if (!Chart._edafyBgPluginRegistered) {
+        try {
+          Chart.register({
+            id: 'edafyCanvasBg',
+            beforeDraw: function(chart) {
+              try {
+                var C2 = window.edafyChartColors ? window.edafyChartColors() : {};
+                var ctx = chart.ctx;
+                ctx.save();
+                ctx.globalCompositeOperation = 'destination-over';
+                ctx.fillStyle = C2.canvasBg || '#ffffff';
+                ctx.fillRect(0, 0, chart.width, chart.height);
+                ctx.restore();
+              } catch(e) {}
+            }
+          });
+          Chart._edafyBgPluginRegistered = true;
+        } catch(re) {}
+      }
+    } catch(e) {}
+  }
+
+  /* Re-apply scale + grid colors to a live Chart instance */
+  function patchChartInstance(chart) {
+    /* Fully bulletproof — must never throw, never block login */
+    try {
+      if (!chart || chart._destroyed) return;
+      if (!window.edafyChartColors) return;
+      var C = window.edafyChartColors();
+      /* Scales */
+      var scaleKeys = Object.keys(chart.scales || {});
+      scaleKeys.forEach(function(key) {
+        try {
+          var scale = chart.scales[key];
+          if (!scale || !scale.options) return;
+          if (scale.options.grid)        scale.options.grid.color = C.grid;
+          if (scale.options.ticks)       scale.options.ticks.color = C.tick;
+          if (scale.options.pointLabels) scale.options.pointLabels.color = C.radarLabel;
+          if (scale.options.angleLines)  scale.options.angleLines.color = C.radarAngle;
+        } catch(se) {}
+      });
+      /* Tooltip */
+      try {
+        var tt = chart.options && chart.options.plugins && chart.options.plugins.tooltip;
+        if (tt) {
+          tt.backgroundColor = C.tooltipBg;
+          tt.titleColor      = C.tooltipText;
+          tt.bodyColor       = C.tooltipText;
+        }
+      } catch(te) {}
+      /* Legend */
+      try {
+        var lg = chart.options && chart.options.plugins && chart.options.plugins.legend;
+        if (lg && lg.labels) lg.labels.color = C.legendText;
+      } catch(le) {}
+      /* Redraw */
+      try { chart.update('none'); } catch(ue) {}
+    } catch(e) { /* silent */ }
+  }
+
+  /* Walk all registered Chart instances and repaint them */
+  function repaintAllCharts() {
+    /* Don't run before window.onload — app data/render functions not ready yet */
+    if (!_appReady) return;
+    if (typeof Chart === 'undefined') return;
+    applyChartDefaults();
+    /* Chart.js 4.x stores live instances in Chart.instances */
+    var instances = Chart.instances || {};
+    Object.keys(instances).forEach(function(id) {
+      patchChartInstance(instances[id]);
+    });
+    /* Swap map tile layers to match new theme */
+    try {
+      var tileUrl = _mapTileUrl();
+      if (_leafletTileLayer && _leafletMap) {
+        _leafletMap.removeLayer(_leafletTileLayer);
+        _leafletTileLayer = L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(_leafletMap);
+      }
+      if (_portfolioTileLayer && _portfolioMap) {
+        _portfolioMap.removeLayer(_portfolioTileLayer);
+        _portfolioTileLayer = L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(_portfolioMap);
+      }
+    } catch(e) {}
+
+    /* Also re-trigger custom canvas draw functions so they pick up new theme colors */
+    var canvasFns = [
+      'renderCrossplot', 'renderSimCrossplot', 'renderRadarChart',
+      'renderSimilarityHistogram', 'renderParallelCoords', 'renderBenchmarks',
+      'renderGCoSRadar', 'renderGCoS', 'renderVolSens', 'renderVolTornado',
+      'renderVolSpider', 'renderDQSummary', 'renderResourceDistChart',
+      'renderBasinProfile', 'drawBPRadar', 'renderTCCurve', 'renderMCHistogram',
+      'pse_render', 'bayes_render', 'renderOverlayChart',
+      /* rank/bubble chart — re-render if data is present */
+      '_rankRedraw', '_bubbleRedraw',
+    ];
+    canvasFns.forEach(function(fn) {
+      try {
+        if (typeof window[fn] === 'function') window[fn]();
+      } catch(e) { /* ignore — chart may not be visible or data not loaded */ }
+    });
+  }
+
+  /* ── Canvas-2D (non-Chart.js) background helper ─────────── */
+  /* Exposed globally so custom draw functions can call it */
+  window.edafyCanvasBgColor = function() {
+    return isDark() ? '#161b26' : '#ffffff';
+  };
+
+  /* ── Track whether app has fully loaded (window.onload complete) ── */
+  var _appReady = false;
+  window.addEventListener('load', function() { _appReady = true; });
+
+  /* ── Apply theme to DOM ───────────────────────────────────── */
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    /* Toggle button icons */
+    var moon = document.getElementById('theme-icon-moon');
+    var sun  = document.getElementById('theme-icon-sun');
+    if (moon && sun) {
+      if (theme === 'dark') {
+        moon.style.display = 'none';
+        sun.style.display  = 'block';
+      } else {
+        moon.style.display = 'block';
+        sun.style.display  = 'none';
+      }
+    }
+    /* Only repaint charts once the app is fully initialised.
+      Calling canvas render functions before window.onload completes
+      can throw errors that prevent the login page from appearing. */
+    if (_appReady) {
+      setTimeout(repaintAllCharts, 60);
+    }
+  }
+
+  /* ── Public toggle function ──────────────────────────────── */
+  window.edafyToggleTheme = function() {
+    var current = document.documentElement.getAttribute('data-theme') || 'light';
+    var next    = current === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem(STORAGE_KEY, next); } catch(e) {}
+    applyTheme(next);
+  };
+
+  /* ── Restore saved preference ────────────────────────────── */
+  var saved = null;
+  try { saved = localStorage.getItem(STORAGE_KEY); } catch(e) {}
+  if (!saved) {
+    saved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+            ? 'dark' : 'light';
+  }
+
+  /* Apply theme attribute immediately (before paint) — CSS vars only, no JS chart calls */
+  document.documentElement.setAttribute('data-theme', saved);
+
+  /* Apply button icons once DOM is ready — no chart repaints yet */
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      var moon = document.getElementById('theme-icon-moon');
+      var sun  = document.getElementById('theme-icon-sun');
+      if (moon && sun) {
+        if (saved === 'dark') { moon.style.display='none'; sun.style.display='block'; }
+        else                  { moon.style.display='block'; sun.style.display='none'; }
+      }
+    });
+  }
+
+  /* After window.onload: apply Chart.js defaults and do the first chart repaint.
+    window.onload fires AFTER the app's own window.onload (login/seed render),
+    so all data and render functions are guaranteed to exist by this point. */
+  window.addEventListener('load', function() {
+    setTimeout(function() {
+      applyChartDefaults();
+      repaintAllCharts();
+    }, 800);  /* extra delay so app's own onload fully completes first */
+  });
+
+  /* Patch Chart.js constructor to theme new charts as they are created */
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+      if (typeof Chart === 'undefined') return;
+      applyChartDefaults();
+      if (!Chart.prototype._edafyThemePatched) {
+        var _origInit = Chart.prototype.initialize;
+        Chart.prototype.initialize = function(config) {
+          if (_origInit) _origInit.call(this, config);
+          /* Defer so chart is fully built before patching — prevents crash during new Chart() */
+          var _self = this;
+          setTimeout(function() {
+            try { if (_appReady) patchChartInstance(_self); } catch(e) {}
+          }, 0);
+        };
+        Chart.prototype._edafyThemePatched = true;
+      }
+    }, 200);
+  });
+})();
