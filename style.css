@@ -98,10 +98,37 @@ body {
      margin: 0;
 }
 
-/* #_global-basin-bar {
-     background: rgba(255,0,0,0.2); 
-     padding: 9px 16px;
-} */
+#map-resizer {
+     height: 6px;
+     cursor: row-resize;
+     background: rgba(255,255,255,0.1);
+     position: relative;
+     z-index: 10;
+}
+
+     #map-resizer:hover {
+     background: rgba(107, 70, 193, 0.5);
+}
+
+#_global-basin-bar {
+     position: fixed;
+     bottom: 0;
+     left: 0;
+     right: 0;
+     z-index: 9997;
+
+     display: none;
+     align-items: center;
+     gap: 10px;
+     padding: 12px 16px;
+
+     background: var(--bg1, #0A1628);
+     border-top: 1px solid rgba(0,200,130,.25);
+     box-shadow: 0 -2px 12px rgba(0,0,0,.35);
+
+     font-size: 11px;
+     transition: transform 0.2s ease;
+}
 
 /* ── SIDEBAR ── */
 .sb {
@@ -785,13 +812,18 @@ max-height: 40vh;
 overflow-y: auto;
 }
 
+#hub-pane-hierarchy{
+     max-height: 31vh;
+     overflow-y: auto;
+}
+
 #hub-pane-maturation{
      max-height: 40vh;
      overflow-y: auto;
 }
 
-#hub-pane-hierarchy{
-     max-height: 31vh;
+.panel-ai{
+     max-height: 35vh;
      overflow-y: auto;
 }
 
@@ -799,6 +831,7 @@ overflow-y: auto;
      max-height: 36vh;
      overflow-y: auto;
 }
+
 
 #hub-pane-sankey{
      max-height: 35vh;

@@ -7443,6 +7443,61 @@ function closeModal() {
 // ============================================================
 // MAP
 // ============================================================
+
+/*  Map tile URLs  */
+const _TILE_LIGHT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
+const _TILE_DARK  = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+
+/* ── Basemap catalogue ── */
+const _BASEMAP_OPTIONS = [
+  { id: 'esri-street',   label: 'Esri Street',       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}' },
+  { id: 'esri-topo',     label: 'Esri Topographic',  url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}' },
+  { id: 'esri-imagery',  label: 'Esri Satellite',    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' },
+  { id: 'esri-darkgray', label: 'Esri Dark Gray',    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}' },
+  { id: 'esri-lightgray',label: 'Esri Light Gray',   url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}' },
+  { id: 'osm',           label: 'OpenStreetMap',     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' },
+  { id: 'carto-light',   label: 'Carto Light',       url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' },
+  { id: 'carto-dark',    label: 'Carto Dark',        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' },
+];
+let _selectedBasemapId = null; /* null = auto (theme-based) */
+
+function _resolveBasemapUrl() {
+  if (_selectedBasemapId) {
+    const opt = _BASEMAP_OPTIONS.find(o => o.id === _selectedBasemapId);
+    if (opt) return opt.url;
+  }
+  return document.documentElement.getAttribute('data-theme') === 'dark'
+    ? _TILE_DARK : _TILE_LIGHT;
+}
+
+function _mapTileUrl() {
+  return _resolveBasemapUrl();
+}
+
+function _switchBasemap(basemapId) {
+  _selectedBasemapId = basemapId === 'auto' ? null : basemapId;
+  try { localStorage.setItem('edafy_basemap', _selectedBasemapId || 'auto'); } catch(e) {}
+  const url = _resolveBasemapUrl();
+  try {
+    if (_leafletTileLayer && _leafletMap) {
+      _leafletMap.removeLayer(_leafletTileLayer);
+      _leafletTileLayer = L.tileLayer(url, { maxZoom: 19 }).addTo(_leafletMap);
+    }
+    if (_portfolioTileLayer && _portfolioMap) {
+      _portfolioMap.removeLayer(_portfolioTileLayer);
+      _portfolioTileLayer = L.tileLayer(url, { maxZoom: 19 }).addTo(_portfolioMap);
+    }
+  } catch(e) {}
+  /* sync all map-type selectors on page */
+  document.querySelectorAll('.basemap-select').forEach(function(sel) {
+    sel.value = _selectedBasemapId || 'auto';
+  });
+}
+/* Restore saved preference */
+try {
+  var _savedBM = localStorage.getItem('edafy_basemap');
+  if (_savedBM && _savedBM !== 'auto') _selectedBasemapId = _savedBM;
+} catch(e) {}
 let _leafletMap = null;
 let _leafletMarkers = [];
 let _portfolioMap = null;
@@ -7656,28 +7711,35 @@ function adjustMainLayout() {
   const main = document.querySelector(".main");
   const map = document.querySelector(".map-area");
   const sidebar = document.querySelector(".sb");
-  const fab = document.getElementById("emonk-fab"); // your floating button
+  const fab = document.getElementById("emonk-fab");
+
+  const RESIZER_HEIGHT = 6; // ✅ your draggable bar height
 
   if (bar && main && map && sidebar) {
-    const barHeight = bar.offsetHeight;
+    const barHeight =
+      window.getComputedStyle(bar).display === "none"
+        ? 0
+        : bar.offsetHeight;
 
-    // Map fixed
-    const mapHeight = window.innerHeight * 0.3; // 30vh in px
-    map.style.height = "30vh";
+    const mapHeight = map.offsetHeight;
 
-    // Remaining space
-    const remainingHeight = window.innerHeight - mapHeight - barHeight;
+    // ✅ subtract resizer height too
+    const remainingHeight = Math.floor(
+      window.innerHeight - mapHeight - barHeight - RESIZER_HEIGHT
+    );
 
     // Main fills remaining space
-    main.style.height = `calc(100vh - 30vh - ${barHeight}px)`;
+    main.style.height = remainingHeight + "px";
     main.style.overflow = "hidden";
 
-    // Sidebar stops above the bar
-    sidebar.style.height = `calc(100vh - ${barHeight}px)`;
+    // Sidebar stops above bar (no resizer here)
+    sidebar.style.height = Math.floor(
+      window.innerHeight - barHeight
+    ) + "px";
 
     // Move FAB above the bar
     if (fab) {
-      fab.style.bottom = 28 + barHeight + "px"; // 28px = base spacing
+      fab.style.bottom = 28 + barHeight + "px";
     }
   }
 }
@@ -7687,17 +7749,19 @@ window.addEventListener("resize", adjustMainLayout);
 // ── Context bar ────────────────────────────────────────────────────────
 function _renderGlobalBasinBar(name) {
   let bar = document.getElementById("_global-basin-bar");
+
+  // ✅ FIX: hide if no basin selected
+  if (!name) {
+    if (bar) {
+      bar.style.display = "none";
+      adjustMainLayout();
+    }
+    return;
+  }
   if (!bar) {
     // Create bar if it doesn’t exist
     bar = document.createElement("div");
     bar.id = "_global-basin-bar";
-    bar.style.cssText = [
-      "position:fixed;bottom:0;left:0;right:0;z-index:9997",
-      "background:var(--bg1,#0A1628);border-top:1px solid rgba(0,200,130,.25)",
-      "display:flex;align-items:center;gap:10px;padding:12px 16px",
-      "font-size:11px;font-family:inherit;transition:transform .2s ease",
-      "box-shadow:0 -2px 12px rgba(0,0,0,.35)"
-    ].join(";");
     document.body.appendChild(bar);
   } else {
     // ✅ Make sure it is visible again
@@ -7752,7 +7816,7 @@ function setupMap() {
   }
   _basinLayer = null; // clear orphaned reference from destroyed map
   _leafletMap = L.map("leaflet-map", {
-    center: [20, 20],
+    center: [0, 0],
     zoom: 2,
     minZoom: 2,
     maxZoom: 10,
@@ -7760,8 +7824,8 @@ function setupMap() {
     attributionControl: false,
   });
 
-  // OpenStreetMap tile layer (free)
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  // Tile layer — dark or light based on current theme
+  _leafletTileLayer = L.tileLayer(_mapTileUrl(), {
     maxZoom: 19,
   }).addTo(_leafletMap);
 
@@ -7769,11 +7833,48 @@ function setupMap() {
   L.control
     .attribution({ position: "bottomright" })
     .addTo(_leafletMap)
-    .setPrefix("© OpenStreetMap | EDAFY");
+    .setPrefix("© Esri | EDAFY");
 
   renderMapMarkers();
   loadBasinLayer();
 }
+
+let isDragging = false;
+
+const resizer = document.getElementById("map-resizer");
+const map = document.querySelector(".map-area");
+
+resizer.addEventListener("mousedown", () => {
+  isDragging = true;
+  document.body.style.cursor = "row-resize";
+});
+
+document.addEventListener("mouseup", () => {
+  isDragging = false;
+  document.body.style.cursor = "default";
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (!isDragging) return;
+
+  const map = document.querySelector(".map-area");
+
+  // current mouse position = new height
+  let newHeight = e.clientY;
+
+  // convert vh limits to px
+  const minHeight = window.innerHeight * 0.15; // 15vh
+  const maxHeight = window.innerHeight * 0.5;  // ✅ 50vh
+
+  // clamp value
+  if (newHeight < minHeight) newHeight = minHeight;
+  if (newHeight > maxHeight) newHeight = maxHeight;
+
+  map.style.height = newHeight + "px";
+
+  // update layout
+  // adjustMainLayout();
+});
 
 function loadBasinLayer() {
   if (!_leafletMap || !window._basinsData) return;
@@ -7790,7 +7891,7 @@ function loadBasinLayer() {
       weight: 1.5,
       opacity: 0.8,
       fillColor: "#6B46C1",
-      fillOpacity: 0.08,
+      fillOpacity: 0.2,
     }),
     onEachFeature(feature, layer) {
       const p = feature.properties;
@@ -7816,7 +7917,7 @@ function loadBasinLayer() {
       );
       layer.on({
         mouseover(e) {
-          e.target.setStyle({ weight: 5, fillOpacity: 0.45, opacity: 1 });
+          e.target.setStyle({ weight: 3, fillOpacity: 0.45, opacity: 1 });
           e.target.bringToFront();
         },
         mouseout(e) {
@@ -52906,9 +53007,78 @@ if (document.readyState === "complete" || document.readyState === "interactive")
     if(t==="matbal")        { if(window.hubMatBalInit)       window.hubMatBalInit(); }
   }
 
-  //  Context bar 
-  var _HUB_DATA = {"basins":[{"id":"b0","name":"Zagros Fold Belt"},{"id":"b1","name":"Permian Basin"},{"id":"b2","name":"North Sea"},{"id":"b3","name":"Kutei Basin"},{"id":"b4","name":"Nile Delta"},{"id":"b5","name":"Murzuq Basin"},{"id":"b6","name":"Sergipe-Alagoas"},{"id":"b7","name":"Malay Basin"},{"id":"b8","name":"Niger Delta"},{"id":"b9","name":"South Caspian"},{"id":"b10","name":"Barents Sea"},{"id":"b11","name":"Browse Basin"},{"id":"b12","name":"East Greenland"},{"id":"b13","name":"Tarim Basin"},{"id":"b14","name":"Neuqu\u00e9n Basin"},{"id":"b15","name":"Malay Basin \u2014 Arang Fm."},{"id":"b16","name":"Kutei Basin \u2014 Tunu Field"},{"id":"b17","name":"Borneo \u2014 Miri Formation"},{"id":"b18","name":"Niger Delta \u2014 Agbada Fm."},{"id":"b19","name":"Nile Delta \u2014 Biogenic Play"},{"id":"b20","name":"Gulf of Mexico \u2014 Wilcox"},{"id":"b21","name":"West Africa \u2014 Pliocene SS"}],"ps":[{"id":"ps-1","name":"Asmari-Pabdeh System","basin":"Zagros Fold Belt"},{"id":"ps-2","name":"Kazhdumi-Sarvak System","basin":"Zagros Fold Belt"},{"id":"ps-3","name":"Wolfcamp-Spraberry System","basin":"Permian Basin"},{"id":"ps-4","name":"Kimmeridge-Brent System","basin":"North Sea"},{"id":"ps-5","name":"Miocene Deltaic System","basin":"Kutei Basin"},{"id":"ps-6","name":"Oligocene Lacustrine System","basin":"Malay Basin"},{"id":"ps-7","name":"Vulcan-Plover System","basin":"Browse Basin"},{"id":"ps-8","name":"Oligocene-Miocene System","basin":"Nile Delta"},{"id":"ps-9","name":"Akata-Agbada System","basin":"Niger Delta"},{"id":"ps-10","name":"Vaca Muerta System","basin":"Neuqu\u00e9n Basin"},{"id":"ps-11","name":"Devonian Carbonate System","basin":"Murzuq Basin"},{"id":"ps-12","name":"Cretaceous Rift System","basin":"Sergipe-Alagoas"},{"id":"ps-13","name":"Mesozoic Carbonate System","basin":"South Caspian"},{"id":"ps-14","name":"Triassic\u2013Jurassic System","basin":"Barents Sea"},{"id":"ps-15","name":"Pre-Salt Carbonate System","basin":"East Greenland"},{"id":"ps-16","name":"Cambrian\u2013Ordovician System","basin":"Tarim Basin"},{"id":"ps-17","name":"Oligocene Carbonate Reef System","basin":"Malay Basin \u2014 Arang Fm."},{"id":"ps-18","name":"Miocene Delta Front System","basin":"Kutei Basin \u2014 Tunu Field"},{"id":"ps-19","name":"Eocene Turbidite System","basin":"Borneo \u2014 Miri Formation"},{"id":"ps-20","name":"Paleogene Delta System","basin":"Niger Delta \u2014 Agbada Fm."},{"id":"ps-21","name":"Biogenic Gas System","basin":"Nile Delta \u2014 Biogenic Play"},{"id":"ps-22","name":"Lower Wilcox Turbidite System","basin":"Gulf of Mexico \u2014 Wilcox"},{"id":"ps-23","name":"Pliocene Submarine Fan System","basin":"West Africa \u2014 Pliocene SS"}],"plays":[{"id":"pl-1","name":"Asmari Anticline Play","petSysId":"ps-1"},{"id":"pl-2","name":"Bangestan Thrust Play","petSysId":"ps-2"},{"id":"pl-3","name":"Wolfcamp Unconventional","petSysId":"ps-3"},{"id":"pl-4","name":"Brent Province Tilted Fault Block","petSysId":"ps-4"},{"id":"pl-5","name":"Miocene Deltaic Sand","petSysId":"ps-5"},{"id":"pl-6","name":"Group F\u2013I Carbonate Reef Play","petSysId":"ps-6"},{"id":"pl-7","name":"Plover Gas Sand","petSysId":"ps-7"},{"id":"pl-8","name":"Pliocene Deepwater Fan","petSysId":"ps-8"},{"id":"pl-9","name":"Agbada Rollover Anticline","petSysId":"ps-9"},{"id":"pl-10","name":"Vaca Muerta Tight Oil","petSysId":"ps-10"},{"id":"pl-11","name":"Murzuq Devonian Carbonate Play","petSysId":"ps-11"},{"id":"pl-12","name":"Sergipe Pre-Salt Carbonate Play","petSysId":"ps-12"},{"id":"pl-13","name":"South Caspian Deepwater Play","petSysId":"ps-13"},{"id":"pl-14","name":"Barents Triassic Clastic Play","petSysId":"ps-14"},{"id":"pl-15","name":"Greenland Pre-Salt Carbonate Play","petSysId":"ps-15"},{"id":"pl-16","name":"Tarim Cambrian Carbonate Play","petSysId":"ps-16"},{"id":"pl-17","name":"Arang Carbonate Reef Play","petSysId":"ps-17"},{"id":"pl-18","name":"Tunu Gas Sand Play","petSysId":"ps-18"},{"id":"pl-19","name":"Miri Eocene Turbidite Play","petSysId":"ps-19"},{"id":"pl-20","name":"Agbada Stacked Sand Play","petSysId":"ps-20"},{"id":"pl-21","name":"Biogenic Shallow Gas Play","petSysId":"ps-21"},{"id":"pl-22","name":"Wilcox Deepwater Fan Play","petSysId":"ps-22"},{"id":"pl-23","name":"Pliocene Submarine Fan Play","petSysId":"ps-23"}],"prospects":[{"id":"pr-alpha","name":"Prospect Alpha","playId":"pl-1","petSysId":"ps-1","basin":"Zagros Fold Belt","gcos":0.231},{"id":"pr-beta","name":"Prospect Beta","playId":"pl-5","petSysId":"ps-5","basin":"Kutei Basin","gcos":0.138},{"id":"pr-gamma","name":"Prospect Gamma","playId":"pl-6","petSysId":"ps-6","basin":"Malay Basin","gcos":0.195},{"id":"pr-delta","name":"Prospect Delta","playId":"pl-8","petSysId":"ps-8","basin":"Nile Delta","gcos":0.172},{"id":"pr-epsilon","name":"Prospect Epsilon","playId":"pl-4","petSysId":"ps-4","basin":"North Sea","gcos":0.265},{"id":"pr-zeta","name":"Prospect Zeta","playId":"pl-3","petSysId":"ps-3","basin":"Permian Basin","gcos":0.421},{"id":"pr-eta","name":"Prospect Eta","playId":"pl-9","petSysId":"ps-9","basin":"Niger Delta","gcos":0.228},{"id":"pr-browse","name":"Prospect Browse-1","playId":"pl-7","petSysId":"ps-7","basin":"Browse Basin","gcos":0.158},{"id":"pr-zohr","name":"Prospect Zohr-West","playId":"pl-8","petSysId":"ps-8","basin":"Nile Delta","gcos":0.285},{"id":"pr-vacamuerta","name":"Prospect Vaca-Norte","playId":"pl-10","petSysId":"ps-10","basin":"Neuqu\u00e9n Basin","gcos":0.395},{"id":"pr-murzuq1","name":"Prospect Murzuq-1","playId":"pl-11","petSysId":"ps-11","basin":"Murzuq Basin","gcos":0.18},{"id":"pr-sergipe1","name":"Prospect Sergipe Deep","playId":"pl-12","petSysId":"ps-12","basin":"Sergipe-Alagoas","gcos":0.22},{"id":"pr-caspian1","name":"Prospect Caspian Deep","playId":"pl-13","petSysId":"ps-13","basin":"South Caspian","gcos":0.25},{"id":"pr-barents1","name":"Prospect Barents North","playId":"pl-14","petSysId":"ps-14","basin":"Barents Sea","gcos":0.2},{"id":"pr-greenland1","name":"Prospect Greenland-1","playId":"pl-15","petSysId":"ps-15","basin":"East Greenland","gcos":0.15},{"id":"pr-tarim1","name":"Prospect Tarim Deep","playId":"pl-16","petSysId":"ps-16","basin":"Tarim Basin","gcos":0.19},{"id":"pr-arang1","name":"Prospect Arang Reef-1","playId":"pl-17","petSysId":"ps-17","basin":"Malay Basin \u2014 Arang Fm.","gcos":0.28},{"id":"pr-tunu1","name":"Prospect Tunu Gas-1","playId":"pl-18","petSysId":"ps-18","basin":"Kutei Basin \u2014 Tunu Field","gcos":0.35},{"id":"pr-miri1","name":"Prospect Miri Deep","playId":"pl-19","petSysId":"ps-19","basin":"Borneo \u2014 Miri Formation","gcos":0.21},{"id":"pr-agbada1","name":"Prospect Agbada Stack-1","playId":"pl-20","petSysId":"ps-20","basin":"Niger Delta \u2014 Agbada Fm.","gcos":0.3},{"id":"pr-biogenic1","name":"Prospect Nile Biogenic-1","playId":"pl-21","petSysId":"ps-21","basin":"Nile Delta \u2014 Biogenic Play","gcos":0.38},{"id":"pr-wilcox1","name":"Prospect Wilcox Deep","playId":"pl-22","petSysId":"ps-22","basin":"Gulf of Mexico \u2014 Wilcox","gcos":0.24},{"id":"pr-pliocene1","name":"Prospect West Africa Fan-1","playId":"pl-23","petSysId":"ps-23","basin":"West Africa \u2014 Pliocene SS","gcos":0.27}]};
+  // Context bar
+var _HUB_DATA = {
+  "basins": [
+      { "id": "b0", "name": "Zagros Fold Belt" },
+      { "id": "b1", "name": "Permian Basin" },
+      { "id": "b2", "name": "North Sea" },
+      { "id": "b3", "name": "Kutei Basin" },
+      { "id": "b4", "name": "Nile Delta" },
+      { "id": "b5", "name": "Murzuq Basin" },
+      { "id": "b6", "name": "Sergipe-Alagoas" },
+      { "id": "b7", "name": "Malay Basin" },
+      { "id": "b8", "name": "Niger Delta" },
+      { "id": "b9", "name": "South Caspian" },
+      { "id": "b10", "name": "Barents Sea" },
+      { "id": "b11", "name": "Browse Basin" },
+      { "id": "b12", "name": "East Greenland" },
+      { "id": "b13", "name": "Tarim Basin" },
+      { "id": "b14", "name": "Neuquén Basin" },
+      { "id": "b15", "name": "Malay Basin — Arang Fm." },
+      { "id": "b16", "name": "Kutei Basin — Tunu Field" },
+      { "id": "b17", "name": "Borneo — Miri Formation" },
+      { "id": "b18", "name": "Niger Delta — Agbada Fm." },
+      { "id": "b19", "name": "Nile Delta — Biogenic Play" },
+      { "id": "b20", "name": "Gulf of Mexico — Wilcox" },
+      { "id": "b21", "name": "West Africa — Pliocene SS" }
+    ],
 
+    "ps": [
+      { "id": "ps-1", "name": "Asmari-Pabdeh System", "basin": "Zagros Fold Belt" },
+      { "id": "ps-2", "name": "Kazhdumi-Sarvak System", "basin": "Zagros Fold Belt" },
+      { "id": "ps-3", "name": "Wolfcamp-Spraberry System", "basin": "Permian Basin" },
+      { "id": "ps-4", "name": "Kimmeridge-Brent System", "basin": "North Sea" },
+      { "id": "ps-5", "name": "Miocene Deltaic System", "basin": "Kutei Basin" },
+      { "id": "ps-6", "name": "Oligocene Lacustrine System", "basin": "Malay Basin" },
+      { "id": "ps-7", "name": "Vulcan-Plover System", "basin": "Browse Basin" },
+      { "id": "ps-8", "name": "Oligocene-Miocene System", "basin": "Nile Delta" },
+      { "id": "ps-9", "name": "Akata-Agbada System", "basin": "Niger Delta" },
+      { "id": "ps-10", "name": "Vaca Muerta System", "basin": "Neuquén Basin" },
+      { "id": "ps-11", "name": "Devonian Carbonate System", "basin": "Murzuq Basin" },
+      { "id": "ps-12", "name": "Cretaceous Rift System", "basin": "Sergipe-Alagoas" },
+      { "id": "ps-13", "name": "Mesozoic Carbonate System", "basin": "South Caspian" },
+      { "id": "ps-14", "name": "Triassic–Jurassic System", "basin": "Barents Sea" },
+      { "id": "ps-15", "name": "Pre-Salt Carbonate System", "basin": "East Greenland" },
+      { "id": "ps-16", "name": "Cambrian–Ordovician System", "basin": "Tarim Basin" },
+      { "id": "ps-17", "name": "Oligocene Carbonate Reef System", "basin": "Malay Basin — Arang Fm." },
+      { "id": "ps-18", "name": "Miocene Delta Front System", "basin": "Kutei Basin — Tunu Field" },
+      { "id": "ps-19", "name": "Eocene Turbidite System", "basin": "Borneo — Miri Formation" },
+      { "id": "ps-20", "name": "Paleogene Delta System", "basin": "Niger Delta — Agbada Fm." },
+      { "id": "ps-21", "name": "Biogenic Gas System", "basin": "Nile Delta — Biogenic Play" },
+      { "id": "ps-22", "name": "Lower Wilcox Turbidite System", "basin": "Gulf of Mexico — Wilcox" },
+      { "id": "ps-23", "name": "Pliocene Submarine Fan System", "basin": "West Africa — Pliocene SS" }
+    ],
+
+    "plays": [
+      { "id": "pl-1", "name": "Asmari Anticline Play", "petSysId": "ps-1" },
+      { "id": "pl-2", "name": "Bangestan Thrust Play", "petSysId": "ps-2" },
+      { "id": "pl-3", "name": "Wolfcamp Unconventional", "petSysId": "ps-3" },
+      { "id": "pl-4", "name": "Brent Province Tilted Fault Block", "petSysId": "ps-4" },
+      { "id": "pl-5", "name": "Miocene Deltaic Sand", "petSysId": "ps-5" },
+      { "id": "pl-6", "name": "Group F–I Carbonate Reef Play", "petSysId": "ps-6" },
+      { "id": "pl-7", "name": "Plover Gas Sand", "petSysId": "ps-7" },
+      { "id": "pl-8", "name": "Pliocene Deepwater Fan", "petSysId": "ps-8" },
+      { "id": "pl-9", "name": "Agbada Rollover Anticline", "petSysId": "ps-9" },
+      { "id": "pl-10", "name": "Vaca Muerta Tight Oil", "petSysId": "ps-10" }
+    ],
+
+    "prospects": [
+      { "id": "pr-alpha", "name": "Prospect Alpha", "playId": "pl-1", "petSysId": "ps-1", "basin": "Zagros Fold Belt", "gcos": 0.231 },
+      { "id": "pr-beta", "name": "Prospect Beta", "playId": "pl-5", "petSysId": "ps-5", "basin": "Kutei Basin", "gcos": 0.138 },
+      { "id": "pr-gamma", "name": "Prospect Gamma", "playId": "pl-6", "petSysId": "ps-6", "basin": "Malay Basin", "gcos": 0.195 }
+    ]
+  };
   //  Dynamic cascade helpers 
   function _hubGetPS(basinName) {
     return _HUB_DATA.ps.filter(function(p){ return p.basin === basinName; });
@@ -56288,39 +56458,115 @@ if (document.readyState === "complete" || document.readyState === "interactive")
   }
 
   function hubStratRender() {
-    var sel = document.getElementById('strat-basin');
-    var canvas = document.getElementById('strat-canvas');
-    var leg = document.getElementById('strat-legend');
+    const sel = document.getElementById('strat-basin');
+    const canvas = document.getElementById('strat-canvas');
+    const leg = document.getElementById('strat-legend');
     if (!sel || !canvas) return;
-    var basin = sel.value || Object.keys(_stratData)[0];
-    var rows = _stratData[basin] || [];
-    var roleCol = {source:'#B45309','source+res':'#D97706',reservoir:'#2563EB',seal:'#16A34A',overburden:'#64748B'};
-    var lithSym = {ss:'',carb:'≡',sh:'',evap:'',cgl:''};
-    var hcCol = {oil:'#D97706',gas:'#2563EB','oil/gas':'#7C3AED','—':'transparent'};
-    var h = '<table style="width:100%;border-collapse:collapse;font-size:10px">'
-      + '<thead><tr style="border-bottom:2px solid var(--brand);font-size:8px;color:var(--t3)">'
-      + '<th style="padding:4px 8px;text-align:right;width:70px">AGE (Ma)</th>'
-      + '<th style="padding:4px 4px;width:20px"></th>'
-      + '<th style="padding:4px 10px;text-align:left">FORMATION</th>'
-      + '<th style="padding:4px 8px;text-align:left">ROLE</th>'
-      + '<th style="padding:4px 8px;text-align:left">PET. SYSTEM</th>'
-      + '<th style="padding:4px 8px;text-align:center">HC</th></tr></thead><tbody>';
-    rows.forEach(function(r){
-      var rc = roleCol[r.role]||'#64748B';
-      var sym = lithSym[r.lith]||'·';
-      var hcc = hcCol[r.hc]||'transparent';
-      h += '<tr class="strat-row"><td class="strat-age">'+r.age+'</td>'
-         + '<td style="background:'+rc+'22;text-align:center;color:'+rc+';font-size:11px">'+sym+'</td>'
-         + '<td class="strat-name">'+r.name+'</td>'
-         + '<td><span class="strat-badge" style="background:'+rc+'22;color:'+rc+'">'+r.role+'</span></td>'
-         + '<td style="padding:6px 8px;font-size:8px;color:var(--t3)">'+r.ps+'</td>'
-         + '<td style="padding:6px 8px;text-align:center">'+(r.hc!=='—'?'<span style="font-size:8px;padding:2px 5px;border-radius:8px;background:'+hcc+'22;color:'+hcc+';font-weight:700">'+r.hc+'</span>':'')+'</td>'
-         + '</tr>';
-    });
-    h += '</tbody></table>';
-    canvas.innerHTML = h;
-    if (leg) leg.innerHTML = '<b style="color:var(--t1)">Lithology:</b> ss ≡carb sh evap<br>'
-      + '<b style="color:var(--t1)">Role:</b> <span style="color:#B45309"></span>source <span style="color:#2563EB"></span>reservoir <span style="color:#16A34A"></span>seal';
+
+    const basin = sel.value || Object.keys(_stratData)[0];
+    const rows = _stratData[basin] || [];
+
+    const roleCol = {
+      source:'#B45309',
+      'source+res':'#D97706',
+      reservoir:'#2563EB',
+      seal:'#16A34A',
+      overburden:'#64748B'
+    };
+
+    const lithSym = { ss:'', carb:'≡', sh:'', evap:'', cgl:'' };
+
+    const hcCol = {
+      oil:'#D97706',
+      gas:'#2563EB',
+      'oil/gas':'#7C3AED',
+      '—':'transparent'
+    };
+
+    canvas.innerHTML = `
+      <table class="w-full text-[10px] border-collapse table-fixed">
+        
+        <colgroup>
+          <col class="w-[70px]">
+          <col class="w-[28px]">   <!-- ✅ fix narrow column -->
+          <col>
+          <col>
+          <col>
+          <col class="w-[60px]">
+        </colgroup>
+
+        <thead>
+          <tr class="border-b-2 border-[var(--brand)] text-[8px] text-[var(--t3)]">
+            <th class="px-2 py-3 text-right">AGE (Ma)</th>
+            <th class="px-1 py-3 text-center"></th>
+            <th class="px-2 py-3 text-left">FORMATION</th>
+            <th class="px-2 py-3 text-left">ROLE</th>
+            <th class="px-2 py-3 text-left">PET. SYSTEM</th>
+            <th class="px-2 py-3 text-center">HC</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          ${rows.map(r => {
+            const rc = roleCol[r.role] || '#64748B';
+            const sym = lithSym[r.lith] || '·';
+            const hcc = hcCol[r.hc] || 'transparent';
+
+            return `
+              <tr class="hover:bg-white/5 transition border-b border-[var(--b1)">
+                
+                <td class="px-2 py-3 text-right whitespace-nowrap">
+                  ${r.age}
+                </td>
+
+                <td class="px-1 py-3 text-center"
+                    style="background:${rc}22;color:${rc}">
+                  ${sym}
+                </td>
+
+                <td class="px-2 py-3 truncate">
+                  ${r.name}
+                </td>
+
+                <td class="px-2 py-3">
+                  <span class="px-2 py-[2px] rounded-full text-[9px] font-semibold"
+                        style="background:${rc}22;color:${rc}">
+                    ${r.role}
+                  </span>
+                </td>
+
+                <td class="px-2 py-3 text-[8px] text-[var(--t3)] truncate">
+                  ${r.ps}
+                </td>
+
+                <td class="px-2 py-3 text-center">
+                  ${
+                    r.hc !== '—'
+                      ? `<span class="px-2 py-[2px] rounded-full text-[9px] font-bold"
+                              style="background:${hcc}22;color:${hcc}">
+                            ${r.hc}
+                        </span>`
+                      : ''
+                  }
+                </td>
+
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+
+      </table>
+    `;
+
+    if (leg) {
+      leg.innerHTML = `
+        <b style="color:var(--t1)">Lithology:</b> ss ≡carb sh evap<br>
+        <b style="color:var(--t1)">Role:</b>
+        <span style="color:#B45309"></span> source
+        <span style="color:#2563EB"></span> reservoir
+        <span style="color:#16A34A"></span> seal
+      `;
+    }
   }
 
   //  REPORT GENERATOR 
@@ -59199,15 +59445,105 @@ function hubFiscalRender() {
 // 
 //  5. CARBON INTENSITY
 // 
+
+// function hubCarbonRender() {
+//   var out = document.getElementById('carbon-output'); if(!out) return;
+//   var cpLow  = parseFloat((document.getElementById('carbon-p-low') ||{}).value||25);
+//   var cpMid  = parseFloat((document.getElementById('carbon-p-mid') ||{}).value||80);
+//   var cpHigh = parseFloat((document.getElementById('carbon-p-high')||{}).value||150);
+
+//   // Carbon intensity by development concept (kgCO2e/boe)
+//   var conceptIntensity = {
+//     'Onshore Central Processing Facility': {s1:12, s2:5, flare:3},
+//     'Fixed Wellhead Platform':             {s1:18, s2:8, flare:4},
+//     'Fixed Platform GBS':                  {s1:22, s2:10, flare:5},
+//     'FPSO + CPF + FLNG':                   {s1:35, s2:15, flare:8},
+//     'Subsea Tieback to FPU':               {s1:28, s2:12, flare:5},
+//     'Horizontal Multi-frac Onshore':       {s1:8,  s2:4,  flare:2},
+//     'Unconventional Pad Drilling':         {s1:9,  s2:4,  flare:2},
+//   };
+
+//   var discoveries = window.DISCOVERIES||[];
+//   if(!discoveries.length){out.innerHTML='<div style="padding:32px;text-align:center;color:var(--t3)">No discovery data available.</div>';return;}
+
+//   var html = '<div style="font-size:10px;color:var(--t1)">';
+//   html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px;background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.25);border-radius:6px">'
+//     +'<span style="font-size:18px"></span>'
+//     +'<div><b>Carbon Intensity by Discovery</b><br>'
+//     +'<span style="color:var(--t3);font-size:8.5px">Scope 1 & 2 emissions · kgCO₂e/boe · Carbon cost at $'+cpLow+' / $'+cpMid+' / $'+cpHigh+'/tCO₂</span></div></div>';
+
+//   // Table header
+//   html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:8.5px">'
+//     +'<thead><tr style="color:var(--t3);border-bottom:1px solid var(--b1)">'
+//     +'<th style="text-align:left;padding:5px 6px">Discovery</th>'
+//     +'<th style="padding:5px 4px;text-align:center">Dev Concept</th>'
+//     +'<th style="padding:5px 4px;text-align:center">S1+S2 (kg/boe)</th>'
+//     +'<th style="padding:5px 4px;text-align:center">Total Intensity</th>'
+//     +'<th style="padding:5px 4px;text-align:center">Cost @$'+cpLow+'</th>'
+//     +'<th style="padding:5px 4px;text-align:center">Cost @$'+cpMid+'</th>'
+//     +'<th style="padding:5px 4px;text-align:center">Cost @$'+cpHigh+'</th>'
+//     +'<th style="padding:5px 4px;text-align:center">Rating</th>'
+//     +'</tr></thead><tbody>';
+
+//   discoveries.forEach(function(d, i) {
+//     var ci = conceptIntensity[d.devConcept] || {s1:20,s2:8,flare:4};
+//     var totalKg = ci.s1 + ci.s2 + ci.flare;
+//     var totalTonne = totalKg/1000; // tCO2e/boe
+//     var costLow  = (totalTonne * cpLow).toFixed(2);
+//     var costMid  = (totalTonne * cpMid).toFixed(2);
+//     var costHigh = (totalTonne * cpHigh).toFixed(2);
+//     var rating   = totalKg<15?' Low':totalKg<25?' Medium':' High';
+//     var ratingCol= totalKg<15?'#10B981':totalKg<25?'#F59E0B':'#EF4444';
+//     var bg = i%2===0?'':'background:rgba(255,255,255,.02)';
+
+//     html += '<tr style="border-bottom:1px solid var(--b1);'+bg+'">'
+//       +'<td style="padding:5px 6px;font-weight:600;color:var(--t1)">'+d.name+'</td>'
+//       +'<td style="padding:5px 4px;color:var(--t3);text-align:center;font-size:8px">'+d.devConcept+'</td>'
+//       +'<td style="padding:5px 4px;text-align:center">'
+//         +'<div style="font-size:8px;color:var(--t3)">S1:'+ci.s1+' S2:'+ci.s2+' F:'+ci.flare+'</div></td>'
+//       +'<td style="padding:5px 4px;text-align:center;font-weight:700;color:'+ratingCol+'">'+totalKg+' kg</td>'
+//       +'<td style="padding:5px 4px;text-align:center;color:var(--t2)">$'+costLow+'/boe</td>'
+//       +'<td style="padding:5px 4px;text-align:center;color:var(--t2)">$'+costMid+'/boe</td>'
+//       +'<td style="padding:5px 4px;text-align:center;color:'+ratingCol+'">$'+costHigh+'/boe</td>'
+//       +'<td style="padding:5px 4px;text-align:center;color:'+ratingCol+'">'+rating+'</td>'
+//       +'</tr>';
+//   });
+
+//   html += '</tbody></table></div>';
+
+//   // Portfolio average
+//   var avgCI = discoveries.reduce(function(sum,d){
+//     var ci=conceptIntensity[d.devConcept]||{s1:20,s2:8,flare:4};
+//     return sum+ci.s1+ci.s2+ci.flare;
+//   },0)/discoveries.length;
+
+//   html += '<div style="margin-top:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'
+//     +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center">'
+//     +'<div style="font-size:8px;color:var(--t3)">Portfolio Avg Intensity</div>'
+//     +'<div style="font-size:16px;font-weight:800;color:'+(avgCI<20?'#10B981':avgCI<30?'#F59E0B':'#EF4444')+'">'+Math.round(avgCI)+' kg/boe</div></div>'
+//     +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center">'
+//     +'<div style="font-size:8px;color:var(--t3)">Avg Carbon Cost @$'+cpMid+'/t</div>'
+//     +'<div style="font-size:16px;font-weight:800;color:var(--brand)">$'+(avgCI/1000*cpMid).toFixed(2)+'/boe</div></div>'
+//     +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center">'
+//     +'<div style="font-size:8px;color:var(--t3)">Lowest Intensity Asset</div>'
+//     +'<div style="font-size:11px;font-weight:700;color:#10B981">'
+//     +(function(){var best=discoveries.reduce(function(b,d){var ci=conceptIntensity[d.devConcept]||{s1:20,s2:8,flare:4};var t=ci.s1+ci.s2+ci.flare;return(!b||t<b.t)?{d:d,t:t}:b;},{});return best?best.d.name:'?';})()
+//     +'</div></div></div></div>';
+
+//   out.innerHTML = html;
+// }
+
 function hubCarbonRender() {
   var out = document.getElementById('carbon-output'); if(!out) return;
+  
+  // 1. Inputs & Data Setup
   var cpLow  = parseFloat((document.getElementById('carbon-p-low') ||{}).value||25);
   var cpMid  = parseFloat((document.getElementById('carbon-p-mid') ||{}).value||80);
   var cpHigh = parseFloat((document.getElementById('carbon-p-high')||{}).value||150);
 
-  // Carbon intensity by development concept (kgCO2e/boe)
   var conceptIntensity = {
     'Onshore Central Processing Facility': {s1:12, s2:5, flare:3},
+    'Onshore Central Gathering Station':   {s1:10, s2:4, flare:2}, // Added missing concept
     'Fixed Wellhead Platform':             {s1:18, s2:8, flare:4},
     'Fixed Platform GBS':                  {s1:22, s2:10, flare:5},
     'FPSO + CPF + FLNG':                   {s1:35, s2:15, flare:8},
@@ -59216,74 +59552,100 @@ function hubCarbonRender() {
     'Unconventional Pad Drilling':         {s1:9,  s2:4,  flare:2},
   };
 
-  var discoveries = window.DISCOVERIES||[];
-  if(!discoveries.length){out.innerHTML='<div style="padding:32px;text-align:center;color:var(--t3)">No discovery data available.</div>';return;}
+  var discoveries = window.DISCOVERIES || [];
+  if(!discoveries.length) {
+    out.innerHTML = '<div style="padding:32px;text-align:center;color:var(--t3)">No discovery data available.</div>';
+    return;
+  }
 
-  var html = '<div style="font-size:10px;color:var(--t1)">';
-  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px;background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.25);border-radius:6px">'
-    +'<span style="font-size:18px"></span>'
-    +'<div><b>Carbon Intensity by Discovery</b><br>'
-    +'<span style="color:var(--t3);font-size:8.5px">Scope 1 & 2 emissions · kgCO₂e/boe · Carbon cost at $'+cpLow+' / $'+cpMid+' / $'+cpHigh+'/tCO₂</span></div></div>';
-
-  // Table header
-  html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:8.5px">'
-    +'<thead><tr style="color:var(--t3);border-bottom:1px solid var(--b1)">'
-    +'<th style="text-align:left;padding:5px 6px">Discovery</th>'
-    +'<th style="padding:5px 4px;text-align:center">Dev Concept</th>'
-    +'<th style="padding:5px 4px;text-align:center">S1+S2 (kg/boe)</th>'
-    +'<th style="padding:5px 4px;text-align:center">Total Intensity</th>'
-    +'<th style="padding:5px 4px;text-align:center">Cost @$'+cpLow+'</th>'
-    +'<th style="padding:5px 4px;text-align:center">Cost @$'+cpMid+'</th>'
-    +'<th style="padding:5px 4px;text-align:center">Cost @$'+cpHigh+'</th>'
-    +'<th style="padding:5px 4px;text-align:center">Rating</th>'
-    +'</tr></thead><tbody>';
+  // 2. Process Data for Chart and Table
+  var labels = [], intensityData = [], barColors = [];
+  var tableRows = "";
+  var totalSum = 0;
+  var bestAsset = { name: 'None', intensity: 999 };
 
   discoveries.forEach(function(d, i) {
-    var ci = conceptIntensity[d.devConcept] || {s1:20,s2:8,flare:4};
+    // Fallback for missing concepts
+    var ci = conceptIntensity[d.devConcept] || {s1:20, s2:8, flare:4}; 
     var totalKg = ci.s1 + ci.s2 + ci.flare;
-    var totalTonne = totalKg/1000; // tCO2e/boe
-    var costLow  = (totalTonne * cpLow).toFixed(2);
-    var costMid  = (totalTonne * cpMid).toFixed(2);
-    var costHigh = (totalTonne * cpHigh).toFixed(2);
-    var rating   = totalKg<15?' Low':totalKg<25?' Medium':' High';
-    var ratingCol= totalKg<15?'#10B981':totalKg<25?'#F59E0B':'#EF4444';
-    var bg = i%2===0?'':'background:rgba(255,255,255,.02)';
+    
+    // Update Stats
+    totalSum += totalKg;
+    if(totalKg < bestAsset.intensity) bestAsset = { name: d.name, intensity: totalKg };
 
-    html += '<tr style="border-bottom:1px solid var(--b1);'+bg+'">'
-      +'<td style="padding:5px 6px;font-weight:600;color:var(--t1)">'+d.name+'</td>'
-      +'<td style="padding:5px 4px;color:var(--t3);text-align:center;font-size:8px">'+d.devConcept+'</td>'
-      +'<td style="padding:5px 4px;text-align:center">'
-        +'<div style="font-size:8px;color:var(--t3)">S1:'+ci.s1+' S2:'+ci.s2+' F:'+ci.flare+'</div></td>'
-      +'<td style="padding:5px 4px;text-align:center;font-weight:700;color:'+ratingCol+'">'+totalKg+' kg</td>'
-      +'<td style="padding:5px 4px;text-align:center;color:var(--t2)">$'+costLow+'/boe</td>'
-      +'<td style="padding:5px 4px;text-align:center;color:var(--t2)">$'+costMid+'/boe</td>'
-      +'<td style="padding:5px 4px;text-align:center;color:'+ratingCol+'">$'+costHigh+'/boe</td>'
-      +'<td style="padding:5px 4px;text-align:center;color:'+ratingCol+'">'+rating+'</td>'
-      +'</tr>';
+    // Chart Arrays
+    labels.push(d.name);
+    intensityData.push(totalKg);
+    var color = totalKg < 15 ? '#10B981' : totalKg < 25 ? '#F59E0B' : '#EF4444';
+    barColors.push(color);
+
+    // Table HTML
+    var costMid = ((totalKg / 1000) * cpMid).toFixed(2);
+    var bg = i % 2 === 0 ? '' : 'background:rgba(255,255,255,.02)';
+    
+    tableRows += `<tr style="border-bottom:1px solid var(--b1);${bg}">
+      <td style="padding:6px;font-weight:600;color:var(--t1)">${d.name}</td>
+      <td style="padding:6px;text-align:center;color:var(--t3);font-size:8px">${d.devConcept}</td>
+      <td style="padding:6px;text-align:center;font-weight:700;color:${color}">${totalKg} kg</td>
+      <td style="padding:6px;text-align:center;color:var(--brand)">$${costMid}</td>
+      <td style="padding:6px;text-align:center;color:${color};font-weight:bold">${totalKg < 15 ? 'LOW' : totalKg < 25 ? 'MED' : 'HIGH'}</td>
+    </tr>`;
   });
 
-  html += '</tbody></table></div>';
+  // 3. Render Structure
+  out.innerHTML = `
+    <div style="font-family:system-ui;">
+      <div style="height:200px; margin-bottom:20px;"><canvas id="carbonChart"></canvas></div>
+      <div style="overflow-x:auto">
+        <table style="width:100%; border-collapse:collapse; font-size:8.5px;">
+          <thead>
+            <tr style="color:var(--t3); border-bottom:1px solid var(--b1); text-align:center;">
+              <th style="text-align:left; padding:6px;">Discovery</th>
+              <th>Concept</th><th>Intensity</th><th>Cost @$${cpMid}</th><th>Rating</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+      <div style="margin-top:12px; display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
+        <div style="background:var(--bg2); padding:8px; border-radius:6px; text-align:center;">
+          <div style="font-size:8px; color:var(--t3);">Avg Intensity</div>
+          <div style="font-size:14px; font-weight:800;">${Math.round(totalSum/discoveries.length)} kg</div>
+        </div>
+        <div style="background:var(--bg2); padding:8px; border-radius:6px; text-align:center;">
+          <div style="font-size:8px; color:var(--t3);">Portfolio Cost</div>
+          <div style="font-size:14px; font-weight:800; color:var(--brand);">$${((totalSum/discoveries.length)/1000*cpMid).toFixed(2)}</div>
+        </div>
+        <div style="background:var(--bg2); padding:8px; border-radius:6px; text-align:center;">
+          <div style="font-size:8px; color:var(--t3);">Best Asset</div>
+          <div style="font-size:10px; font-weight:700; color:#10B981;">${bestAsset.name}</div>
+        </div>
+      </div>
+    </div>
+  `;
 
-  // Portfolio average
-  var avgCI = discoveries.reduce(function(sum,d){
-    var ci=conceptIntensity[d.devConcept]||{s1:20,s2:8,flare:4};
-    return sum+ci.s1+ci.s2+ci.flare;
-  },0)/discoveries.length;
-
-  html += '<div style="margin-top:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'
-    +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center">'
-    +'<div style="font-size:8px;color:var(--t3)">Portfolio Avg Intensity</div>'
-    +'<div style="font-size:16px;font-weight:800;color:'+(avgCI<20?'#10B981':avgCI<30?'#F59E0B':'#EF4444')+'">'+Math.round(avgCI)+' kg/boe</div></div>'
-    +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center">'
-    +'<div style="font-size:8px;color:var(--t3)">Avg Carbon Cost @$'+cpMid+'/t</div>'
-    +'<div style="font-size:16px;font-weight:800;color:var(--brand)">$'+(avgCI/1000*cpMid).toFixed(2)+'/boe</div></div>'
-    +'<div style="background:var(--bg2);border-radius:6px;padding:8px;text-align:center">'
-    +'<div style="font-size:8px;color:var(--t3)">Lowest Intensity Asset</div>'
-    +'<div style="font-size:11px;font-weight:700;color:#10B981">'
-    +(function(){var best=discoveries.reduce(function(b,d){var ci=conceptIntensity[d.devConcept]||{s1:20,s2:8,flare:4};var t=ci.s1+ci.s2+ci.flare;return(!b||t<b.t)?{d:d,t:t}:b;},{});return best?best.d.name:'?';})()
-    +'</div></div></div></div>';
-
-  out.innerHTML = html;
+  // 4. Initialize Chart
+  new Chart(document.getElementById('carbonChart'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: intensityData,
+        backgroundColor: barColors,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94A3B8', font: { size: 9 } } },
+        y: { grid: { display: false }, ticks: { color: '#94A3B8', font: { size: 9 } } }
+      }
+    }
+  });
 }
 
 // 
@@ -60758,7 +61120,7 @@ function hubTimelineRender() {
   var rowH = 26;
   var W = Math.max(600,leftPad+yearSpan*28);
 
-  var html='<div style="overflow-x:auto">';
+  var html='<div style="overflow-x:auto;min-height: 500px">';
   html+='<div style="position:relative;min-width:'+W+'px">';
 
   // Year axis header
@@ -60912,78 +61274,100 @@ function hubRadarRender() {
   var idB  = (document.getElementById('radar-b')||{}).value;
   var dA   = _radarEntityData(type,idA);
   var dB   = _radarEntityData(type,idB);
-  if(!dA||!dB){out.innerHTML='<div style="padding:48px;text-align:center;color:var(--t3)">Select two different entities.</div>';return;}
 
-  var W=420, H=400, cx=W/2, cy=H/2-10, R=140;
-  var axes=dA.axes;
-  var N=axes.length;
-  var angleStep=Math.PI*2/N;
-
-  function pt(i,val,r){ var a=i*angleStep-Math.PI/2; return [cx+Math.cos(a)*r*val,cy+Math.sin(a)*r*val]; }
-  function ptOuter(i){ return pt(i,1,R); }
-
-  var svg='<svg width="'+W+'" height="'+H+'" style="font-family:system-ui">';
-
-  // Background circles
-  [0.25,0.5,0.75,1].forEach(function(r){
-    svg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+(R*r)+'" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>';
-    svg+='<text x="'+cx+'" y="'+(cy-R*r-3)+'" text-anchor="middle" fill="rgba(255,255,255,0.2)" font-size="7">'+(r*100)+'%</text>';
-  });
-
-  // Axis spokes
-  for(var i=0;i<N;i++){
-    var p=ptOuter(i);
-    svg+='<line x1="'+cx+'" y1="'+cy+'" x2="'+p[0]+'" y2="'+p[1]+'" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>';
-    var lp=ptOuter(i);
-    var textX=cx+(lp[0]-cx)*1.18, textY=cy+(lp[1]-cy)*1.18;
-    svg+='<text x="'+textX+'" y="'+textY+'" text-anchor="middle" dominant-baseline="middle" fill="#94A3B8" font-size="8.5">'+axes[i].key+'</text>';
+  if(!dA || !dB) {
+    out.innerHTML = '<div style="padding:48px;text-align:center;color:var(--t3)">Select two different entities.</div>';
+    return;
   }
 
-  // Entity A polygon
-  var polyA=dA.axes.map(function(ax,i){return pt(i,ax.val,R);});
-  svg+='<polygon points="'+polyA.map(function(p){return p[0]+','+p[1];}).join(' ')+'" fill="rgba(107,70,193,0.15)" stroke="#00c8ff" stroke-width="2"/>';
-  polyA.forEach(function(p){svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="3" fill="#00c8ff"/>';});
+  // 1. Prepare Chart.js Data
+  var labels = dA.axes.map(function(ax) { return ax.key; });
+  var dataA = dA.axes.map(function(ax) { return ax.val * 100; });
+  var dataB = dB.axes.map(function(ax, i) { return dB.axes[i].val * 100; });
 
-  // Entity B polygon
-  var polyB=dB.axes.map(function(ax,i){return pt(i,ax.val,R);});
-  svg+='<polygon points="'+polyB.map(function(p){return p[0]+','+p[1];}).join(' ')+'" fill="rgba(16,185,129,0.15)" stroke="#10B981" stroke-width="2"/>';
-  polyB.forEach(function(p){svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="3" fill="#10B981"/>';});
+  // 2. Clear output and create Canvas + Table Container
+  out.innerHTML = `
+    <div style="max-width: 450px; margin: 0 auto;">
+      <canvas id="radarCanvas" width="420" height="400" class="bg-[var(--bg2)]"></canvas>
+    </div>
+    <div id="radarTableContainer"></div>
+  `;
 
-  // Legend
-  svg+='<rect x="10" y="'+(H-32)+'" width="12" height="4" fill="#00c8ff" rx="2"/>'
-    +'<text x="26" y="'+(H-26)+'" fill="#94A3B8" font-size="9">'+dA.label+'</text>';
-  svg+='<rect x="10" y="'+(H-18)+'" width="12" height="4" fill="#10B981" rx="2"/>'
-    +'<text x="26" y="'+(H-12)+'" fill="#94A3B8" font-size="9">'+dB.label+'</text>';
+  // 3. Initialize Chart.js
+  var ctx = document.getElementById('radarCanvas').getContext('2d');
+  new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: dA.label,
+          data: dataA,
+          backgroundColor: 'rgba(0, 200, 255, 0.15)',
+          borderColor: '#00c8ff',
+          borderWidth: 2,
+          pointBackgroundColor: '#00c8ff'
+        },
+        {
+          label: dB.label,
+          data: dataB,
+          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+          borderColor: '#10B981',
+          borderWidth: 2,
+          pointBackgroundColor: '#10B981'
+        }
+      ]
+    },
+    options: {
+      scales: {
+        r: {
+          angleLines: { color: 'rgba(255,255,255,0.1)' },
+          grid: { color: 'rgba(255,255,255,0.06)' },
+          pointLabels: { color: '#94A3B8', font: { size: 10 } },
+          ticks: {
+            display: false, // Hide numeric labels on axes for clean look
+            stepSize: 25
+          },
+          suggestedMin: 0,
+          suggestedMax: 100
+        }
+      },
+      plugins: {
+        legend: { labels: { color: '#94A3B8', font: { size: 11 } } }
+      }
+    }
+  });
 
-  svg+='</svg>';
-
-  // Score table
-  var table='<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:8.5px">'
+  // 4. Score table (Maintained from your original logic)
+  var N = labels.length;
+  var table = '<div style="overflow-x:auto;margin-top:16px"><table style="width:100%;border-collapse:collapse;font-size:8.5px;font-family:system-ui">'
     +'<thead><tr style="color:var(--t3);border-bottom:1px solid var(--b1)">'
     +'<th style="text-align:left;padding:4px">Dimension</th>'
     +'<th style="padding:4px;color:#00c8ff;text-align:center">'+dA.label.substring(0,18)+'</th>'
     +'<th style="padding:4px;color:#10B981;text-align:center">'+dB.label.substring(0,18)+'</th>'
     +'<th style="padding:4px;text-align:center">Edge</th></tr></thead><tbody>';
 
-  axes.forEach(function(ax,i){
-    var aVal=dA.axes[i].val, bVal=dB.axes[i].val;
-    var edge=aVal>bVal?'<span style="color:#00c8ff">A </span>':aVal<bVal?'<span style="color:#10B981">B </span>':'<span style="color:var(--t3)">Tie</span>';
-    table+='<tr style="border-bottom:1px solid var(--b1)">'
+  dA.axes.forEach(function(ax, i) {
+    var aVal = dA.axes[i].val, bVal = dB.axes[i].val;
+    var edge = aVal > bVal ? '<span style="color:#00c8ff">A </span>' : aVal < bVal ? '<span style="color:#10B981">B </span>' : '<span style="color:var(--t3)">Tie</span>';
+    table += '<tr style="border-bottom:1px solid var(--b1)">'
       +'<td style="padding:4px;color:var(--t2)">'+ax.key+'</td>'
       +'<td style="padding:4px;text-align:center;color:#00c8ff">'+Math.round(aVal*100)+'%</td>'
       +'<td style="padding:4px;text-align:center;color:#10B981">'+Math.round(bVal*100)+'%</td>'
       +'<td style="padding:4px;text-align:center">'+edge+'</td></tr>';
   });
-  var totalA=Math.round(dA.axes.reduce(function(s,a){return s+a.val;},0)/N*100);
-  var totalB=Math.round(dB.axes.reduce(function(s,a){return s+a.val;},0)/N*100);
-  table+='<tr style="border-top:2px solid var(--b1);font-weight:700">'
+
+  var totalA = Math.round(dA.axes.reduce(function(s,a){return s+a.val;},0)/N*100);
+  var totalB = Math.round(dB.axes.reduce(function(s,a){return s+a.val;},0)/N*100);
+  
+  table += '<tr style="border-top:2px solid var(--b1);font-weight:700">'
     +'<td style="padding:4px;color:var(--t1)">Overall Average</td>'
     +'<td style="padding:4px;text-align:center;color:#00c8ff">'+totalA+'%</td>'
     +'<td style="padding:4px;text-align:center;color:#10B981">'+totalB+'%</td>'
     +'<td style="padding:4px;text-align:center">'+(totalA>totalB?'<b style="color:#00c8ff">A wins</b>':totalA<totalB?'<b style="color:#10B981">B wins</b>':'<span style="color:var(--t3)">Tie</span>')+'</td></tr>';
-  table+='</tbody></table></div>';
+  table += '</tbody></table></div>';
 
-  out.innerHTML='<div style="font-size:10px;color:var(--t1)">'+svg+table+'</div>';
+  document.getElementById('radarTableContainer').innerHTML = table;
 }
 
 // 

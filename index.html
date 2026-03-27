@@ -10,6 +10,19 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css" />
     
+    <!-- <style>
+      #map-resizer {
+        height: 6px;
+        cursor: row-resize;
+        background: rgba(255,255,255,0.1);
+        position: relative;
+        z-index: 10;
+      }
+
+      #map-resizer:hover {
+        background: rgba(107, 70, 193, 0.5);
+      }
+    </style> -->
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
@@ -21,7 +34,7 @@
   </head>
   <body>
   
-    <div class="map-area" style="position: relative">
+    <div class="map-area" id="world-map" style="position: relative">
       <div
         id="leaflet-map"
         style="width: 100%; height: 100%; border-radius: 8px; z-index: 1"
@@ -63,11 +76,48 @@
           letter-spacing: 0.4px;
         "
       >
-        ⌂ Reset View
+        Reset View
       </button>
-      
+      <!-- BASEMAP SELECTOR -->
+      <select class="basemap-select" onchange="_switchBasemap(this.value)" title="Change basemap"
+        style="
+          position: absolute;
+          top: 10px;
+          right: 140px;
+          z-index: 1000;
+          background: rgba(26, 32, 44, 0.82);
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 5px;
+          padding: 4px 8px;
+          font-size: 10px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: inherit;
+          letter-spacing: 0.4px;
+          -webkit-appearance: none;
+          appearance: none;
+          background-image: url('data:image/svg+xml;utf8,<svg fill=\"white\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>');
+          background-repeat: no-repeat;
+          background-position: right 4px center;
+          background-size: 14px;
+          padding-right: 20px;
+        ">
+        <option value="auto">Auto (Theme)</option>
+        <option value="esri-street">Esri Street</option>
+        <option value="esri-topo">Esri Topographic</option>
+        <option value="esri-imagery">Esri Satellite</option>
+        <option value="esri-darkgray">Esri Dark Gray</option>
+        <option value="esri-lightgray">Esri Light Gray</option>
+        <option value="osm">OpenStreetMap</option>
+        <option value="carto-light">Carto Light</option>
+        <option value="carto-dark">Carto Dark</option>
+      </select>
+      <!-- DRAG HANDLE -->
       <div id="map-resize-handle"></div>
     </div>
+
+    <div id="map-resizer"></div> 
 
     <!-- SIDEBAR -->
     <nav class="sb" id="sidebar">
@@ -415,7 +465,7 @@
 
       <!-- Sidebar footer -->
       <div class="sb-btm">
-        <div style="display: flex; align-items: center; gap: 8px">
+        <div class="flex items-center gap-2">
           <div class="avatar">VJ</div>
           <div class="sb-user">
             <div
@@ -533,7 +583,7 @@
         </div>
       </header>
 
-      <div class="content" id="main-content" style="">
+      <div class="content" id="main-content">
         <!-- ==================== PORTFOLIO ==================== -->
         <section class="sec on" id="sec-portfolio">
           <div class="tabs" id="portfolio-tabs">
@@ -7201,6 +7251,7 @@
           </div>
         </section>
 
+        <!-- ==================== PARAMETER ==================== -->
         <section class="sec" id="sec-params">
           <div class="tabs" id="params-tabs">
             <div class="tab on" onclick="switchParamsTab('dist', this)">
@@ -13409,7 +13460,7 @@
             <div id="hub-kg-split" style="display:flex;flex-direction:row;gap:0;position:relative;user-select:none">
 
               <!-- LEFT: Graph canvas -->
-              <div id="hub-kg-left" style="flex:0 0 calc(65% - 5px);min-width:220px;position:relative;background:var(--bg3);border-radius:8px;border:1px solid var(--b1);overflow:hidden">
+              <div id="hub-kg-left" style="flex:0 0 calc(65% - 5px);min-width:220px;position:relative;background:var(--bg3);border-radius:8px;border:1px solid var(--b1);overflow:hidden; min-height: 250px">
                 <!-- canvas injected here by hubKgDraw() -->
                 <!-- Legend overlay -->
                 <div style="position:absolute;bottom:10px;left:10px;background:var(--bg2);border-radius:6px;padding:5px 9px;border:1px solid var(--b1);font-size:8px;display:flex;flex-wrap:wrap;gap:5px;color:var(--t2);z-index:5;pointer-events:none;max-width:380px">
@@ -13502,8 +13553,8 @@
           </div>
 
           <!-- TAB 7: GEOLOGICAL REASONING -->
-          <div class="hub-pane" id="hub-pane-reasoning">
-            <div style="display:grid;grid-template-columns:280px 1fr;gap:14px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-reasoning">
+            <div style="display:grid;grid-template-columns:280px 1fr;gap:14px;min-height:450px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:16px;display:flex;flex-direction:column;gap:12px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Geological Reasoning Chain</div>
                 <div style="font-size:10px;color:var(--t3)">AI step-by-step geological argument per prospect. Each step traceable to KG evidence.</div>
@@ -13527,8 +13578,8 @@
           </div>
 
           <!-- TAB 8: NLQ -->
-          <div class="hub-pane" id="hub-pane-nlq">
-            <div style="display:flex;flex-direction:column;gap:12px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-nlq">
+            <div style="display:flex;flex-direction:column;gap:12px;min-height:400px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:16px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1);margin-bottom:6px"> Ask the Exploration Hub</div>
                 <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -13545,14 +13596,14 @@
                   <span class="nlq-chip" onclick="hubNLQChip(this)">What are the highest risk prospects?</span>
                 </div>
               </div>
-              <div style="flex:1;background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:16px;overflow-y:auto;min-height:400px" id="nlq-output">
+              <div style="flex:1;background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:16px;overflow-y:auto;min-height:250px" id="nlq-output">
                 <div style="padding:48px;text-align:center;color:var(--t3)"><div style="font-size:32px;opacity:.2;margin-bottom:8px"></div>Ask anything about your exploration data</div>
               </div>
             </div>
           </div>
 
           <!-- TAB 9: DRILL OPTIMIZER -->
-          <div class="hub-pane" id="hub-pane-drillopt">
+          <div class="hub-pane panel-ai" id="hub-pane-drillopt">
             <div style="display:grid;grid-template-columns:300px 1fr;gap:14px;min-height:560px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:16px;display:flex;flex-direction:column;gap:12px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Drilling Campaign Optimizer</div>
@@ -13581,8 +13632,8 @@
           </div>
 
           <!-- TAB 10: MATURATION TRACKER -->
-          <div class="hub-pane" id="hub-pane-maturation">
-            <div style="display:flex;flex-direction:column;gap:12px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-maturation">
+            <div style="display:flex;flex-direction:column;gap:12px;min-height:300px">
               <div style="display:flex;gap:10px;align-items:center;background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:12px 16px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Prospect Maturation Tracker</div>
                 <select id="mat-basin" onchange="hubMaturationRender()" style="margin-left:auto;background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:5px;padding:5px 8px;font-size:10px;font-family:inherit"><option value="">All Basins</option></select>
@@ -13595,22 +13646,23 @@
           </div>
 
           <!-- TAB 11: STRATIGRAPHY -->
-          <div class="hub-pane" id="hub-pane-strat">
-            <div style="display:grid;grid-template-columns:220px 1fr;gap:14px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-strat">
+            <div style="display:grid;grid-template-columns:220px 1fr;gap:14px;min-height:250px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:16px;display:flex;flex-direction:column;gap:12px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Stratigraphic Column</div>
                 <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">BASIN</div>
                   <select id="strat-basin" onchange="hubStratRender()" style="width:100%;background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:5px;padding:5px 8px;font-size:10px;font-family:inherit"></select></div>
                 <div id="strat-legend" style="font-size:8px;color:var(--t3);line-height:1.7"></div>
               </div>
-              <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:12px;overflow-y:auto;max-height:580px" id="strat-canvas">
+
+              <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);overflow-y:auto;max-height:580px" id="strat-canvas">
                 <div style="padding:48px;text-align:center;color:var(--t3)"><div style="font-size:32px;opacity:.2;margin-bottom:8px"></div>Select a basin</div>
               </div>
             </div>
           </div>
 
           <!-- TAB 12: REPORT GENERATOR -->
-          <div class="hub-pane" id="hub-pane-report">
+          <div class="hub-pane panel-ai" id="hub-pane-report">
             <div style="display:grid;grid-template-columns:270px 1fr;gap:14px;min-height:560px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:16px;display:flex;flex-direction:column;gap:12px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Report Generator</div>
@@ -13639,9 +13691,8 @@
             </div>
           </div>
 
-
           <!--  MAP PANE  -->
-          <div class="hub-pane" id="hub-pane-map">
+          <div class="hub-pane panel-ai" id="hub-pane-map">
             <!-- Sticky toolbar -->
             <div style="position:sticky;top:0;z-index:50;background:var(--bg);padding:6px 0 8px;display:flex;align-items:center;gap:10px;flex-shrink:0;border-bottom:1px solid var(--b1);margin-bottom:10px">
               <div style="font-size:11px;font-weight:700;color:var(--t1)"> Interactive Basin Map</div>
@@ -13661,8 +13712,8 @@
           </div>
 
           <!--  PROSPECT RANKING COPILOT PANE  -->
-          <div class="hub-pane" id="hub-pane-copilot">
-            <div style="display:grid;grid-template-columns:240px 1fr;gap:12px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-copilot">
+            <div style="display:grid;grid-template-columns:240px 1fr;gap:12px;min-height:450px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px;display:flex;flex-direction:column;gap:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Prospect Ranking Copilot</div>
                 <div style="font-size:10px;color:var(--t3);line-height:1.5">AI reads all prospects, all risk/resource data, and produces a ranked drill list with written rationale.</div>
@@ -13692,7 +13743,7 @@
           </div>
 
           <!--  INTEL NEWS FEED PANE  -->
-          <div class="hub-pane" id="hub-pane-newsfeed">
+          <div class="hub-pane panel-ai" id="hub-pane-newsfeed">
             <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;min-height:560px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px;display:flex;flex-direction:column;gap:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Exploration Intel Feed</div>
@@ -13721,8 +13772,8 @@
           </div>
 
           <!--  FISCAL & NPV PANE  -->
-          <div class="hub-pane" id="hub-pane-fiscal">
-            <div style="display:grid;grid-template-columns:260px 1fr;gap:12px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-fiscal">
+            <div style="display:grid;grid-template-columns:300px 1fr;gap:12px;min-height:560px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px;display:flex;flex-direction:column;gap:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Fiscal Regime & NPV</div>
                 <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">ASSET</div>
@@ -13736,7 +13787,7 @@
                   </select>
                 </div>
                 <div><div style="font-size:10px;color:var(--t3);margin-bottom:3px">OIL PRICE SCENARIOS ($/bbl)</div>
-                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">
+                  <div style="display:grid;gap:4px">
                     <input id="fiscal-p-low"  type="number" value="40"  placeholder="Low"  style="background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:4px;padding:4px 6px;font-size:10px;font-family:inherit;text-align:center">
                     <input id="fiscal-p-base" type="number" value="70"  placeholder="Base" style="background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:4px;padding:4px 6px;font-size:10px;font-family:inherit;text-align:center">
                     <input id="fiscal-p-high" type="number" value="100" placeholder="High" style="background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:4px;padding:4px 6px;font-size:10px;font-family:inherit;text-align:center">
@@ -13757,30 +13808,39 @@
           </div>
 
           <!--  CARBON INTENSITY PANE  -->
-          <div class="hub-pane" id="hub-pane-carbon">
-            <div style="display:grid;grid-template-columns:240px 1fr;gap:12px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-carbon">
+            <div style="display:grid;grid-template-columns:300px 1fr;gap:12px;min-height:560px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px;display:flex;flex-direction:column;gap:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Carbon Intensity</div>
                 <div style="font-size:10px;color:var(--t3);line-height:1.5">Scope 1 & 2 emissions per barrel by development concept. Carbon cost at multiple price scenarios.</div>
-                <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">CARBON PRICE ($/tCO₂)</div>
-                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">
-                    <input id="carbon-p-low"  type="number" value="25"  style="background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:4px;padding:4px 6px;font-size:10px;font-family:inherit;text-align:center">
-                    <input id="carbon-p-mid"  type="number" value="80"  style="background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:4px;padding:4px 6px;font-size:10px;font-family:inherit;text-align:center">
-                    <input id="carbon-p-high" type="number" value="150" style="background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:4px;padding:4px 6px;font-size:10px;font-family:inherit;text-align:center">
+                <div>
+                  <div style="font-size:10px;color:var(--t3);margin-bottom:4px">CARBON PRICE ($/tCO₂)</div>
+                  <div class="flex flex-col gap-2">
+                    <span class="flex flex-col gap-0.5">
+                      <span class="text-xs">Low</span>
+                      <input id="carbon-p-low"  type="number" value="25"  style="background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:4px;padding:4px 6px;font-size:12px;font-family:inherit;text-align:center">
+                    </span>
+                    <span class="flex flex-col gap-0.5">
+                      <span class="text-xs">Mid</span>
+                      <input id="carbon-p-mid"  type="number" value="80"  style="background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:4px;padding:4px 6px;font-size:12px;font-family:inherit;text-align:center">
+                    </span>
+                    <span class="flex flex-col gap-0.5">
+                      <span class="text-xs">High</span>
+                      <input id="carbon-p-high" type="number" value="150" style="background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:4px;padding:4px 6px;font-size:12px;font-family:inherit;text-align:center">
+                    </span>
                   </div>
-                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:2px;font-size:7.5px;color:var(--t3);text-align:center"><span>Low</span><span>Mid</span><span>High</span></div>
                 </div>
                 <button onclick="hubCarbonRender()" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:9px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:auto"> Calculate</button>
               </div>
-              <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:16px;overflow-y:auto;max-height:580px" id="carbon-output">
+              <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:16px;overflow-y:auto;max-height:590px" id="carbon-output">
                 <div style="padding:48px;text-align:center;color:var(--t3)"><div style="font-size:32px;opacity:.2;margin-bottom:8px"></div>Click Calculate to see carbon intensity across all discoveries</div>
               </div>
             </div>
           </div>
 
           <!--  WELL CORRELATION PANE  -->
-          <div class="hub-pane" id="hub-pane-correlation">
-            <div style="display:flex;flex-direction:column;gap:10px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-correlation">
+            <div style="display:flex;flex-direction:column;gap:10px;min-height:300px">
               <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Stratigraphic Well Correlation</div>
                 <select id="corr-basin" onchange="hubCorrelationRender()" style="background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:5px;padding:3px 8px;font-size:10px;font-family:inherit">
@@ -13791,15 +13851,15 @@
                   <option value="sea">Datum: Sea Level</option>
                 </select>
               </div>
-              <div id="hub-corr-panel" style="flex:1;background:var(--bg3);border-radius:8px;border:1px solid var(--b1);overflow:auto;min-height:480px;padding:12px">
+              <div id="hub-corr-panel" style="flex:1;background:var(--bg3);border-radius:8px;border:1px solid var(--b1);overflow:auto;min-height:250px;padding:12px">
                 <div style="padding:48px;text-align:center;color:var(--t3)"><div style="font-size:32px;opacity:.2;margin-bottom:8px"></div>Select a basin to correlate wells</div>
               </div>
             </div>
           </div>
 
           <!--  DATA GAP DETECTOR PANE  -->
-          <div class="hub-pane" id="hub-pane-datagap">
-            <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-datagap">
+            <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;min-height:450px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px;display:flex;flex-direction:column;gap:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> AI Data Gap Detector</div>
                 <div style="font-size:10px;color:var(--t3);line-height:1.5">Scans all entities for missing critical data. Flags gaps with severity and recommended action.</div>
@@ -13827,7 +13887,7 @@
           </div>
 
           <!--  DOCUMENT PARSER PANE  -->
-          <div class="hub-pane" id="hub-pane-docparser">
+          <div class="hub-pane panel-ai" id="hub-pane-docparser">
             <div style="display:grid;grid-template-columns:260px 1fr;gap:12px;min-height:560px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px;display:flex;flex-direction:column;gap:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> AI Document Parser</div>
@@ -13862,7 +13922,7 @@
           </div>
 
           <!--  WELL MAP PANE  -->
-          <div class="hub-pane" id="hub-pane-wellmap">
+          <div class="hub-pane panel-ai" id="hub-pane-wellmap">
             <div style="display:flex;flex-direction:column;gap:10px;min-height:560px">
               <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Well Location Map</div>
@@ -13889,8 +13949,8 @@
 
 
           <!--  LOOK-ALIKE PROSPECT FINDER  -->
-          <div class="hub-pane" id="hub-pane-lookalike">
-            <div style="display:grid;grid-template-columns:240px 1fr;gap:12px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-lookalike">
+            <div style="display:grid;grid-template-columns:240px 1fr;gap:12px;min-height:450px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px;display:flex;flex-direction:column;gap:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Look-alike Prospect Finder</div>
                 <div style="font-size:10px;color:var(--t3);line-height:1.5">Select a prospect as the template. AI finds the closest geological matches across all prospects and analogues.</div>
@@ -13916,7 +13976,7 @@
           </div>
 
           <!--  VALUE FLOW SANKEY  -->
-          <div class="hub-pane" id="hub-pane-valuesankey">
+          <div class="hub-pane panel-ai" id="hub-pane-valuesankey">
             <div style="display:flex;flex-direction:column;gap:10px;min-height:560px">
               <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Value Flow — Gross to Net</div>
@@ -13932,8 +13992,8 @@
           </div>
 
           <!--  CAMPAIGN TIMELINE / GANTT  -->
-          <div class="hub-pane" id="hub-pane-timeline">
-            <div style="display:flex;flex-direction:column;gap:10px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-timeline">
+            <div style="display:flex;flex-direction:column;gap:10px;min-height:45px">
               <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Exploration Campaign Timeline</div>
                 <select id="tl-filter-basin" onchange="hubTimelineRender()" style="background:var(--bg2);border:1px solid var(--b1);color:var(--t1);border-radius:5px;padding:3px 8px;font-size:10px;font-family:inherit">
@@ -13951,8 +14011,8 @@
           </div>
 
           <!--  RADAR / SPIDER COMPARE  -->
-          <div class="hub-pane" id="hub-pane-radar">
-            <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-radar">
+            <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;min-height:450px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px;display:flex;flex-direction:column;gap:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Radar Comparison</div>
                 <div style="font-size:10px;color:var(--t3)">Compare any two entities across all dimensions.</div>
@@ -13976,8 +14036,8 @@
           </div>
 
           <!--  PORE PRESSURE PREDICTION  -->
-          <div class="hub-pane" id="hub-pane-porepressure">
-            <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-porepressure">
+            <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;min-height:450px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px;display:flex;flex-direction:column;gap:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Pore Pressure Prediction</div>
                 <div style="font-size:10px;color:var(--t3);line-height:1.5">Depth vs pore pressure gradient per well. Identifies overpressure zones and wellbore risk.</div>
@@ -13999,8 +14059,8 @@
           </div>
 
           <!--  BURIAL HISTORY  -->
-          <div class="hub-pane" id="hub-pane-burial">
-            <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-burial">
+            <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;min-height:450px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px;display:flex;flex-direction:column;gap:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Burial History & Maturation</div>
                 <div style="font-size:10px;color:var(--t3);line-height:1.5">1D basin model showing burial depth and Ro% maturity through geological time per petroleum system.</div>
@@ -14018,8 +14078,8 @@
           </div>
 
           <!--  MATERIAL BALANCE  -->
-          <div class="hub-pane" id="hub-pane-matbal">
-            <div style="display:grid;grid-template-columns:240px 1fr;gap:12px;min-height:560px">
+          <div class="hub-pane panel-ai" id="hub-pane-matbal">
+            <div style="display:grid;grid-template-columns:240px 1fr;gap:12px;min-height:450px">
               <div style="background:var(--bg3);border-radius:8px;border:1px solid var(--b1);padding:14px;display:flex;flex-direction:column;gap:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--t1)"> Material Balance</div>
                 <div style="font-size:10px;color:var(--t3);line-height:1.5">Tank model: pressure depletion vs cumulative production. Aquifer influx and abandonment pressure.</div>
@@ -14044,7 +14104,6 @@
               </div>
             </div>
           </div>
-
         </section>
 
         <!-- ════════════════════ AI CONFIGURATION SCREEN ══════════════════════════ -->
