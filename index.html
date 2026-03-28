@@ -9,20 +9,6 @@
     <!-- tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css" />
-    
-    <!-- <style>
-      #map-resizer {
-        height: 6px;
-        cursor: row-resize;
-        background: rgba(255,255,255,0.1);
-        position: relative;
-        z-index: 10;
-      }
-
-      #map-resizer:hover {
-        background: rgba(107, 70, 193, 0.5);
-      }
-    </style> -->
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
@@ -315,7 +301,7 @@
           <div class="flex items-center justify-between p-2 transition-all cursor-pointer text-white/70 
               hover:bg-[#4c3a7a] hover:text-white
               group-[.on]:bg-[#3b2a63] group-[.on]:text-white group-[.on]:ring-1 group-[.on]:ring-white/10
-              group-hover:ring-1 group-hover:ring-white/20 rounded-md" onclick="goTo('economics', this)">
+              group-hover:ring-1 group-hover:ring-white/20 rounded-md" onclick="goTo('economics')">
             <div class="flex items-center w-full">
               <svg class="w-5 h-5 shrink-0 text-indigo-300 group-[.on]:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M16 3h5v5"></path>
@@ -418,7 +404,7 @@
           <div class="flex items-center justify-between p-2 transition-all cursor-pointer text-white/70 
               hover:bg-[#4c3a7a] hover:text-white
               group-[.on]:bg-[#3b2a63] group-[.on]:text-white group-[.on]:ring-1 group-[.on]:ring-white/10
-              group-hover:ring-1 group-hover:ring-white/20 rounded-md" onclick="goTo('ingestion')">
+              group-hover:ring-1 group-hover:ring-white/20 rounded-md" onclick="goTo('datamanager')">
             <div class="flex items-center w-full">
               <svg class="w-5 h-5 shrink-0 text-indigo-300 group-[.on]:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
@@ -442,10 +428,13 @@
             <div class="w-64 bg-[#2d1b4d] rounded-xl shadow-2xl border border-white/10 overflow-hidden backdrop-blur-md">
               
               <div class="px-5 py-3 border-b border-white/5 bg-black/10">
-                <span class="text-sm font-bold text-gray-400 uppercase tracking-widest">Administration</span>
+                <span class="text-sm font-bold text-gray-400 uppercase tracking-widest">Data & Governance</span>
               </div>
 
               <div class="">
+                <div onclick="goTo('datamanager', this)" class="nav flex items-center px-3 py-3 text-[10px] text-gray-300 hover:bg-[#3b2a63] hover:text-white transition-all cursor-pointer group/item">
+                  <span class="nav-label">Data Manager</span>
+                </div>
                 <div onclick="goTo('ingestion', this)" class="nav flex items-center px-3 py-3 text-[10px] text-gray-300 hover:bg-[#3b2a63] hover:text-white transition-all cursor-pointer group/item">
                   <span class="nav-label">Data Ingestion</span>
                 </div>
@@ -453,9 +442,17 @@
                 <div onclick="goTo('governance', this)" class="nav flex items-center px-3 py-3 text-[10px] text-gray-300 hover:bg-[#3b2a63] hover:text-white transition-all cursor-pointer group/item">
                   <span class="nav-label">Governance & Audit</span>
                 </div>
-                
+
                 <div id="nav-aiconfig" onclick="goTo('aiconfig', this)" class="nav flex items-center px-3 py-3 text-[10px] text-gray-300 hover:bg-[#3b2a63] hover:text-white transition-all cursor-pointer group/item">
                   <span class="nav-label">AI Configuration</span>
+                </div>
+
+                <div onclick="goTo('docextract', this)" class="nav flex items-center px-3 py-3 text-[10px] text-gray-300 hover:bg-[#3b2a63] hover:text-white transition-all cursor-pointer group/item">
+                  <span class="nav-label">Knowledge Extraction</span>
+                </div>
+
+                <div onclick="goTo('settings', this)" class="nav flex items-center px-3 py-3 text-[10px] text-gray-300 hover:bg-[#3b2a63] hover:text-white transition-all cursor-pointer group/item">
+                  <span class="nav-label">Settings</span>
                 </div>
               </div>
             </div>
@@ -465,8 +462,53 @@
 
       <!-- Sidebar footer -->
       <div class="sb-btm">
-        <div class="flex items-center gap-2">
-          <div class="avatar">VJ</div>
+        <!-- <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.1)">
+          <span style="font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.5px;text-transform:uppercase">Workspace</span>
+          <div style="display:flex;gap:6px">
+            <button onclick="goTo('settings',null)" title="Settings" style="background:rgba(255,255,255,.08);border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.7);transition:all .15s" onmouseover="this.style.background='rgba(255,255,255,.18)'" onmouseout="this.style.background='rgba(255,255,255,.08)'">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
+            </button>
+            <button onclick="saveSession()" title="Quick save session" style="background:rgba(255,255,255,.08);border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.7);transition:all .15s" onmouseover="this.style.background='rgba(255,255,255,.18)'" onmouseout="this.style.background='rgba(255,255,255,.08)'">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M13 2H4L2 4v10a1 1 0 001 1h10a1 1 0 001-1V3a1 1 0 00-1-1z"/><rect x="5" y="2" width="6" height="4" rx="0.5"/><rect x="4" y="9" width="8" height="5" rx="0.5"/></svg>
+            </button>
+          </div>
+        </div> -->
+        <div class="nav-group-parent group w-full">
+          <div class="flex items-center justify-between mb-2 pb-2 border-b border-white/10">
+            
+            <!-- ✅ Label (hide when collapsed) -->
+            <span class="nav-label text-[10px] text-white/40 tracking-[.5px] uppercase 
+              group-[.collapsed]:hidden ">
+              Workspace
+            </span>
+
+            <!-- ✅ Icons container -->
+            <div class="workspace-icons flex gap-2">
+              
+              <button onclick="goTo('settings',null)" title="Settings"
+                class="bg-white/10 hover:bg-white/20 text-white/70 
+                      w-7 h-7 rounded-md flex items-center justify-center transition-all">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4">
+                  <circle cx="8" cy="8" r="2.5"/>
+                  <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/>
+                </svg>
+              </button>
+
+              <button onclick="saveSession()" title="Quick save session"
+                class="bg-white/10 hover:bg-white/20 text-white/70 
+                      w-7 h-7 rounded-md flex items-center justify-center transition-all">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4">
+                  <path d="M13 2H4L2 4v10a1 1 0 001 1h10a1 1 0 001-1V3a1 1 0 00-1-1z"/>
+                  <rect x="5" y="2" width="6" height="4" rx="0.5"/>
+                  <rect x="4" y="9" width="8" height="5" rx="0.5"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px">
+          <div class="avatar" id="sb-user-avatar">?</div>
           <div class="sb-user">
             <div
               style="
@@ -474,10 +516,11 @@
                 font-weight: 600;
                 color: rgba(255, 255, 255, 0.9);
               "
+              id="sb-user-name"
             >
-              VJ
+              —
             </div>
-            <div style="font-size: 10px; color: rgba(255, 255, 255, 0.45)">
+            <div style="font-size: 10px; color: rgba(255, 255, 255, 0.45)" id="sb-user-role">
               Exploration Geologist
             </div>
           </div>
@@ -539,6 +582,7 @@
           <div class="nlp-suggestions" id="nlp-sug"></div>
         </div>
         <div class="tb-acts">
+          <button id="push-db-btn" onclick="pushAllToBackend()" style="font-size:10px;padding:5px 14px;background:var(--purple);color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:700;letter-spacing:.3px;opacity:.95" title="Push all loaded data to PostgreSQL backend">Push to DB</button>
           <!-- Theme toggle -->
           <button id="theme-toggle-btn" onclick="edafyToggleTheme()" title="Toggle dark / light theme">
             <svg id="theme-icon-moon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" style="display:none">
@@ -991,16 +1035,20 @@
                 class="ch"
                 style="cursor: pointer"
                 onclick="
-                  document.getElementById('usb-panel').style.display =
-                    document.getElementById('usb-panel').style.display ===
-                    'none'
-                      ? 'block'
-                      : 'none';
-                  this.querySelector('.usb-chev').textContent =
-                    document.getElementById('usb-panel').style.display ===
-                    'none'
-                      ? '▾'
-                      : '▴';
+                  const panel = document.getElementById('usb-panel');
+                  const chev = this.querySelector('.usb-chev');
+
+                  const isHidden = panel.style.display === 'none';
+
+                  panel.style.display = isHidden ? 'block' : 'none';
+
+                  chev.innerHTML = isHidden
+                    ? `<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='size-6'>
+                        <path stroke-linecap='round' stroke-linejoin='round' d='m4.5 15.75 7.5-7.5 7.5 7.5' />
+                      </svg>`
+                    : `<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='size-6'>
+                        <path stroke-linecap='round' stroke-linejoin='round' d='m19.5 8.25-7.5 7.5-7.5-7.5' />
+                      </svg>`;
                 "
               >
                 <span
@@ -1023,7 +1071,11 @@
                   Unified Scoring — Analogue ↔ Screening Bridge
                 </span>
                 <span style="font-size: 10px; color: var(--t3)"
-                  ><span class="usb-chev">▾</span></span
+                  ><span class="usb-chev">
+                    <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='size-6'>
+                      <path stroke-linecap='round' stroke-linejoin='round' d='m19.5 8.25-7.5 7.5-7.5-7.5' />
+                    </svg>
+                  </span></span
                 >
               </div>
               <div class="cb" id="usb-panel" style="display: none">
@@ -12219,25 +12271,25 @@
         <!-- ==================== INGESTION ==================== -->
         <section class="sec" id="sec-ingestion">
           <div class="tabs" style="flex-wrap: wrap">
-            <div class="tab on" onclick="ingTab('overview', this)">Overview</div>
-            <div class="tab" onclick="ingTab('unified', this)">Unified Upload</div>
-            <div class="tab" onclick="ingTab('reservoir', this)">Reservoir</div>
-            <div class="tab" onclick="ingTab('geopressure', this)">Geopressure</div>
-            <div class="tab" onclick="ingTab('geochem', this)">Geochemistry</div>
-            <div class="tab" onclick="ingTab('mineral', this)">Mineralogy</div>
-            <div class="tab" onclick="ingTab('fluid', this)">Fluid PVT</div>
-            <div class="tab" onclick="ingTab('diagenesis', this)">Diagenesis</div>
-            <div class="tab" onclick="ingTab('seismic', this)">Seismic</div>
-            <div class="tab" onclick="ingTab('production', this)">Production</div>
-            <div class="tab" onclick="ingTab('welldata', this)">Well Data</div>
-            <div class="tab" onclick="ingTab('isotope', this)">Isotope</div>
-            <div class="tab" onclick="ingTab('petrophysics', this)">Petrophysics</div>
-            <div class="tab" onclick="ingTab('geomechanics', this)">Geomechanics</div>
-            <div class="tab" onclick="ingTab('thermal', this)">Thermal</div>
-            <div class="tab" onclick="ingTab('environmental', this)">Environmental</div>
-            <div class="tab" onclick="ingTab('commercials', this)">Commercial</div>
-            <div class="tab" onclick="ingTab('connectors', this)">Connectors</div>
-            <div class="tab" onclick="ingTab('dedup', this)">Dedup Queue</div>
+            <div class="tab on" data-tab="overview" onclick="ingTab('overview', this)">Overview</div>
+            <div class="tab" data-tab="unified" onclick="ingTab('unified', this)">Unified Upload</div>
+            <div class="tab" data-tab="reservoir" onclick="ingTab('reservoir', this)">Reservoir</div>
+            <div class="tab" data-tab="geopressure" onclick="ingTab('geopressure', this)">Geopressure</div>
+            <div class="tab" data-tab="geochem" onclick="ingTab('geochem', this)">Geochemistry</div>
+            <div class="tab" data-tab="mineral" onclick="ingTab('mineral', this)">Mineralogy</div>
+            <div class="tab" data-tab="fluid" onclick="ingTab('fluid', this)">Fluid PVT</div>
+            <div class="tab" data-tab="diagenesis" onclick="ingTab('diagenesis', this)">Diagenesis</div>
+            <div class="tab" data-tab="seismic" onclick="ingTab('seismic', this)">Seismic</div>
+            <div class="tab" data-tab="production" onclick="ingTab('production', this)">Production</div>
+            <div class="tab" data-tab="welldata" onclick="ingTab('welldata', this)">Well Data</div>
+            <div class="tab" data-tab="isotope" onclick="ingTab('isotope', this)">Isotope</div>
+            <div class="tab" data-tab="petrophysics" onclick="ingTab('petrophysics', this)">Petrophysics</div>
+            <div class="tab" data-tab="geomechanics" onclick="ingTab('geomechanics', this)">Geomechanics</div>
+            <div class="tab" data-tab="thermal" onclick="ingTab('thermal', this)">Thermal</div>
+            <div class="tab" data-tab="environmental" onclick="ingTab('environmental', this)">Environmental</div>
+            <div class="tab" data-tab="commercials" onclick="ingTab('commercials', this)">Commercial</div>
+            <div class="tab" data-tab="connectors" onclick="ingTab('connectors', this)">Connectors</div>
+            <div class="tab" data-tab="dedup" onclick="ingTab('dedup', this)">Dedup Queue</div>
           </div>
 
           <!-- ── UNIFIED UPLOAD PANEL ── -->
@@ -13067,7 +13119,7 @@
             </div>
 
             <!-- SHARED CONTEXT BAR — 6-level cascade -->
-            <div class="hub-ctx" id="hub-ctx-bar" style="flex-wrap:wrap;gap:6px 0;padding:10px 14px;margin-bottom:0;border-radius:0;border-left:none;border-right:none;border-bottom:none">
+            <div class="hub-ctx flex" id="hub-ctx-bar" style="gap:6px 0;padding:10px 14px;margin-bottom:0;border-radius:0;border-left:none;border-right:none;border-bottom:none">
               <!-- Level 1: Basin -->
               <div style="display:flex;flex-direction:column;gap:2px;">
                 <div class="hub-ctx-label" style="display:flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:#0D9488;display:inline-block"></span>Basin</div>
@@ -13222,8 +13274,12 @@
               </div>
               <!-- Crumb + clear -->
               <div style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-shrink:0" id="hub-crumb-row">
-                <button onclick="hubClearCtx()" title="Clear context" style="background:none;border:1px solid var(--b1);color:var(--t3);border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;font-family:inherit">X</button>
-                <span class="hub-crumb" id="hub-crumb-text" onclick="hubScrollCtx()" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">No context selected</span>
+                <button onclick="hubClearCtx()" title="Clear context" style="background:none;border:1px solid var(--b1);color:var(--t3);border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;font-family:inherit">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <span class="hub-crumb" id="hub-crumb-text" onclick="hubScrollCtx()" style="display:block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">No context selected</span>
               </div>
             </div>
           </div><!-- /hub-sticky-header -->
@@ -14107,7 +14163,7 @@
         </section>
 
         <!-- ════════════════════ AI CONFIGURATION SCREEN ══════════════════════════ -->
-        <div class="sec" id="sec-aiconfig">
+        <section class="sec" id="sec-aiconfig">
           <div
             class="card"
             style="
@@ -14725,10 +14781,403 @@
               ></div>
             </div>
           </div>
-        </div>
+        </section>
       <!-- end sec-aiconfig -->
 
+        <section class="sec" id="sec-settings">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start">
+            <!-- ── User Management ──────────────────────────────── -->
+            <div class="card">
+              <div class="ch">
+                <span class="ct">User Management</span>
+                <div style="display:flex;gap:8px">
+                  <button class="btn" style="font-size:10px;padding:5px 12px" onclick="umOpenAddUser()">+ Add User</button>
+                  <button class="btn2" style="font-size:10px;padding:5px 10px" onclick="umExportCSV()">Export CSV</button>
+                </div>
+              </div>
+              <div class="cb">
+                <div id="sec-settings-user-table-wrap" style="overflow-x:auto;margin-bottom:12px">
+                  <table>
+                    <thead><tr><th>User</th><th>Username</th><th>Email</th><th>Role</th><th>Access</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody id="settings-um-tbody"><tr><td colspan="7" style="text-align:center;color:var(--t3);padding:18px;font-size:10px">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+                <div style="font-size:9px;color:var(--t3)">
+                  <strong>admin</strong> — full access &nbsp;·&nbsp; <strong>geologist</strong> — read/write &nbsp;·&nbsp; <strong>viewer</strong> — read only
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Session Management ───────────────────────────── -->
+            <div style="display:grid;gap:14px">
+              <div class="card">
+                <div class="ch">
+                  <span class="ct">Save Session</span>
+                  <span style="font-size:9px;color:var(--t3)" id="settings-last-saved"></span>
+                </div>
+                <div class="cb" style="display:grid;gap:10px">
+                  <div style="font-size:10px;color:var(--t2);line-height:1.6">Snapshot your current workspace — basins, analogues, wells, connector states — to restore later or share.</div>
+                  <div style="display:flex;gap:8px">
+                    <input class="fc" id="settings-session-name" placeholder="Session name…" style="flex:1;font-size:10px"/>
+                    <button class="btn" style="font-size:10px;padding:6px 14px;white-space:nowrap" onclick="settingsSaveSession()">Save</button>
+                  </div>
+                  <button class="btn2" style="font-size:10px;padding:6px" onclick="exportSessionFile()">Export as .json file</button>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="ch"><span class="ct">Saved Sessions</span></div>
+                <div class="cb">
+                  <div id="settings-session-list" style="max-height:200px;overflow-y:auto;display:grid;gap:6px;margin-bottom:10px">
+                    <div style="font-size:10px;color:var(--t3);font-style:italic">No sessions yet</div>
+                  </div>
+                  <label class="btn2" style="font-size:10px;padding:6px;cursor:pointer;display:block;text-align:center">
+                    Import .json session
+                    <input type="file" accept=".json" style="display:none" onchange="importSessionFile(event)"/>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
         
+        <!-- DATA MANAGER -->
+        <section class="sec" id="sec-datamanager">
+          <div class="bg-[var(--bg1)] border-b-2 border-[var(--b1)] flex justify-between items-center gap-2 mb-[14px]">
+            <div class="tabs mb-0">
+              <div class="tab on"  id="dm-tab-basins"      onclick="dmSwitch('basins',this)">Basins</div>
+              <div class="tab"     id="dm-tab-analogues"   onclick="dmSwitch('analogues',this)">Analogues</div>
+              <div class="tab"     id="dm-tab-wells"       onclick="dmSwitch('wells',this)">Wells</div>
+              <div class="tab"     id="dm-tab-discoveries" onclick="dmSwitch('discoveries',this)">Discoveries</div>
+              <div class="tab"     id="dm-tab-plays"       onclick="dmSwitch('plays',this)">Plays</div>
+            </div>
+
+            <div style="display:flex;gap:5px;align-items:center">
+              <button class="btn2" style="font-size:10px" onclick="dmAddRow()">Add Row</button>
+              <button class="btn2" style="font-size:10px;color:var(--red);border-color:rgba(220,38,38,.3)" onclick="dmDeleteSelected()">Delete Selected</button>
+              <button class="btn2" style="font-size:10px;color:var(--amber);border-color:rgba(180,83,9,.3)" onclick="resetToSeed()" title="Remove all connector-synced data and restore original seed basins">Reset to Seed</button>
+              <button class="btn" id="push-to-db-btn" style="font-size:10px;padding:4px 11px;display:none" onclick="pushAllToDatabase()" title="Push all in-memory basin data to PostgreSQL">Push to Database</button>
+              <button class="btn2" id="read-from-db-btn" style="font-size:10px;padding:4px 11px;display:none;color:var(--cyan);border-color:rgba(67,97,168,.35)" onclick="readFromDatabase()" title="Load all data fresh from PostgreSQL into app memory">Read from DB</button>
+              <label class="chk" id="db-priority-toggle-wrap" style="font-size:10px;display:none;align-items:center;gap:4px;cursor:pointer;color:var(--t2)">
+                <input type="checkbox" id="db-priority-toggle" checked onchange="window._dbPriorityEnabled=this.checked;toast(this.checked?'DB priority ON — new data checked against database':'DB priority OFF — data ingested directly',this.checked?'success':'warning')"/>
+                DB priority
+              </label>
+              <button class="btn"  style="font-size:10px" onclick="dmExportXLSX()"> Export XLSX</button>
+            </div>
+          </div>
+
+          <div id="data-manager-panel" class="card" style="margin-bottom: 14px">
+            <!-- Search + filter bar -->
+            <div class="flex-col" style="padding:8px 14px;background:var(--bg1);border-bottom:1px solid var(--b1);display:flex;align-items:start;gap:8px;flex-wrap:wrap">
+              <div class="nlp w-1/2">
+                <span class="nlp-ico"></span>
+                <input id="dm-search" placeholder="Search any field…" oninput="dmRender()" />
+              </div>
+
+              <div class="flex gap-4 w-1/2">
+                <select class="fc" id="dm-filter-region" style="font-size:11px" onchange="dmRender()">
+                  <option value="">All Regions</option>
+                  <option>Africa</option><option>Middle East</option><option>Asia Pacific</option>
+                  <option>Europe</option><option>North America</option><option>South America</option>
+                  <option>Russia/CIS</option><option>Arctic</option><option>SE Asia</option>
+                </select>
+
+                <select class="fc" id="dm-filter-hc" style="font-size:11px" onchange="dmRender()">
+                  <option value="">All HC Types</option>
+                  <option>Oil</option><option>Gas</option><option>Oil & Gas</option><option>Condensate</option>
+                </select>
+
+                <select class="fc" id="dm-filter-source" style="font-size:11px" onchange="dmRender()">
+                  <option value="">All Sources</option>
+                  <option>Norway_NPD</option><option>Macrostrat</option><option>USGS_WPA2012</option>
+                  <option>WorldBank</option><option>NOAA_NCEI</option><option>seed</option>
+                </select>
+              </div>
+
+              <span id="dm-count" style="font-size:10px;color:var(--t3);margin-left:auto"></span>
+            </div>
+  
+            <!-- Table -->
+            <div style="flex:1;overflow:auto;">
+              <div id="dm-table-wrap" style="overflow-x:auto;">
+                <table id="dm-table" style="min-width:900px">
+                  <thead id="dm-thead"></thead>
+                  <tbody id="dm-tbody"></tbody>
+                </table>
+              </div>
+              <div id="dm-empty" style="display:none;text-align:center;padding:40px;color:var(--t3);font-size:13px">
+                No records found. Sync a connector or adjust your filters.
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- KNOWLEDGE EXTRACTIONS -->
+        <section id="sec-docextract" class="sec">
+
+          <!-- Top bar -->
+          <div class="tb" style="height:auto;padding:10px 14px;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+            <div>
+              <span class="tb-title"> Knowledge Extraction</span>
+              <div style="font-size:9px;color:var(--t3);margin-top:2px">PDF / Literature → NLP → Ontology → Basin Data → All Modules</div>
+            </div>
+            <div class="tb-acts" style="margin-left:auto;gap:6px">
+              <span id="kex-status-badge" style="display:none;font-size:9px;padding:3px 9px;border-radius:4px;font-weight:700"></span>
+              <button class="btn2" style="font-size:10px;padding:5px 11px" onclick="kexClear()"> Clear</button>
+              <select id="kex-backend" class="fc" style="font-size:10px;padding:4px 8px;min-width:160px" onchange="kexBackendChange()">
+                <option value="regex"> Regex NLP (free, offline)</option>
+                <option value="ollama"> Ollama (local LLM)</option>
+                <option value="groq"> Groq API (free tier)</option>
+                <option value="gemini"> Gemini (free tier, PDF native)</option>
+                <option value="hf"> Hugging Face (free)</option>
+                <option value="anthropic"> Anthropic Claude</option>
+              </select>
+              <div id="kex-key-wrap" style="display:none">
+                <input class="fc" id="kex-api-key" type="password" placeholder="API key…" style="font-size:10px;padding:4px 8px;min-width:140px"/>
+              </div>
+              <div id="kex-ollama-wrap" style="display:none">
+                <input class="fc" id="kex-ollama-url" placeholder="http://localhost:11434" value="http://localhost:11434" style="font-size:10px;padding:4px 8px;min-width:180px"/>
+                <select id="kex-ollama-model" class="fc" style="font-size:10px;padding:4px 8px">
+                  <option value="mistral">mistral</option>
+                  <option value="llama3">llama3</option>
+                  <option value="qwen2.5">qwen2.5</option>
+                  <option value="gemma3">gemma3</option>
+                  <option value="deepseek-r1">deepseek-r1</option>
+                </select>
+              </div>
+              <button class="btn" style="font-size:10px;padding:5px 14px" onclick="kexRun()" id="kex-run-btn"> Extract &amp; Ingest</button>
+            </div>
+          </div>
+
+          <div id="docextract-panel" class="h-full">
+            <!-- Pipeline flow indicator -->
+            <div style="display:flex;align-items:center;gap:0;margin-bottom:14px;overflow-x:auto">
+              <div class="kex-layer" id="kex-l1" style="border-color:var(--purple)">
+                <div class="kex-layer-num">L1</div>
+                <div class="kex-layer-name">Ingestion</div>
+                <div class="kex-layer-sub">PDF / Text</div>
+              </div>
+              <div class="kex-arrow"></div>
+              <div class="kex-layer" id="kex-l2">
+                <div class="kex-layer-num">L2</div>
+                <div class="kex-layer-name">NLP Extract</div>
+                <div class="kex-layer-sub">Claude AI</div>
+              </div>
+              <div class="kex-arrow"></div>
+              <div class="kex-layer" id="kex-l3">
+                <div class="kex-layer-num">L3</div>
+                <div class="kex-layer-name">Ontology</div>
+                <div class="kex-layer-sub">Structure</div>
+              </div>
+              <div class="kex-arrow"></div>
+              <div class="kex-layer" id="kex-l4">
+                <div class="kex-layer-num">L4</div>
+                <div class="kex-layer-name">API Ingest</div>
+                <div class="kex-layer-sub">All Modules</div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:340px 1fr;gap:14px">
+
+              <!--  LEFT PANEL: Upload + Config  -->
+              <div>
+
+                <!-- Layer 1: Upload -->
+                <div class="card" style="margin-bottom:12px">
+                  <div class="ch">
+                    <span class="ct">Layer 1 — Document Upload</span>
+                    <span style="font-size:8px;color:var(--t3)">PDF · TXT · DOCX</span>
+                  </div>
+                  <div class="cb" style="padding:10px 12px">
+                    <div id="kex-drop"
+                      ondragover="event.preventDefault();this.classList.add('drag-over')"
+                      ondragleave="this.classList.remove('drag-over')"
+                      ondrop="event.preventDefault();this.classList.remove('drag-over');kexHandleDrop(event)"
+                      onclick="document.getElementById('kex-file-input').click()"
+                      style="border:2px dashed var(--b2);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:all .15s;margin-bottom:8px">
+                      <div style="font-size:22px;margin-bottom:4px"></div>
+                      <div style="font-size:11px;color:var(--t2);font-weight:600">Drop PDF here or click to browse</div>
+                      <div style="font-size:9px;color:var(--t4);margin-top:2px">AAPG Bulletin · Technical reports · CPR · Seismic interpretations</div>
+                    </div>
+                    <input type="file" id="kex-file-input" accept=".pdf,.txt,.docx,.doc" style="display:none" onchange="kexLoadFile(this)"/>
+                    <div id="kex-file-badge" style="display:none;background:rgba(107,70,193,.08);border:1px solid var(--b1);border-radius:5px;padding:6px 9px;font-size:10px;display:flex;align-items:center;gap:7px">
+                      <span style="font-size:14px"></span>
+                      <div style="flex:1;min-width:0">
+                        <div id="kex-file-name" style="font-weight:600;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+                        <div id="kex-file-size" style="font-size:8px;color:var(--t3)"></div>
+                      </div>
+                      <button onclick="kexClear()" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:12px"></button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Layer 2: Extraction fields -->
+                <div class="card" style="margin-bottom:12px">
+                  <div class="ch">
+                    <span class="ct">Layer 2 — Extraction Fields</span>
+                    <button class="btn2" style="font-size:8px;padding:2px 7px" onclick="kexFillAllFields()">Fill All</button>
+                  </div>
+                  <div class="cb" style="padding:10px 12px">
+                    <div class="fg" style="margin-bottom:8px">
+                      <label>What to extract <span style="color:var(--t3)">(comma-separated, or use presets below)</span></label>
+                      <textarea class="fc" id="kex-fields-input" rows="3" placeholder="e.g. formation name, porosity, permeability, depth, TOC, Ro, trap type, reservoir lithology, seal formation, source rock, play type, analogue basin, operator, discovery year"
+                        style="resize:vertical;font-size:10px;line-height:1.5"></textarea>
+                    </div>
+
+                    <!-- Ontology presets -->
+                    <div style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px">Ontology Presets</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px" id="kex-preset-chips">
+        <button class="kex-preset" onclick="kexApplyPreset('source_rock, toc_pct, ro_pct, kerogen_type, reservoir_fm, porosity_pct, perm_md, lithology, seal_fm, trap_type, structural_style, p50_mmboe, play_type, play_hc_type, formation, age_primary, depositional_env, analogue_basin')" style="font-size:9px;padding:3px 9px;border-radius:4px;background:rgba(107,70,193,.08);border:1px solid var(--b1);color:var(--purple);cursor:pointer;white-space:nowrap">Full Petroleum System</button>
+        <button class="kex-preset" onclick="kexApplyPreset('reservoir_fm, porosity_pct, perm_md, net_to_gross, lithology, grain_size, sw_pct, reservoir_pressure, reservoir_temp, thickness_m')" style="font-size:9px;padding:3px 9px;border-radius:4px;background:rgba(107,70,193,.08);border:1px solid var(--b1);color:var(--purple);cursor:pointer;white-space:nowrap">Reservoir</button>
+        <button class="kex-preset" onclick="kexApplyPreset('source_rock, toc_pct, ro_pct, s1_mg_g, s2_mg_g, tmax_c, production_index, kerogen_type, generation_window')" style="font-size:9px;padding:3px 9px;border-radius:4px;background:rgba(107,70,193,.08);border:1px solid var(--b1);color:var(--purple);cursor:pointer;white-space:nowrap">Source Rock</button>
+        <button class="kex-preset" onclick="kexApplyPreset('play_type, play_hc_type, play_risking, pg_charge, pg_reservoir, pg_seal, pg_trap, trap_type, analogue_basin, p50_mmboe, p10_mmboe, p90_mmboe')" style="font-size:9px;padding:3px 9px;border-radius:4px;background:rgba(107,70,193,.08);border:1px solid var(--b1);color:var(--purple);cursor:pointer;white-space:nowrap">Play Risking</button>
+        <button class="kex-preset" onclick="kexApplyPreset('co2_storage_potential, aquifer_salinity, injectivity, seal_co2_risk, co2_min_depth_m, reservoir_fm, porosity_pct, perm_md, seal_fm')" style="font-size:9px;padding:3px 9px;border-radius:4px;background:rgba(107,70,193,.08);border:1px solid var(--b1);color:var(--purple);cursor:pointer;white-space:nowrap">CCUS</button>
+        <button class="kex-preset" onclick="kexApplyPreset('well_name, total_depth_m, formation_tops, spud_date, well_type, lithology, porosity_pct, formation')" style="font-size:9px;padding:3px 9px;border-radius:4px;background:rgba(107,70,193,.08);border:1px solid var(--b1);color:var(--purple);cursor:pointer;white-space:nowrap">Well Data</button>
+        <button class="kex-preset" onclick="kexApplyPreset('basin_name, basin_country, tectonic_setting, basin_area_km2, wells_drilled, discovery_year, operator, p50_mmboe, play_type, reservoir_fm, source_rock, seal_fm')" style="font-size:9px;padding:3px 9px;border-radius:4px;background:rgba(107,70,193,.08);border:1px solid var(--b1);color:var(--purple);cursor:pointer;white-space:nowrap">Basin Summary</button>
+                    </div>
+
+                    <!-- Linked basin -->
+                    <div class="fg" style="margin-bottom:8px">
+                      <label>Link to Basin <span style="color:var(--t3)">(optional — auto-matched from doc)</span></label>
+                      <input class="fc" id="kex-basin-link" list="kex-basin-datalist" placeholder="e.g. North Sea Province"/>
+                      <datalist id="kex-basin-datalist"></datalist>
+                    </div>
+
+                    <!-- Priority fields -->
+                    <div class="fg">
+                      <label>Confidence threshold <span style="color:var(--t3)">(0–1, skip extractions below this)</span></label>
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <input type="range" class="slider" id="kex-confidence" min="0" max="1" step="0.05" value="0.5" oninput="document.getElementById('kex-conf-val').textContent=this.value" style="flex:1"/>
+                        <span id="kex-conf-val" style="font-size:11px;font-weight:700;color:var(--purple);min-width:28px">0.5</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Layer 3: Ontology scope -->
+                <div class="card" style="margin-bottom:12px">
+                  <div class="ch"><span class="ct">Layer 3 — Ontology Scope</span></div>
+                  <div class="cb" style="padding:10px 12px">
+                    <div style="font-size:9px;color:var(--t3);margin-bottom:7px">Select which ontology domains to populate:</div>
+                    <div id="kex-ontology-checks" style="display:grid;grid-template-columns:1fr 1fr;gap:4px"><label class="chk" style="font-size:9px"><input type="checkbox" value="Petroleum System" checked style="accent-color:#7c3aed"><span style="color:#7c3aed"> Petroleum System</span></label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="Reservoir" checked style="accent-color:#0284c7"><span style="color:#0284c7">🪨 Reservoir</span></label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="Seal" checked style="accent-color:#059669"><span style="color:#059669"> Seal</span></label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="Trap" checked style="accent-color:#d97706"><span style="color:#d97706"> Trap</span></label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="Stratigraphy" checked style="accent-color:#7c3aed"><span style="color:#7c3aed"> Stratigraphy</span></label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="Resources" checked style="accent-color:#15803d"><span style="color:#15803d"> Resources</span></label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="Geochemistry" checked style="accent-color:#9f1239"><span style="color:#9f1239"> Geochemistry</span></label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="Play" checked style="accent-color:#1e40af"><span style="color:#1e40af"> Play</span></label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="Analogue" checked style="accent-color:#92400e"><span style="color:#92400e"> Analogue</span></label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="Well" checked style="accent-color:#0e7490"><span style="color:#0e7490"> Well</span></label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="Basin" checked style="accent-color:#4338ca"><span style="color:#4338ca"> Basin</span></label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="CO₂/CCUS" checked style="accent-color:#065f46"><span style="color:#065f46"> CO₂/CCUS</span></label></div>
+                  </div>
+                </div>
+
+                <!-- Layer 4: Propagation -->
+                <div class="card">
+                  <div class="ch"><span class="ct">Layer 4 — Module Propagation</span></div>
+                  <div class="cb" style="padding:10px 12px">
+                    <div style="font-size:9px;color:var(--t3);margin-bottom:7px">Push extracted data to:</div>
+                    <div id="kex-propagate-checks" style="display:grid;grid-template-columns:1fr 1fr;gap:4px"><label class="chk" style="font-size:9px"><input type="checkbox" value="basins" checked> Basin Catalogue</label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="analogues" checked> Analogue Engine</label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="knowledgegraph" checked> Knowledge Graph</label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="screening" checked> Basin Screening</label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="ytf" checked> ResourceRadar™</label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="risk"> Risk Module</label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="economics"> Economics</label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="dcafit"> DCA Fitting</label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="ccus"> CCUS Screener</label>
+        <label class="chk" style="font-size:9px"><input type="checkbox" value="datamanager"> Data Manager</label></div>
+                  </div>
+                </div>
+
+              </div><!-- /left -->
+
+              <!--  RIGHT PANEL: Output  -->
+              <div style="display:flex;flex-direction:column;gap:14px">
+
+                <!-- Progress -->
+                <div id="kex-progress-card" class="card" style="display:none">
+                  <div class="ch"><span class="ct" id="kex-progress-title">Extracting…</span></div>
+                  <div class="cb" style="padding:12px 14px">
+                    <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--t3);margin-bottom:5px">
+                      <span id="kex-prog-lbl">Initialising…</span>
+                      <span id="kex-prog-pct">0%</span>
+                    </div>
+                    <div class="sbar-track" style="height:5px;margin-bottom:10px">
+                      <div class="sbar-fill" id="kex-prog-fill" style="width:0%;background:var(--purple);transition:width .3s"></div>
+                    </div>
+                    <div id="kex-prog-log" style="font-size:9px;color:var(--t3);font-family:monospace;max-height:80px;overflow-y:auto;line-height:1.6"></div>
+                  </div>
+                </div>
+
+                <!-- Extracted fields table -->
+                <div class="card" id="kex-results-card" style="display:none">
+                  <div class="ch">
+                    <span class="ct">Extracted Parameters</span>
+                    <div style="display:flex;gap:5px;align-items:center">
+                      <span id="kex-results-count" style="font-size:9px;color:var(--t3)"></span>
+                      <button class="btn2" style="font-size:9px;padding:2px 8px" onclick="kexApplyToBasin()">→ Apply to Basin</button>
+                      <button class="btn2" style="font-size:9px;padding:2px 8px" onclick="kexExportJSON()"> JSON</button>
+                      <button class="btn2" style="font-size:9px;padding:2px 8px" onclick="kexExportCSV()"> CSV</button>
+                    </div>
+                  </div>
+                  <div class="cb" style="padding:0;overflow-x:auto">
+                    <table id="kex-results-table">
+                      <thead><tr>
+                        <th style="width:30px">#</th>
+                        <th>Field</th>
+                        <th>Ontology Class</th>
+                        <th>Extracted Value</th>
+                        <th>Unit</th>
+                        <th>Confidence</th>
+                        <th>Source Text</th>
+                        <th>Action</th>
+                      </tr></thead>
+                      <tbody id="kex-results-tbody"></tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Knowledge Graph preview -->
+                <div class="card" id="kex-kg-card" style="display:none">
+                  <div class="ch">
+                    <span class="ct">Knowledge Graph — Extracted Entities</span>
+                    <button class="btn2" style="font-size:9px;padding:2px 8px" onclick="kexPushToKG()">→ Push to KG</button>
+                  </div>
+                  <div class="cb" style="padding:10px 14px">
+                    <div id="kex-kg-nodes" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
+                    <div id="kex-kg-edges" style="font-size:9px;color:var(--t3)"></div>
+                  </div>
+                </div>
+
+                <!-- Propagation summary -->
+                <div class="card" id="kex-propagation-card" style="display:none">
+                  <div class="ch"><span class="ct">Propagation Summary</span></div>
+                  <div class="cb" style="padding:10px 14px">
+                    <div id="kex-propagation-content"></div>
+                  </div>
+                </div>
+
+                <!-- Raw JSON viewer -->
+                <div class="card" id="kex-json-card" style="display:none">
+                  <div class="ch">
+                    <span class="ct">Raw Extraction JSON</span>
+                    <button class="btn2" style="font-size:9px;padding:2px 8px" onclick="document.getElementById('kex-json-viewer').style.display=document.getElementById('kex-json-viewer').style.display==='none'?'block':'none'">Toggle</button>
+                  </div>
+                  <div class="cb" style="padding:10px 14px">
+                    <pre id="kex-json-viewer" style="font-size:9px;color:var(--t2);line-height:1.5;max-height:250px;overflow:auto;white-space:pre-wrap;display:none"></pre>
+                  </div>
+                </div>
+
+              </div><!-- /right -->
+            </div>
+          </div>
+
+        </section>
       </div>
     </main>
 

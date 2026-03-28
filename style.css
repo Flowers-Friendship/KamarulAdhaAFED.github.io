@@ -353,6 +353,16 @@ border-left-color: var(--purple2);
      border-radius: 0 4px 4px 0;
 }
 
+#sidebar.collapsed .workspace-icons {
+     flex-direction: column;
+     align-items: center;
+}
+
+#sidebar.collapsed:hover .workspace-icons {
+     flex-direction: row;
+     justify-content: center;
+}
+
 /* Optional: Make the parent icon glow when active */
 .nav-group-parent.on svg {
     filter: drop-shadow(0 0 3px rgba(165, 180, 252, 0.5));
@@ -436,6 +446,7 @@ border-top: 1px solid var(--sb-b);
 flex-shrink: 0;
 overflow: hidden;
 }
+
 .avatar {
 width: 30px;
 height: 30px;
@@ -522,7 +533,6 @@ background: #e2e8f0;
 }
 .nlp {
 flex: 1;
-max-width: 540px;
 position: relative;
 }
 .nlp input {
@@ -713,6 +723,16 @@ max-height: 55vh;
 overflow-y: auto;
 }
 
+#ana-compare-panel{
+max-height: 55vh;
+overflow-y: auto;
+}
+
+#ana-similarity-panel{
+max-height: 55vh;
+overflow-y: auto;
+}
+
 #bm-global-panel{
 max-height: 55vh;
 overflow-y: auto;
@@ -838,8 +858,13 @@ overflow-y: auto;
      overflow-y: auto;
 }
 
+#data-manager-panel{
+     max-height: 54vh;
+     overflow-y: auto;
+}
+
 #sec-hub {
-     display: flex;
+     display: none;
      flex-direction: column;
      /* min-height: 0; */
      height: 100%;
@@ -915,6 +940,16 @@ overflow-y: auto;
 #sec-aianalogues{
 max-height: 60vh;
 overflow-y: auto;
+}
+
+#sec-aiconfig{
+     max-height: 60vh;
+     overflow-y: auto;
+}
+
+#docextract-panel{
+     max-height: 50vh;
+     overflow-y: auto;
 }
 
 .chart-container{
@@ -3518,7 +3553,7 @@ color: rgba(255, 255, 255, 0.25);
 .hub-kgc-tab.on{color:var(--brand)!important;border-bottom-color:var(--brand)!important;font-weight:700!important;background:rgba(107,70,193,.06)}
 #hub-kg-card-tabs::-webkit-scrollbar{display:none}
 .hub-tab .tab-badge{font-size:7px;padding:1px 5px;border-radius:8px;background:var(--brand);color:#fff;font-weight:800}
-.hub-pane{height: 100%;}
+.hub-pane{display: none;height: 100%;}
 .hub-pane.on{display:block}
 .hub-ctx{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--b1);margin-bottom:12px}
 .hub-ctx-arrow{color:var(--t3);font-size:10px}
